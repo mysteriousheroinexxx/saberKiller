@@ -169,6 +169,10 @@
   #pickupMsg{position:absolute;left:50%;top:62%;transform:translateX(-50%);
     color:#ffd070;font-size:15px;letter-spacing:.15em;opacity:0;transition:opacity .3s;
     text-shadow:0 1px 3px #000}
+  #npcPrompt{position:absolute;left:50%;top:70%;transform:translateX(-50%);
+    color:#9fe0ff;font-size:16px;letter-spacing:.12em;opacity:0;transition:opacity .2s;
+    text-shadow:0 1px 4px #000;background:#0a141ccc;padding:6px 14px;border:1px solid #2a5a7a;
+    border-radius:4px}
   #damage{position:fixed;inset:0;pointer-events:none;z-index:15;opacity:0;
     background:radial-gradient(ellipse at center,transparent 35%,#a00000cc 100%)}
   #lowhp{position:fixed;inset:0;pointer-events:none;z-index:14;opacity:0;
@@ -186,6 +190,7 @@
   <canvas id="minimap" width="150" height="150"></canvas>
   <div id="waveBanner"></div><div id="waveSub"></div>
   <div id="pickupMsg"></div>
+  <div id="npcPrompt"></div>
   <div id="weaponName"></div>
   <div id="statusbar">
     <div class="stat"><span class="label">HEALTH</span><span class="value" id="hpVal">100</span><div class="bar hp"><i id="hpBar"></i></div></div>
@@ -753,6 +758,7 @@ let muzzleLight,muzzleSprite,gunGroup,gunPistol,gunShotgun,playerLight;
 let TEX={};
 let ambientLight=null,roomLights=[],floorMesh=null,ceilMesh=null,fluorescentGroup=null,fixtures=[],outletGroup=null,propGroup=null,whisperTimer=8;
 let BARREL_TEMPLATE=null,pipeGroup=null,steamGroup=null,steamPuffs=[],torchGroup=null,torchFlames=[],torchLights=[],trapGroup=null,trapCells=[],trapTimer=0;
+let npcs=[],nearNPC=null;
 const P={ // player
   pos:new THREE.Vector3(16*CELL,0,16*CELL), yaw:0,pitch:0,
   hp:100,bullets:48,shells:8,weapon:0,kills:0,
@@ -874,7 +880,7 @@ function applyLevelTheme(id){
   if(typeof SND!=='undefined'&&L.ambientSound)SND.ambient(L.ambientSound);
   if(fluorescentGroup)fluorescentGroup.visible=(id==='backrooms');
   if(outletGroup)outletGroup.visible=(id==='backrooms');
-  if(L.layout&&L.layout!==currentLayout){currentLayout=L.layout;setLayout(L.layout);buildWalls();buildTrim();buildMinimapWalls();createOutlets();createProps();createPipes();createSteam();createTorches();createTraps();}
+  if(L.layout&&L.layout!==currentLayout){currentLayout=L.layout;setLayout(L.layout);buildWalls();buildTrim();buildMinimapWalls();createOutlets();createProps();createPipes();createSteam();createTorches();createTraps();createNPCs();}
   // per-level textures (walls / floor / ceiling)
   if(L.wallTex)for(const im of wallMeshes){const tx=TEX[L.wallTex[im.userData.wallType]];
     if(tx&&im.material.map!==tx){im.material.map=tx;im.material.needsUpdate=true;}}
@@ -1088,6 +1094,33 @@ function createTraps(){
   }
   trapGroup.visible=true;
 }
+/* friendly NPCs: robed figures with idle bob + "E to talk" prompt */
+function makeNPCFigure(color){
+  const g=new THREE.Group();
+  const robe=new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.42,1.2,10),new THREE.MeshLambertMaterial({color}));
+  robe.position.y=0.6;g.add(robe);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.2,12,10),new THREE.MeshLambertMaterial({color:0xe0c8a0}));
+  head.position.y=1.42;g.add(head);
+  const hood=new THREE.Mesh(new THREE.ConeGeometry(0.27,0.36,10),new THREE.MeshLambertMaterial({color}));
+  hood.position.y=1.62;g.add(hood);
+  return g;
+}
+function createNPCs(){
+  for(const n of npcs)scene.remove(n.group);
+  npcs=[];nearNPC=null;
+  const spots={
+    backrooms:[{x:25,z:25,name:'WANDERER',color:0x4a6a8a}],
+    habitable:[{x:20,z:20,name:'M.E.G. AGENT',color:0x5a7a5a}],
+    dungeon:[{x:16,z:13,name:'DELVER',color:0x7a5a4a}]
+  };
+  for(const s of (spots[currentLevel]||[])){
+    if(isWall(s.x,s.z))continue;
+    const g=makeNPCFigure(s.color);
+    g.position.set(s.x*CELL+CELL/2,0,s.z*CELL+CELL/2);
+    scene.add(g);
+    npcs.push({group:g,name:s.name,tree:DIALOGUE_DEMO,phase:Math.random()*6,_d:99});
+  }
+}
 function goNextLevel(){
   if(transBusy||!LEVELS[currentLevel])return;
   const i=LEVEL_ORDER.indexOf(currentLevel);
@@ -1197,6 +1230,7 @@ function initScene(){
   createSteam();
   createTorches();
   createTraps();
+  createNPCs();
   loadBarrel();
 
   // floor + ceiling
@@ -2096,6 +2130,17 @@ function updatePlayer(dt){
   }
   // minimap exploration reveal
   revealAround(P.pos.x,P.pos.z,3);
+  // NPC idle bob + approach prompt
+  nearNPC=null;let bestD=2.5;
+  for(const n of npcs){
+    n.phase+=dt;
+    n.group.position.y=Math.sin(n.phase*1.5)*0.04;
+    n.group.rotation.y=Math.sin(n.phase*0.6)*0.2;
+    const d=Math.hypot(n.group.position.x-P.pos.x,n.group.position.z-P.pos.z);
+    if(d<bestD){bestD=d;nearNPC=n;}
+  }
+  if(nearNPC&&WS.playing&&!WS.paused&&!Dialogue.isActive()){$('npcPrompt').textContent='[E] Talk to '+nearNPC.name;$('npcPrompt').style.opacity=1;}
+  else $('npcPrompt').style.opacity=0;
   // steam puffs (Pipe Dreams)
   if(steamGroup&&steamGroup.visible){
     for(const p of steamPuffs){p.t+=dt;
@@ -2363,6 +2408,7 @@ let mouseDown=false;
 function bindInput(){
   addEventListener('keydown',e=>{
     if(Dialogue.isActive()){if(e.code==='Space'||e.code==='Enter'){Dialogue.advance();e.preventDefault();}return;}
+    if(e.code==='KeyE'&&nearNPC&&WS.playing&&!WS.paused){Dialogue.open(nearNPC.tree,'start');e.preventDefault();return;}
     keys[e.code]=true;
     if(e.code==='Digit1'&&P.weapon!==0){P.weapon=0;P.switchT=.22;gunPistol.visible=true;gunShotgun.visible=false;}
     if(e.code==='Digit2'&&P.weapon!==1){P.weapon=1;P.switchT=.22;gunPistol.visible=false;gunShotgun.visible=true;}

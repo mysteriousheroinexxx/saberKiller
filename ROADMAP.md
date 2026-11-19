@@ -51,7 +51,7 @@ scattered wall outlets, occasional pitch-black rooms / blood-red rooms.
 - [x] 5.4 A dungeon level (stone, torches, traps) tying the crawler theme together
 
 ## Milestone 6 — Visual-novel NPC interaction
-- [ ] 6.1 NPC entities (idle animation, approach prompt "E to talk")
+- [x] 6.1 NPC entities (idle animation, approach prompt "E to talk")
 - [ ] 6.2 Dialogue engine: nodes, typewriter text, portrait, branching choices
 - [ ] 6.3 Write NPC characters + dialogue trees (Backrooms wanderers / M.E.G. agents)
 - [ ] 6.4 NPC portraits (reuse pfp.png style / generate / CC0)

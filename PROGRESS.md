@@ -136,3 +136,9 @@
   cells): extended connectors to span to corridors -> 455/455 reachable. Verified trap damage
   (hp 100->84), far-corner enemy approaches, full 5-level chain, zero errors. MILESTONE 5
   (expand map / more levels) COMPLETE.
+- 2026-11-20: M6.1 done — friendly NPC entities: makeNPCFigure() (robed wanderer: robe +
+  head + hood), createNPCs() places one per level (WANDERER/backrooms, M.E.G. AGENT/habitable,
+  DELVER/dungeon) with idle bob + sway; proximity scan sets nearNPC and shows a styled
+  "[E] Talk to NAME" HUD prompt within 2.5m; KeyE opens the existing Dialogue engine with the
+  NPC's tree. Verified NPC present, prompt shows on approach, E opens dialogue box (portrait +
+  name + typewriter), zero errors. (Dialogue engine shell already existed from M1.5.)
