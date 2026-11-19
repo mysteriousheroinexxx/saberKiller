@@ -1109,16 +1109,16 @@ function createNPCs(){
   for(const n of npcs)scene.remove(n.group);
   npcs=[];nearNPC=null;
   const spots={
-    backrooms:[{x:25,z:25,name:'WANDERER',color:0x4a6a8a}],
-    habitable:[{x:20,z:20,name:'M.E.G. AGENT',color:0x5a7a5a}],
-    dungeon:[{x:16,z:13,name:'DELVER',color:0x7a5a4a}]
+    backrooms:[{x:25,z:25,name:'WANDERER',color:0x4a6a8a,tree:DIALOGUE_DEMO}],
+    habitable:[{x:20,z:20,name:'M.E.G. AGENT',color:0x5a7a5a,tree:DIALOGUE_AGENT}],
+    dungeon:[{x:16,z:13,name:'DELVER',color:0x7a5a4a,tree:DIALOGUE_DELVER}]
   };
   for(const s of (spots[currentLevel]||[])){
     if(isWall(s.x,s.z))continue;
     const g=makeNPCFigure(s.color);
     g.position.set(s.x*CELL+CELL/2,0,s.z*CELL+CELL/2);
     scene.add(g);
-    npcs.push({group:g,name:s.name,tree:DIALOGUE_DEMO,phase:Math.random()*6,_d:99});
+    npcs.push({group:g,name:s.name,tree:s.tree,phase:Math.random()*6,_d:99});
   }
 }
 function goNextLevel(){
@@ -2378,6 +2378,24 @@ const DIALOGUE_DEMO={
   warn:{name:'WANDERER',portrait:'assets/pfp.png',text:"Easy. I'm no entity. Just a wanderer, like you. Keep your weapon — you'll need it.",next:'end'},
   end:{name:'WANDERER',portrait:'assets/pfp.png',text:"Stay safe out there. And if you hear something wandering nearby... run.",
     choices:[{label:'[Leave]',next:null}]}
+};
+const DIALOGUE_AGENT={
+  start:{name:'M.E.G. AGENT',portrait:'assets/pfp.png',text:"Hold up — friendly. M.E.G., Major Explorer Group. We map these levels and help wanderers survive.",next:'offer'},
+  offer:{name:'M.E.G. AGENT',portrait:'assets/pfp.png',text:"You look like you've been through it. We've got an outpost nearby. Want supplies, or information?",
+    choices:[{label:'"What supplies?"',next:'supplies'},{label:'"Tell me about the levels."',next:'levels'}]},
+  supplies:{name:'M.E.G. AGENT',portrait:'assets/pfp.png',text:"Almond Water for the sanity, scrap for trading. Here — take a ration. On the house.",
+    choices:[{label:'[Accept ration]',action:()=>{Progress.addItem('almondWater',1);Progress.addItem('scrap',2);showMsg('+1 Almond Water, +2 Scrap');},next:'end'}]},
+  levels:{name:'M.E.G. AGENT',portrait:'assets/pfp.png',text:"Level 0 is the Lobby — yellow, endless. Level 1 is this warehouse. Deeper gets worse. Follow the exit rifts, and watch for entities.",next:'end'},
+  end:{name:'M.E.G. AGENT',portrait:'assets/pfp.png',text:"Stay alive, wanderer. M.E.G. out.",choices:[{label:'[Leave]',next:null}]}
+};
+const DIALOGUE_DELVER={
+  start:{name:'DELVER',portrait:'assets/pfp.png',text:"Shh. You're loud. The stone remembers loud things.",next:'warn'},
+  warn:{name:'DELVER',portrait:'assets/pfp.png',text:"I've delved these halls longer than you've been awake. The spikes bite. The torches lie. Want my counsel?",
+    choices:[{label:'"What should I fear?"',next:'fear'},{label:'"Any treasure?"',next:'treasure'}]},
+  fear:{name:'DELVER',portrait:'assets/pfp.png',text:"The plates on the floor — step around them. And the entities... they hear your heartbeat. Keep it calm.",next:'end'},
+  treasure:{name:'DELVER',portrait:'assets/pfp.png',text:"Scrap, buried in the dark. Take this — I've no use for it where I'm going.",
+    choices:[{label:'[Take scrap]',action:()=>{Progress.addItem('scrap',3);showMsg('+3 Scrap');},next:'end'}]},
+  end:{name:'DELVER',portrait:'assets/pfp.png',text:"Go quietly. And if the torches go out all at once... don't breathe.",choices:[{label:'[Leave]',next:null}]}
 };
 const Dialogue=(()=>{
   let tree=null,node=null,typing=false,fullText='',shown=0,typeTimer=null,active=false,onClose=null;

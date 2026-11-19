@@ -148,3 +148,8 @@
   effects and bridging to M7 trading. Verified full branch flow start->q->lore->gift->end->
   leave, choice buttons render (screenshot), almondWater 0->1 via choice action, clean close,
   zero errors.
+- 2026-11-20: M6.3 done — wrote distinct NPC characters + branching dialogue trees:
+  DIALOGUE_AGENT (M.E.G. Agent: supplies/levels branches, ration grants +1 almondWater +2
+  scrap) and DIALOGUE_DELVER (cryptic Delver: fear/treasure branches, +3 scrap), alongside the
+  WANDERER demo tree; createNPCs now assigns each NPC its own tree. Verified all three open
+  distinct name+text, agent ration grants items, zero errors.
