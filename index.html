@@ -458,6 +458,21 @@ const SETTINGS=(()=>{
   return {get:()=>s,set(k,v){s[k]=v;save();apply();},apply,save};
 })();
 
+/* ---------------- progression / inventory (persisted) ---------------- */
+const Progress=(()=>{
+  const KEY='sks.progress.v1';
+  const def={level:'arena',kills:0,maxWave:0,items:{scrap:0,almondWater:0,keys:0}};
+  let s={...def,items:{...def.items}};
+  try{const raw=localStorage.getItem(KEY);if(raw){const p=JSON.parse(raw);s={...def,...p,items:{...def.items,...(p.items||{})}};}}catch(e){}
+  function save(){try{if(typeof currentLevel!=='undefined')s.level=currentLevel;
+    if(typeof P!=='undefined')s.kills=P.kills;
+    localStorage.setItem(KEY,JSON.stringify(s));}catch(e){}}
+  return {get:()=>s,save,
+    addItem(k,n){s.items[k]=(s.items[k]||0)+n;save();},
+    useItem(k,n){n=n||1;if((s.items[k]||0)<n)return false;s.items[k]-=n;save();return true;},
+    reset(){s={...def,items:{...def.items}};save();}};
+})();
+
 /* ---------------- synthesized audio (V2 spirit) ---------------- */
 const SND = (() => {
   let ctx=null, master=null, noiseBuf=null, ambientOn=false, ambientNodes=[], ambientProfile=null;
@@ -719,6 +734,7 @@ function goNextLevel(){
     for(const zb of [...zombies])removeZombie(zb);
     for(const p of pickups)scene.remove(p.mesh);pickups.length=0;
     WS.wave=0;WS.phase='intermission';WS.timer=2.2;WS.queue=0;
+    Progress.save();
   });
 }
 
@@ -1551,6 +1567,7 @@ function die(){
 function startWave(n){
   WS.wave=n;WS.phase='active';
   WS.queue=Math.min(4+3*n,40);WS.spawnT=0;
+  Progress.get().maxWave=Math.max(Progress.get().maxWave,n);Progress.save();
   SND.wave();
   banner(`WAVE ${n}`,'THEY ARE COMING');
 }
@@ -1997,6 +2014,8 @@ window.G={
   setLevel(id){if(LEVELS[id]){applyLevelTheme(id);banner(LEVELS[id].name,LEVELS[id].sub);}},
   get level(){return currentLevel;},
   nextLevel(){goNextLevel();},
+  get progress(){return Progress.get();},
+  addItem(k,n){Progress.addItem(k,n);},
   fps:0
 };
 

@@ -25,7 +25,7 @@ smaller `[ ]` sub-tasks inline rather than half-finishing it.
 - [x] 2.1 Level registry + loader (each level = layout + textures + entities + ambient)
 - [x] 2.2 Level transition trigger (exit door / noclip zone) + fade + load next
 - [x] 2.3 Per-level ambient sound + lighting profile
-- [ ] 2.4 Progression state (which level, inventory) persisted across transitions
+- [x] 2.4 Progression state (which level, inventory) persisted across transitions
 
 ## Milestone 3 — Backrooms Level 0 "The Lobby" (research-grounded)
 Reference: mono-yellow worn chevron wallpaper, damp stained beige carpet,

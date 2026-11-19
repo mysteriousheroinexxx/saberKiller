@@ -47,3 +47,8 @@
   debug; LEVELS.ambientSound field; applyLevelTheme + startGame drive the profile.
   Verified arena(drone,3 nodes)<->backrooms(fluorescent,4 nodes) via setLevel AND portal
   transition, zero errors. Lighting profile already handled by applyLevelTheme (M2.1).
+- 2026-11-20: M2.4 done — Progress module (localStorage sks.progress.v1): level/kills/
+  maxWave + items inventory {scrap, almondWater, keys} with addItem/useItem (overdraw
+  guard); saved on level transition + wave start; G.progress/G.addItem. Verified items
+  persist across portal transition AND page reload, level saved, useItem deducts + rejects
+  overdraw, zero errors. MILESTONE 2 (multi-level architecture) COMPLETE.
