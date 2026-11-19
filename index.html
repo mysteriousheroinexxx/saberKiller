@@ -584,6 +584,7 @@ let scene,camera,renderer,raycaster;
 let wallMeshes=[],zombies=[],hitMeshes=[],pickups=[],particles=[],tracers=[],decals=[];
 let muzzleLight,muzzleSprite,gunGroup,gunPistol,gunShotgun,playerLight;
 let TEX={};
+let ambientLight=null,roomLights=[];
 const P={ // player
   pos:new THREE.Vector3(16*CELL,0,16*CELL), yaw:0,pitch:0,
   hp:100,bullets:48,shells:8,weapon:0,kills:0,
@@ -635,6 +636,39 @@ function runPipeline(done){
   step();
 }
 
+/* ---------------- level registry ---------------- */
+/* Each level declares layout + textures + entities + ambient. M2.1 wires the
+   ambient/theme loader; layout & texture swapping land in M2.2 / M3. */
+const LEVELS={
+  arena:{
+    name:'THE ARENA', sub:'Saber Kill Simulator',
+    bg:0x050508, fog:0x050508, fogDensity:.042,
+    ambient:{color:0x606070,intensity:.5},
+    playerLight:{color:0xffd8a0,intensity:.85},
+    roomLight:{color:0xff7030,intensity:.5},
+    wallTex:{1:'wall_tech',2:'wall_brick',3:'wall_hell'},
+    layout:'arena', enemies:'saber'
+  },
+  backrooms:{
+    name:'LEVEL 0 — THE LOBBY', sub:'the madness of mono-yellow',
+    bg:0x1a1608, fog:0x2a2410, fogDensity:.05,
+    ambient:{color:0xb0a060,intensity:.75},
+    playerLight:{color:0xfff0c0,intensity:.95},
+    roomLight:{color:0xf0e070,intensity:.75},
+    wallTex:{1:'wall_tech',2:'wall_brick',3:'wall_hell'},
+    layout:'arena', enemies:'saber'
+  }
+};
+let currentLevel='arena';
+function applyLevelTheme(id){
+  const L=LEVELS[id];if(!L||!scene)return;currentLevel=id;
+  scene.background=new THREE.Color(L.bg);
+  scene.fog=new THREE.FogExp2(L.fog,L.fogDensity);
+  if(ambientLight){ambientLight.color.setHex(L.ambient.color);ambientLight.intensity=L.ambient.intensity;}
+  if(playerLight){playerLight.color.setHex(L.playerLight.color);playerLight.intensity=L.playerLight.intensity;}
+  for(const l of roomLights){l.color.setHex(L.roomLight.color);l.intensity=L.roomLight.intensity;}
+}
+
 /* ---------------- scene ---------------- */
 function initScene(){
   scene=new THREE.Scene();
@@ -647,15 +681,16 @@ function initScene(){
   $('game').appendChild(renderer.domElement);
   raycaster=new THREE.Raycaster();
 
-  scene.add(new THREE.AmbientLight(0x606070,.5));
+  ambientLight=new THREE.AmbientLight(0x606070,.5);scene.add(ambientLight);
   playerLight=new THREE.PointLight(0xffd8a0,.85,16,2);
   camera.add(playerLight);scene.add(camera);
 
   // static room lights
   for(const [x,z] of [[15.5,15.5],[5,5],[26,5],[5,26],[26,26],[15.5,4],[15.5,27],[4,15.5],[27,15.5]]){
     const l=new THREE.PointLight(0xff7030,.5,13,2);
-    l.position.set(x*CELL,WALLH-.4,z*CELL);scene.add(l);
+    l.position.set(x*CELL,WALLH-.4,z*CELL);scene.add(l);roomLights.push(l);
   }
+  applyLevelTheme('arena');
 
   // floor + ceiling
   const floorTex=TEX.floor_tile.clone();floorTex.needsUpdate=true;floorTex.repeat.set(MAPW,MAPH);
@@ -1898,6 +1933,8 @@ window.G={
   addAmmo(){P.bullets+=99;P.shells+=30;},
   transition(title){levelTransition(title||'LEVEL 0 — THE LOBBY');},
   dialogue(){Dialogue.open(DIALOGUE_DEMO,'start');},
+  setLevel(id){if(LEVELS[id]){applyLevelTheme(id);banner(LEVELS[id].name,LEVELS[id].sub);}},
+  get level(){return currentLevel;},
   fps:0
 };
 

@@ -22,7 +22,7 @@ smaller `[ ]` sub-tasks inline rather than half-finishing it.
 - [x] 1.5 Dialogue UI shell (portrait + typewriter text box + choice buttons) — reused by M6
 
 ## Milestone 2 — Multi-level architecture
-- [ ] 2.1 Level registry + loader (each level = layout + textures + entities + ambient)
+- [x] 2.1 Level registry + loader (each level = layout + textures + entities + ambient)
 - [ ] 2.2 Level transition trigger (exit door / noclip zone) + fade + load next
 - [ ] 2.3 Per-level ambient sound + lighting profile
 - [ ] 2.4 Progression state (which level, inventory) persisted across transitions

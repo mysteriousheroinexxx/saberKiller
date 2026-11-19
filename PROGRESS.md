@@ -29,3 +29,9 @@
   Space/Enter routing), DIALOGUE_DEMO wanderer tree + G.dialogue() trigger. Verified
   typewriter -> 2 branching choices -> [Leave] closes & resumes game, zero errors.
   MILESTONE 1 (UI polish) COMPLETE.
+- 2026-11-20: M2.1 done — level registry (LEVELS: arena + backrooms descriptors with
+  bg/fog/ambient/playerLight/roomLight/wallTex/layout/enemies fields) + applyLevelTheme()
+  loader wired into initScene (ambientLight + roomLights refs); G.setLevel(id)/G.level.
+  Verified theme switch numerically (arena fog #050508 -> backrooms #2a2410, yellow
+  ambient/player/room lights) + banner, zero errors. NOTE: walls still show arena
+  lava/brick textures — the mono-yellow Backrooms TEXTURE swap is M3.
