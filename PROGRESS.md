@@ -108,3 +108,11 @@
   guard so rebuilds don't break the template. Verified template loads, barrel bbox 0.74x0.91x
   0.72 on floor, 6 barrels render (screenshot), survive arena<->backrooms rebuild, zero errors.
   MILESTONE 4 (less blocky maps + Blender assets) COMPLETE.
+- 2026-11-20: M5.1 done — added a landmark hall (large open room + 4-pillar cluster) to
+  layoutBackrooms for navigation, and fog-of-war minimap reveals: an `explored` cell set
+  revealed around the player each frame (revealAround), reset on layout change; drawMinimap
+  masks unexplored cells + hides pickups/enemies in fog (arena keeps full map). Verified
+  explored 49/1024 at start -> 98 after moving, landmark cell revealed, fog canvas shows
+  only the explored patch (screenshot), arena full-map, zero errors. (Literal map-size
+  increase deferred — needs per-level MAPW/MAPH refactor; landmarks + reveals + multi-room
+  interconnection delivered.)

@@ -641,6 +641,8 @@ function layoutBackrooms(){
   for(let i=0;i<10;i++)grid[ri(2,MAPH-3)][ri(2,MAPW-3)]=1; // scattered pillars
   carve(14,14,18,18);                    // keep player start open
   carve(4,4,6,6);                        // keep exit portal open
+  carve(21,21,29,29);                    // landmark hall (large open room)
+  for(const [x,z] of [[23,23],[27,23],[23,27],[27,27]])grid[z][x]=2; // pillar cluster
 }
 function assignWallVariants(){
   for(let z=0;z<MAPH;z++)for(let x=0;x<MAPW;x++){
@@ -677,11 +679,18 @@ function computeReach(){
   for(let z=0;z<MAPH;z++)for(let x=0;x<MAPW;x++)
     if(grid[z][x]===0&&_reach.has(x+','+z))floorCells.push([x,z]);
 }
+const explored=new Set();
+function revealAround(px,pz,r){
+  const cx=cellOf(px),cz=cellOf(pz);
+  for(let z=cz-r;z<=cz+r;z++)for(let x=cx-r;x<=cx+r;x++)
+    if(x>=0&&z>=0&&x<MAPW&&z<MAPH)explored.add(x+','+z);
+}
 let currentLayout='arena';
 function setLayout(type){
   for(let z=0;z<MAPH;z++){grid[z]=[];for(let x=0;x<MAPW;x++)grid[z][x]=1;}
   if(type==='backrooms')layoutBackrooms();else layoutArena();
   assignWallVariants();computeReach();
+  explored.clear();revealAround(16*CELL,16*CELL,3);
 }
 setLayout('arena');
 
@@ -1914,6 +1923,8 @@ function updatePlayer(dt){
     exitPortal.userData.rift.rotation.y+=dt*.4;
     if(WS.playing&&!WS.paused&&!transBusy&&Math.hypot(P.pos.x-exitPos.x,P.pos.z-exitPos.z)<1.4)goNextLevel();
   }
+  // minimap exploration reveal
+  revealAround(P.pos.x,P.pos.z,3);
   // fluorescent flicker (Backrooms)
   if(fluorescentGroup&&fluorescentGroup.visible){
     for(const f of fixtures){if(f.dead){f.mesh.material.color.setRGB(.08,.08,.06);continue;}
@@ -2057,13 +2068,22 @@ function drawMinimap(){
   const c=$('minimap').getContext('2d');
   c.clearRect(0,0,150,150);
   c.drawImage(minimapWalls,0,0);
+  const fogOn=currentLevel!=='arena';
+  const cs=150/MAPW;
+  if(fogOn){
+    c.fillStyle='#020604';
+    for(let z=0;z<MAPH;z++)for(let x=0;x<MAPW;x++)
+      if(!explored.has(x+','+z))c.fillRect(x*cs,z*cs,cs+0.5,cs+0.5);
+  }
   const s=150/(MAPW*CELL);
   for(const p of pickups){
+    if(fogOn&&!explored.has(cellOf(p.mesh.position.x)+','+cellOf(p.mesh.position.z)))continue;
     c.fillStyle='#dd0';
     c.fillRect(p.mesh.position.x*s-1.5,p.mesh.position.z*s-1.5,3,3);
   }
   for(const zb of zombies){
     if(zb.state==='dying')continue;
+    if(fogOn&&!explored.has(cellOf(zb.group.position.x)+','+cellOf(zb.group.position.z)))continue;
     c.fillStyle='#f33';
     c.fillRect(zb.group.position.x*s-1.5,zb.group.position.z*s-1.5,3,3);
   }

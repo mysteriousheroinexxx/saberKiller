@@ -45,7 +45,7 @@ scattered wall outlets, occasional pitch-black rooms / blood-red rooms.
 - [x] 4.4 Asset pipeline: tools/blender_*.py -> assets/*.glb, loaded + instanced in-game
 
 ## Milestone 5 — Expand the map / more levels
-- [ ] 5.1 Larger interconnected Level 0 (multi-room, landmarks, minimap reveals)
+- [x] 5.1 Larger interconnected Level 0 (multi-room, landmarks, minimap reveals)
 - [ ] 5.2 Level 1 "Habitable Zone" (warehouse/concrete, crates, dim industrial light)
 - [ ] 5.3 Level 2 "Pipe Dreams" (pipes, steam, narrow maintenance tunnels)
 - [ ] 5.4 A dungeon level (stone, torches, traps) tying the crawler theme together
