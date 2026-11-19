@@ -469,8 +469,16 @@ const KTG = (() => {
     const base=(130+speck*40+n*20)*grid;
     return [base*1.02,base*.98,base*.8];
   }
+  /* wooden crate: planks + grain */
+  function crateTex(u,v){
+    const grain=fbm(u*30,v*6,3)*.5+.5;
+    const edge=((u*4)%1<.05||v<.05||v>.95)?0.6:1;
+    const n=fbm(u*8,v*8,3)*.5+.5;
+    const base=(90+grain*40+n*20)*edge;
+    return [base*1.1,base*.8,base*.5];
+  }
   return {make,wallTech,wallBrick,wallHell,floorTile,ceilMetal,
-          wallYellow,carpetDamp,ceilTile,
+          wallYellow,carpetDamp,ceilTile,crateTex,
           zombieSkin,blood,gunMetal,healthTex,ammoTex,flash,fbm,turb};
 })();
 
@@ -682,7 +690,7 @@ let scene,camera,renderer,raycaster;
 let wallMeshes=[],trimMeshes=[],zombies=[],hitMeshes=[],pickups=[],particles=[],tracers=[],decals=[];
 let muzzleLight,muzzleSprite,gunGroup,gunPistol,gunShotgun,playerLight;
 let TEX={};
-let ambientLight=null,roomLights=[],floorMesh=null,ceilMesh=null,fluorescentGroup=null,fixtures=[],outletGroup=null,whisperTimer=8;
+let ambientLight=null,roomLights=[],floorMesh=null,ceilMesh=null,fluorescentGroup=null,fixtures=[],outletGroup=null,propGroup=null,whisperTimer=8;
 const P={ // player
   pos:new THREE.Vector3(16*CELL,0,16*CELL), yaw:0,pitch:0,
   hp:100,bullets:48,shells:8,weapon:0,kills:0,
@@ -711,6 +719,7 @@ const texJobs=[
   ['wall_yellow',()=>KTG.make('wall_yellow',256,KTG.wallYellow)],
   ['carpet_damp',()=>KTG.make('carpet_damp',256,KTG.carpetDamp)],
   ['ceil_tile',  ()=>KTG.make('ceil_tile',256,KTG.ceilTile)],
+  ['crate',      ()=>KTG.make('crate',128,KTG.crateTex)],
   ['zombie_skin',()=>KTG.make('zombie_skin',256,KTG.zombieSkin)],
   ['blood_decal',()=>KTG.make('blood_decal',128,KTG.blood)],
   ['gun_metal',  ()=>KTG.make('gun_metal',128,KTG.gunMetal)],
@@ -781,7 +790,7 @@ function applyLevelTheme(id){
   if(typeof SND!=='undefined'&&L.ambientSound)SND.ambient(L.ambientSound);
   if(fluorescentGroup)fluorescentGroup.visible=(id==='backrooms');
   if(outletGroup)outletGroup.visible=(id==='backrooms');
-  if(L.layout&&L.layout!==currentLayout){currentLayout=L.layout;setLayout(L.layout);buildWalls();buildTrim();buildMinimapWalls();createOutlets();}
+  if(L.layout&&L.layout!==currentLayout){currentLayout=L.layout;setLayout(L.layout);buildWalls();buildTrim();buildMinimapWalls();createOutlets();createProps();}
   // per-level textures (walls / floor / ceiling)
   if(L.wallTex)for(const im of wallMeshes){const tx=TEX[L.wallTex[im.userData.wallType]];
     if(tx&&im.material.map!==tx){im.material.map=tx;im.material.needsUpdate=true;}}
@@ -844,6 +853,50 @@ function createOutlets(){
     const m=new THREE.Mesh(geo,tearMat);m.position.set(wx,1.2,wz);outletGroup.add(m);pt++;
   }
   outletGroup.visible=(currentLevel==='backrooms');
+}
+/* low-poly props: crates against walls + scattered debris (non-arena levels) */
+function createProps(){
+  if(!propGroup){propGroup=new THREE.Group();scene.add(propGroup);}
+  while(propGroup.children.length){const c=propGroup.children[0];propGroup.remove(c);c.traverse(o=>{if(o.geometry)o.geometry.dispose();});}
+  if(currentLevel==='arena'){propGroup.visible=false;return;}
+  const crateMat=new THREE.MeshLambertMaterial({map:TEX.crate});
+  const debrisMat=new THREE.MeshLambertMaterial({color:0x5a5048});
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+  let crates=0,tries=0;
+  while(crates<18&&tries<400&&floorCells.length){tries++;
+    const [x,z]=floorCells[(Math.random()*floorCells.length)|0];
+    if(Math.abs(x-16)<3&&Math.abs(z-16)<3)continue;   // keep start clear
+    if(Math.abs(x-5)<2&&Math.abs(z-5)<2)continue;     // keep portal clear
+    const [dx,dz]=dirs[(Math.random()*4)|0];
+    if(!isWall(x+dx,z+dz))continue;                   // place against a wall
+    const wx=x*CELL+CELL/2+dx*(CELL/2-0.45),wz=z*CELL+CELL/2+dz*(CELL/2-0.45);
+    const h=Math.random()<0.3?1.4:0.7;
+    const m=new THREE.Mesh(new THREE.BoxGeometry(0.7,h,0.7),crateMat);
+    m.position.set(wx,h/2,wz);m.rotation.y=Math.random()*0.4-0.2;propGroup.add(m);crates++;
+  }
+  for(let i=0;i<24&&floorCells.length;i++){
+    const [x,z]=floorCells[(Math.random()*floorCells.length)|0];
+    const s=R(0.08,0.28);
+    const m=new THREE.Mesh(new THREE.BoxGeometry(s,s*0.6,s),debrisMat);
+    m.position.set(x*CELL+R(0.3,CELL-0.3),s*0.3,z*CELL+R(0.3,CELL-0.3));
+    m.rotation.y=Math.random()*Math.PI;propGroup.add(m);
+  }
+  // shelves against walls
+  const shelfMat=new THREE.MeshLambertMaterial({color:0x6a5a40});
+  for(let i=0,sh=0;i<60&&sh<6&&floorCells.length;i++){
+    const [x,z]=floorCells[(Math.random()*floorCells.length)|0];
+    if(Math.abs(x-16)<3&&Math.abs(z-16)<3)continue;
+    const [dx,dz]=dirs[(Math.random()*4)|0];
+    if(!isWall(x+dx,z+dz))continue;
+    const wx=x*CELL+CELL/2+dx*(CELL/2-0.25),wz=z*CELL+CELL/2+dz*(CELL/2-0.25);
+    const g=new THREE.Group();
+    const back=new THREE.Mesh(new THREE.BoxGeometry(dx!==0?0.06:1.2,1.8,dx!==0?1.2:0.06),shelfMat);
+    back.position.y=0.9;g.add(back);
+    for(let s=0;s<3;s++){const board=new THREE.Mesh(new THREE.BoxGeometry(dx!==0?0.35:1.2,0.05,dx!==0?1.2:0.35),shelfMat);
+      board.position.set(dx!==0?-dx*0.15:0,0.4+s*0.5,dz!==0?-dz*0.15:0);g.add(board);}
+    g.position.set(wx,0,wz);propGroup.add(g);sh++;
+  }
+  propGroup.visible=true;
 }
 function goNextLevel(){
   if(transBusy||!LEVELS[currentLevel])return;
@@ -944,6 +997,7 @@ function initScene(){
   createExitPortal(5,5);
   createFluorescents();
   createOutlets();
+  createProps();
 
   // floor + ceiling
   const floorTex=TEX.floor_tile.clone();floorTex.needsUpdate=true;floorTex.repeat.set(MAPW,MAPH);

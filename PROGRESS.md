@@ -90,3 +90,8 @@
   Verified baseboard/cornice render at wall-floor junction (screenshot), 4 trim meshes /
   576 instances arena, 7 meshes / 1120 instances backrooms (door frames at narrow passages),
   zero errors.
+- 2026-11-20: M4.2 done — createProps() scatters low-poly procedural props in non-arena
+  levels: 18 wooden crates (KTG.crateTex plank texture, some stacked) against walls, 24
+  debris chunks on the floor, 6 shelf units (back panel + 3 boards); start/portal cells kept
+  clear; rebuilt per layout with nested-geometry disposal. Verified crate + shelf render
+  (screenshots), 48 props in backrooms / hidden in arena, zero errors.
