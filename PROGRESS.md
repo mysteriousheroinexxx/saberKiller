@@ -116,3 +116,9 @@
   only the explored patch (screenshot), arena full-map, zero errors. (Literal map-size
   increase deferred — needs per-level MAPW/MAPH refactor; landmarks + reveals + multi-room
   interconnection delivered.)
+- 2026-11-20: M5.2 done — fleshed out Level 1 "Habitable Zone": KTG.wallConcrete (gray
+  concrete, formwork lines + tie holes + stains), layoutWarehouse() (open spans + regular
+  column grid + partition walls with wide openings), LEVELS.habitable now layout:'warehouse'
+  + concrete walls. Crates/barrels already scatter via createProps. Verified distinct open
+  layout (832 floor cells vs backrooms 407), concrete render + columns + crates (screenshot),
+  start/portal open, enemies spawn, zero errors.

@@ -477,8 +477,17 @@ const KTG = (() => {
     const base=(90+grain*40+n*20)*edge;
     return [base*1.1,base*.8,base*.5];
   }
+  /* gray concrete: formwork lines + tie holes + stains */
+  function wallConcrete(u,v){
+    const n=fbm(u*10,v*10,5)*.5+.5;
+    const stain=Math.pow(turb(u*4,v*4,4),2);
+    const form=((v*3)%1<.03)?0.7:1;
+    const tie=(((u*4)%1<.04)&&((v*3)%1<.04))?0.6:1;
+    const base=(110+n*40-stain*45)*form*tie;
+    return [base*.95,base*.95,base*.92];
+  }
   return {make,wallTech,wallBrick,wallHell,floorTile,ceilMetal,
-          wallYellow,carpetDamp,ceilTile,crateTex,
+          wallYellow,carpetDamp,ceilTile,crateTex,wallConcrete,
           zombieSkin,blood,gunMetal,healthTex,ammoTex,flash,fbm,turb};
 })();
 
@@ -644,6 +653,18 @@ function layoutBackrooms(){
   carve(21,21,29,29);                    // landmark hall (large open room)
   for(const [x,z] of [[23,23],[27,23],[23,27],[27,27]])grid[z][x]=2; // pillar cluster
 }
+/* Level 1 warehouse: open spans, regular column grid, partitions with wide openings */
+function layoutWarehouse(){
+  const carve=(x0,z0,x1,z1)=>{for(let z=z0;z<=z1;z++)for(let x=x0;x<=x1;x++)grid[z][x]=0;};
+  carve(1,1,MAPW-2,MAPH-2);
+  for(let z=4;z<MAPH-2;z+=6)for(let x=4;x<MAPW-2;x+=6)grid[z][x]=2;   // column grid
+  for(let z=8;z<MAPH-2;z+=10){
+    for(let x=1;x<MAPW-1;x++)grid[z][x]=1;
+    for(let x=4;x<MAPW-3;x+=8){grid[z][x]=0;grid[z][x+1]=0;grid[z][x+2]=0;}
+  }
+  carve(14,14,18,18);                    // keep player start open
+  carve(4,4,6,6);                        // keep exit portal open
+}
 function assignWallVariants(){
   for(let z=0;z<MAPH;z++)for(let x=0;x<MAPW;x++){
     if(grid[z][x]===0)continue;
@@ -688,7 +709,7 @@ function revealAround(px,pz,r){
 let currentLayout='arena';
 function setLayout(type){
   for(let z=0;z<MAPH;z++){grid[z]=[];for(let x=0;x<MAPW;x++)grid[z][x]=1;}
-  if(type==='backrooms')layoutBackrooms();else layoutArena();
+  if(type==='backrooms')layoutBackrooms();else if(type==='warehouse')layoutWarehouse();else layoutArena();
   assignWallVariants();computeReach();
   explored.clear();revealAround(16*CELL,16*CELL,3);
 }
@@ -730,6 +751,7 @@ const texJobs=[
   ['carpet_damp',()=>KTG.make('carpet_damp',256,KTG.carpetDamp)],
   ['ceil_tile',  ()=>KTG.make('ceil_tile',256,KTG.ceilTile)],
   ['crate',      ()=>KTG.make('crate',128,KTG.crateTex)],
+  ['wall_concrete',()=>KTG.make('wall_concrete',256,KTG.wallConcrete)],
   ['zombie_skin',()=>KTG.make('zombie_skin',256,KTG.zombieSkin)],
   ['blood_decal',()=>KTG.make('blood_decal',128,KTG.blood)],
   ['gun_metal',  ()=>KTG.make('gun_metal',128,KTG.gunMetal)],
@@ -784,9 +806,9 @@ const LEVELS={
     ambient:{color:0x404048,intensity:.5},
     playerLight:{color:0xffe8c0,intensity:.85},
     roomLight:{color:0xc0c0d0,intensity:.5},
-    wallTex:{1:'wall_tech',2:'wall_tech',3:'wall_tech'}, floorTex:'floor_tile', ceilTex:'ceil_metal',
+    wallTex:{1:'wall_concrete',2:'wall_concrete',3:'wall_concrete'}, floorTex:'floor_tile', ceilTex:'ceil_metal',
     ambientSound:'drone',
-    layout:'backrooms', enemies:'saber'
+    layout:'warehouse', enemies:'saber'
   }
 };
 let currentLevel='arena';
