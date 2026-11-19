@@ -84,3 +84,9 @@
   Level 1. Verified full chain arena->backrooms->habitable->arena via nextLevel, Level 1
   gray-warehouse render distinct from yellow Level 0, zero errors. MILESTONE 3 (Backrooms
   Level 0) COMPLETE.
+- 2026-11-20: M4.1 done — buildTrim() adds instanced baseboards + ceiling cornice on every
+  exposed wall face, plus door-frame posts + lintels at 1-cell passages (procedural geometry
+  in the .kkrieger spirit; pillars already exist). Rebuilt per layout alongside buildWalls.
+  Verified baseboard/cornice render at wall-floor junction (screenshot), 4 trim meshes /
+  576 instances arena, 7 meshes / 1120 instances backrooms (door frames at narrow passages),
+  zero errors.

@@ -39,7 +39,7 @@ scattered wall outlets, occasional pitch-black rooms / blood-red rooms.
 - [x] 3.5 Wire Level 0 as a playable level with an exit to Level 1
 
 ## Milestone 4 — Less blocky maps + Blender assets
-- [ ] 4.1 Wall/geometry variety: beveled trim, baseboards, door frames, pillars (Blender)
+- [x] 4.1 Wall/geometry variety: beveled trim, baseboards, door frames, pillars (Blender)
 - [ ] 4.2 Props: furniture, crates, shelves, debris (Blender low-poly, CC0 textures)
 - [ ] 4.3 Smoother transitions between rooms (arches, partial walls, varied heights)
 - [ ] 4.4 Asset pipeline: tools/blender_*.py -> assets/*.glb, loaded + instanced in-game
