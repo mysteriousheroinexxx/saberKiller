@@ -1,0 +1,110 @@
+# SABER KILL SIMULATOR — a DOOM-like 3D FPS
+
+A wave-survival shooter in the spirit of id Software's DOOM: you vs. an
+endless horde of Saber (Fate's Artoria). The world, textures and sounds are
+100% procedurally generated in the spirit of .kkrieger / werkkzeug3; the
+Saber characters and the handgun/shotgun are GLB models you supplied,
+animated with real Mixamo clips.
+
+## Play
+
+Serve over HTTP (the GLB models need XHR, which file:// blocks):
+
+    cd doom-zombies
+    python3 -m http.server 8734
+    # visit http://127.0.0.1:8734/
+
+Click CLICK TO PLAY. Mouse is captured via pointer lock; ESC pauses.
+(If a GLB can't load, the game falls back to procedural box enemies.)
+
+## Controls
+
+    WASD / arrows   move (arrows also turn)
+    Mouse           aim
+    Click / hold    shoot
+    1 / 2           pistol / shotgun
+    Shift           sprint
+    Esc             pause
+
+Headshots deal double damage. Sabers drop health/ammo. Each cleared wave
+spawns resupply. Waves grow forever — survive as long as you can. huhuhu
+
+## How the two reference repos were used
+
+- id-Software/DOOM (GPL source release): spiritual basis. The original is
+  1997 C code requiring proprietary DOOM WAD data (not redistributable),
+  so this is an original homage: grid level, hitscan weapons, status-bar
+  HUD with a pixel marine face, automap minimap, fog-lit corridors, waves.
+- jaromil/kkrieger-werkkzeug3: asset philosophy. The Windows-only toolchain
+  can't run here, so its ideas are reimplemented in JS:
+    * KTG-style texture pipeline: value-noise/fbm/turbulence composed into
+      generation histories (tech panels, brick, hell flesh, floor, blood,
+      gun metal, pickups, muzzle flash).
+    * V2-style sound: every effect synthesized live with WebAudio — zero
+      audio files.
+
+## The Saber horde (Mixamo-animated GLBs)
+
+Enemies use your Mixamo-rigged Saber GLBs with real animation clips:
+  - saberWalking_clean.glb   base mesh + rig + walk cycle
+  - saberJumpKickAndPunch_clean.glb / saberPunches_clean.glb  attack combos
+  - saberFalling_clean.glb   death fall (she falls backward on her own)
+
+Each enemy is a SkeletonUtils.clone with an AnimationMixer: walk loops while
+chasing, a random attack combo plays in melee range, and the fall clip plays
+on death (then the corpse lingers, sinks, and is disposed). The original
+saber.glb supplies the skin texture (Mixamo strips materials on export), and
+a slight emissive lift keeps the dark armor readable in the dim arena.
+
+### The "_clean" GLBs — why they exist (important)
+
+Your raw Mixamo exports have a unit mismatch: the mesh geometry is in
+METERS while the skeleton is in CENTIMETERS under an Armature scaled 0.01
+(plus a 90° X rotation). three.js then renders the mesh 100x too small and
+skinning stretches it apart / floats it through the ceiling. They also
+contained a stray "Icosphere" object.
+
+The fix (Blender 5.3, headless): import the GLB, delete stray non-skinned
+objects, set the Armature scale to 1.0 (mesh + bones stay consistent, just
+large), and re-export. That yields the *_clean.glb files. In-game the model
+is scaled to 1.85 m and grounded using a TRUE skinned bounding box
+(skinnedWorldBox() deforms every vertex through the skeleton) — not the
+bind-pose geometry box, which lies about where the feet/head actually are.
+
+To regenerate a clean GLB from a new Mixamo export:
+
+    ~/bin/blender-5.3.0-linux-x64/blender --background --python tools/blender_clean.py -- assets/yourClip.glb assets/yourClip_clean.glb
+
+## Weapons (handgun.glb / shotgun.glb)
+
+First-person viewmodels loaded from your GLBs, auto-oriented so the barrel
+points forward and the grip hangs down (the shotgun's muzzle/grip axes are
+solved numerically from the vertices; the pistol uses a fixed flip). They
+inherit the existing bob/recoil/switch animation and muzzle flash.
+
+## Tech
+
+- Three.js r147 (vendored, MIT) — upgraded from r128 so cloned SkinnedMeshes
+  deform correctly while moving.
+- Single index.html + vendored three.min.js / GLTFLoader / SkeletonUtils.
+- InstancedMesh walls, pooled particles/tracers/decals, per-enemy material
+  and mixer disposal between waves.
+
+## Verified by automated browser playthrough
+
+Boot with zero console errors; Mixamo Saber enemies coherent, correctly
+sized (head below the 3.4 m ceiling), facing the player; walk/attack/death
+clips play; death falls backward (hips->head axis dot ~0.99 away from player)
+with blood decal + drops; pistol & shotgun viewmodels point forward; kills,
+headshots, ammo, wave progression, real-time rAF play all confirmed.
+
+## Debug console API
+
+    G.state            live game state
+    G.start()          start without pointer lock
+    G.restart()        full reset
+    G.setAuto(bool)    pause/resume the rAF sim (for deterministic G.tick tests)
+    G.tick(sec)        advance the sim by fixed steps
+    G.spawn(n) / G.spawnAt(cx,cz)
+    G.aimAtNearest()   auto-aim (testing)
+    G.teleport(cx,cz)  G.setHp(v)  G.hurt(v)  G.addAmmo()  G.killAll()
