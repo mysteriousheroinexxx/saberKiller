@@ -758,6 +758,16 @@ const LEVELS={
     roomLight:{color:0xf0e070,intensity:.75},
     wallTex:{1:'wall_yellow',2:'wall_yellow',3:'wall_yellow'}, floorTex:'carpet_damp', ceilTex:'ceil_tile',
     layout:'backrooms', enemies:'saber'
+  },
+  habitable:{
+    name:'LEVEL 1 — HABITABLE ZONE', sub:'Warehouse concrete',
+    fogColor:0x101012, fogDensity:.05,
+    ambient:{color:0x404048,intensity:.5},
+    playerLight:{color:0xffe8c0,intensity:.85},
+    roomLight:{color:0xc0c0d0,intensity:.5},
+    wallTex:{1:'wall_tech',2:'wall_tech',3:'wall_tech'}, floorTex:'floor_tile', ceilTex:'ceil_metal',
+    ambientSound:'drone',
+    layout:'backrooms', enemies:'saber'
   }
 };
 let currentLevel='arena';
@@ -781,7 +791,7 @@ function applyLevelTheme(id){
     tx.repeat.set(MAPW,MAPH);ceilMesh.material.map=tx;ceilMesh.material.needsUpdate=true;}
 }
 /* ---- exit portal (noclip zone) + level progression ---- */
-const LEVEL_ORDER=['arena','backrooms'];
+const LEVEL_ORDER=['arena','backrooms','habitable'];
 let exitPortal=null;const exitPos=new THREE.Vector3();
 function createExitPortal(cx,cz){
   const [wx,wz]=cellCenter(cx,cz);exitPos.set(wx,0,wz);

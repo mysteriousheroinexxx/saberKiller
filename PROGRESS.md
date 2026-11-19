@@ -78,3 +78,9 @@
   (bandpass noise + LFO) triggered on a random 8-20s timer while in backrooms. Verified
   outlets hidden in arena / 36 detail meshes in backrooms, dead fixtures present, whisper
   fires, zero errors.
+- 2026-11-20: M3.5 done — added LEVELS.habitable (Level 1 "Habitable Zone": gray concrete
+  warehouse, dim industrial light, drone ambient, segmented layout) and extended
+  LEVEL_ORDER to ['arena','backrooms','habitable'] so the exit portal advances Level 0 ->
+  Level 1. Verified full chain arena->backrooms->habitable->arena via nextLevel, Level 1
+  gray-warehouse render distinct from yellow Level 0, zero errors. MILESTONE 3 (Backrooms
+  Level 0) COMPLETE.

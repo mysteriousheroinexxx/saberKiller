@@ -36,7 +36,7 @@ scattered wall outlets, occasional pitch-black rooms / blood-red rooms.
 - [x] 3.2 Fluorescent light fixtures (emissive panels) + flicker + 120Hz hum-buzz audio
 - [x] 3.3 Randomly segmented room layout generator (non-grid, varied room shapes)
 - [x] 3.4 Disorientation touches: occasional dark rooms, outlets, torn wallpaper, whispers
-- [ ] 3.5 Wire Level 0 as a playable level with an exit to Level 1
+- [x] 3.5 Wire Level 0 as a playable level with an exit to Level 1
 
 ## Milestone 4 — Less blocky maps + Blender assets
 - [ ] 4.1 Wall/geometry variety: beveled trim, baseboards, door frames, pillars (Blender)
