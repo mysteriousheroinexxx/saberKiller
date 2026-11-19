@@ -35,7 +35,7 @@ scattered wall outlets, occasional pitch-black rooms / blood-red rooms.
 - [x] 3.1 Procedural yellow-wallpaper + damp-carpet + ceiling-tile textures (KTG pipeline)
 - [x] 3.2 Fluorescent light fixtures (emissive panels) + flicker + 120Hz hum-buzz audio
 - [x] 3.3 Randomly segmented room layout generator (non-grid, varied room shapes)
-- [ ] 3.4 Disorientation touches: occasional dark rooms, outlets, torn wallpaper, whispers
+- [x] 3.4 Disorientation touches: occasional dark rooms, outlets, torn wallpaper, whispers
 - [ ] 3.5 Wire Level 0 as a playable level with an exit to Level 1
 
 ## Milestone 4 — Less blocky maps + Blender assets

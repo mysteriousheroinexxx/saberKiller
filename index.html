@@ -588,6 +588,14 @@ const SND = (() => {
     },
     stopAmbient(){for(const n of ambientNodes){try{n.stop();}catch(e){}try{n.disconnect();}catch(e){}}ambientNodes=[];ambientOn=false;ambientProfile=null;},
     ambientInfo(){return {profile:ambientProfile,on:ambientOn,nodes:ambientNodes.length};},
+    whisper(){if(!ctx)return;const t=ctx.currentTime;
+      const s=ctx.createBufferSource();s.buffer=noiseBuf;s.loop=true;
+      const f=ctx.createBiquadFilter();f.type='bandpass';f.frequency.value=R(800,2200);f.Q.value=3;
+      const g=ctx.createGain();g.gain.setValueAtTime(0,t);
+      g.gain.linearRampToValueAtTime(.06,t+.4);g.gain.linearRampToValueAtTime(0,t+1.6);
+      const lfo=ctx.createOscillator();lfo.frequency.value=R(3,7);const lg=ctx.createGain();lg.gain.value=300;
+      lfo.connect(lg);lg.connect(f.frequency);
+      s.connect(f);f.connect(g);g.connect(master);s.start(t);lfo.start(t);s.stop(t+1.7);lfo.stop(t+1.7);},
     setVolume(v){if(master)master.gain.value=v;}
   };
 })();
@@ -674,7 +682,7 @@ let scene,camera,renderer,raycaster;
 let wallMeshes=[],zombies=[],hitMeshes=[],pickups=[],particles=[],tracers=[],decals=[];
 let muzzleLight,muzzleSprite,gunGroup,gunPistol,gunShotgun,playerLight;
 let TEX={};
-let ambientLight=null,roomLights=[],floorMesh=null,ceilMesh=null,fluorescentGroup=null,fixtures=[];
+let ambientLight=null,roomLights=[],floorMesh=null,ceilMesh=null,fluorescentGroup=null,fixtures=[],outletGroup=null,whisperTimer=8;
 const P={ // player
   pos:new THREE.Vector3(16*CELL,0,16*CELL), yaw:0,pitch:0,
   hp:100,bullets:48,shells:8,weapon:0,kills:0,
@@ -762,7 +770,8 @@ function applyLevelTheme(id){
   for(const l of roomLights){l.color.setHex(L.roomLight.color);l.intensity=L.roomLight.intensity;}
   if(typeof SND!=='undefined'&&L.ambientSound)SND.ambient(L.ambientSound);
   if(fluorescentGroup)fluorescentGroup.visible=(id==='backrooms');
-  if(L.layout&&L.layout!==currentLayout){currentLayout=L.layout;setLayout(L.layout);buildWalls();buildMinimapWalls();}
+  if(outletGroup)outletGroup.visible=(id==='backrooms');
+  if(L.layout&&L.layout!==currentLayout){currentLayout=L.layout;setLayout(L.layout);buildWalls();buildMinimapWalls();createOutlets();}
   // per-level textures (walls / floor / ceiling)
   if(L.wallTex)for(const im of wallMeshes){const tx=TEX[L.wallTex[im.userData.wallType]];
     if(tx&&im.material.map!==tx){im.material.map=tx;im.material.needsUpdate=true;}}
@@ -795,9 +804,36 @@ function createFluorescents(){
   for(let z=2;z<MAPH-1;z+=4)for(let x=2;x<MAPW-1;x+=4){
     const m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:0xfff6d8}));
     m.rotation.x=Math.PI/2;m.position.set(x*CELL+CELL/2,WALLH-0.05,z*CELL+CELL/2);
-    fluorescentGroup.add(m);fixtures.push({mesh:m,t:R(0,2),on:true});
+    fluorescentGroup.add(m);
+    const f={mesh:m,t:R(0,2),on:true,dead:Math.random()<0.15};if(f.dead)f.on=false;fixtures.push(f);
   }
   fluorescentGroup.visible=false;scene.add(fluorescentGroup);
+}
+function createOutlets(){
+  if(!outletGroup){outletGroup=new THREE.Group();scene.add(outletGroup);}
+  while(outletGroup.children.length){const c=outletGroup.children[0];outletGroup.remove(c);c.geometry.dispose();}
+  const mat=new THREE.MeshLambertMaterial({color:0x3a3428});
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+  let placed=0,tries=0;
+  while(placed<28&&tries<500&&floorCells.length){tries++;
+    const [x,z]=floorCells[(Math.random()*floorCells.length)|0];
+    const [dx,dz]=dirs[(Math.random()*4)|0];
+    if(!isWall(x+dx,z+dz))continue;
+    const wx=x*CELL+CELL/2+dx*(CELL/2-0.03),wz=z*CELL+CELL/2+dz*(CELL/2-0.03);
+    const geo=dx!==0?new THREE.BoxGeometry(0.05,0.26,0.18):new THREE.BoxGeometry(0.18,0.26,0.05);
+    const m=new THREE.Mesh(geo,mat);m.position.set(wx,0.35,wz);outletGroup.add(m);placed++;
+  }
+  // torn wallpaper: dark patches exposing substrate
+  const tearMat=new THREE.MeshLambertMaterial({color:0x241f16});
+  for(let i=0,pt=0;i<60&&pt<8&&floorCells.length;i++){
+    const [x,z]=floorCells[(Math.random()*floorCells.length)|0];
+    const [dx,dz]=dirs[(Math.random()*4)|0];
+    if(!isWall(x+dx,z+dz))continue;
+    const wx=x*CELL+CELL/2+dx*(CELL/2-0.025),wz=z*CELL+CELL/2+dz*(CELL/2-0.025);
+    const geo=dx!==0?new THREE.BoxGeometry(0.04,0.8,0.6):new THREE.BoxGeometry(0.6,0.8,0.04);
+    const m=new THREE.Mesh(geo,tearMat);m.position.set(wx,1.2,wz);outletGroup.add(m);pt++;
+  }
+  outletGroup.visible=(currentLevel==='backrooms');
 }
 function goNextLevel(){
   if(transBusy||!LEVELS[currentLevel])return;
@@ -857,6 +893,7 @@ function initScene(){
   }
   createExitPortal(5,5);
   createFluorescents();
+  createOutlets();
 
   // floor + ceiling
   const floorTex=TEX.floor_tile.clone();floorTex.needsUpdate=true;floorTex.repeat.set(MAPW,MAPH);
@@ -1743,9 +1780,11 @@ function updatePlayer(dt){
   }
   // fluorescent flicker (Backrooms)
   if(fluorescentGroup&&fluorescentGroup.visible){
-    for(const f of fixtures){f.t-=dt;
+    for(const f of fixtures){if(f.dead){f.mesh.material.color.setRGB(.08,.08,.06);continue;}
+      f.t-=dt;
       if(f.t<=0){f.on=Math.random()>0.12;f.t=f.on?R(0.5,3):R(0.03,0.15);}
       const b=f.on?1:0.22;f.mesh.material.color.setRGB(b,b*0.97,b*0.82);}
+    whisperTimer-=dt;if(whisperTimer<=0){SND.whisper();whisperTimer=R(8,20);}
   }
   // heartbeat
   if(P.hp<30){hbTimer-=dt;if(hbTimer<=0){SND.heartbeat();hbTimer=.95;}}

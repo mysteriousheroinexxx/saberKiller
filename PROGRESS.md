@@ -72,3 +72,9 @@
   + walls + minimap on layout change; LEVELS.backrooms.layout='backrooms'. Verified
   backrooms distinct reachable layout (644 floor cells vs arena 540), start/portal cells
   open, enemies spawn, arena<->backrooms swap, labyrinth screenshot, zero errors.
+- 2026-11-20: M3.4 done — disorientation touches: ~15% of fluorescent fixtures marked dead
+  (permanently dark = dark-room patches); createOutlets() scatters 28 wall outlets + 8 torn-
+  wallpaper dark patches on wall faces (rebuilt per layout, backrooms-only); SND.whisper()
+  (bandpass noise + LFO) triggered on a random 8-20s timer while in backrooms. Verified
+  outlets hidden in arena / 36 detail meshes in backrooms, dead fixtures present, whisper
+  fires, zero errors.
