@@ -460,7 +460,7 @@ const SETTINGS=(()=>{
 
 /* ---------------- synthesized audio (V2 spirit) ---------------- */
 const SND = (() => {
-  let ctx=null, master=null, noiseBuf=null, ambientOn=false;
+  let ctx=null, master=null, noiseBuf=null, ambientOn=false, ambientNodes=[], ambientProfile=null;
   function init(){
     if(ctx)return;
     try{
@@ -509,19 +509,40 @@ const SND = (() => {
     pickup(){tone('sine',520,780,.09,.25);setTimeout(()=>tone('sine',780,1040,.1,.25),80);},
     wave(){tone('sawtooth',55,110,.9,.35);tone('sawtooth',82,165,.9,.2);},
     heartbeat(){tone('sine',55,40,.12,.5);setTimeout(()=>tone('sine',50,38,.1,.4),180);},
-    ambient(){
-      if(!ctx||ambientOn)return;ambientOn=true;
-      const o=ctx.createOscillator();o.type='sawtooth';o.frequency.value=38;
-      const f=ctx.createBiquadFilter();f.type='lowpass';f.frequency.value=110;
-      const g=ctx.createGain();g.gain.value=.05;
-      o.connect(f);f.connect(g);g.connect(master);o.start();
-      const s=ctx.createBufferSource();s.buffer=noiseBuf;s.loop=true;
-      const bf=ctx.createBiquadFilter();bf.type='bandpass';bf.frequency.value=420;bf.Q.value=.4;
-      const wg=ctx.createGain();wg.gain.value=.018;
-      const lfo=ctx.createOscillator();lfo.frequency.value=.13;
-      const lg=ctx.createGain();lg.gain.value=.012;lfo.connect(lg);lg.connect(wg.gain);
-      s.connect(bf);bf.connect(wg);wg.connect(master);s.start();lfo.start();
+    ambient(profile){
+      if(!ctx)return;
+      for(const n of ambientNodes){try{n.stop();}catch(e){}try{n.disconnect();}catch(e){}}
+      ambientNodes=[];ambientOn=true;ambientProfile=profile||'drone';
+      const keep=n=>{ambientNodes.push(n);return n;};
+      if(profile==='fluorescent'){
+        // Backrooms: 120Hz mains hum + harmonic + flickering high-frequency buzz
+        const o=keep(ctx.createOscillator());o.type='sawtooth';o.frequency.value=120;
+        const o2=keep(ctx.createOscillator());o2.type='sine';o2.frequency.value=240;
+        const f=ctx.createBiquadFilter();f.type='bandpass';f.frequency.value=120;f.Q.value=6;
+        const g=ctx.createGain();g.gain.value=.05;
+        o.connect(f);o2.connect(f);f.connect(g);g.connect(master);o.start();o2.start();
+        const s=keep(ctx.createBufferSource());s.buffer=noiseBuf;s.loop=true;
+        const bf=ctx.createBiquadFilter();bf.type='bandpass';bf.frequency.value=2800;bf.Q.value=1.5;
+        const wg=ctx.createGain();wg.gain.value=.014;
+        const lfo=keep(ctx.createOscillator());lfo.type='square';lfo.frequency.value=6.5;
+        const lg=ctx.createGain();lg.gain.value=.01;lfo.connect(lg);lg.connect(wg.gain);
+        s.connect(bf);bf.connect(wg);wg.connect(master);s.start();lfo.start();
+      } else {
+        // arena: low ambient drone
+        const o=keep(ctx.createOscillator());o.type='sawtooth';o.frequency.value=38;
+        const f=ctx.createBiquadFilter();f.type='lowpass';f.frequency.value=110;
+        const g=ctx.createGain();g.gain.value=.05;
+        o.connect(f);f.connect(g);g.connect(master);o.start();
+        const s=keep(ctx.createBufferSource());s.buffer=noiseBuf;s.loop=true;
+        const bf=ctx.createBiquadFilter();bf.type='bandpass';bf.frequency.value=420;bf.Q.value=.4;
+        const wg=ctx.createGain();wg.gain.value=.018;
+        const lfo=keep(ctx.createOscillator());lfo.frequency.value=.13;
+        const lg=ctx.createGain();lg.gain.value=.012;lfo.connect(lg);lg.connect(wg.gain);
+        s.connect(bf);bf.connect(wg);wg.connect(master);s.start();lfo.start();
+      }
     },
+    stopAmbient(){for(const n of ambientNodes){try{n.stop();}catch(e){}try{n.disconnect();}catch(e){}}ambientNodes=[];ambientOn=false;ambientProfile=null;},
+    ambientInfo(){return {profile:ambientProfile,on:ambientOn,nodes:ambientNodes.length};},
     setVolume(v){if(master)master.gain.value=v;}
   };
 })();
@@ -641,7 +662,7 @@ function runPipeline(done){
    ambient/theme loader; layout & texture swapping land in M2.2 / M3. */
 const LEVELS={
   arena:{
-    name:'THE ARENA', sub:'Saber Kill Simulator',
+    name:'THE ARENA', sub:'Saber Kill Simulator', ambientSound:'drone',
     bg:0x050508, fog:0x050508, fogDensity:.042,
     ambient:{color:0x606070,intensity:.5},
     playerLight:{color:0xffd8a0,intensity:.85},
@@ -650,7 +671,7 @@ const LEVELS={
     layout:'arena', enemies:'saber'
   },
   backrooms:{
-    name:'LEVEL 0 — THE LOBBY', sub:'the madness of mono-yellow',
+    name:'LEVEL 0 — THE LOBBY', sub:'the madness of mono-yellow', ambientSound:'fluorescent',
     bg:0x1a1608, fog:0x2a2410, fogDensity:.05,
     ambient:{color:0xb0a060,intensity:.75},
     playerLight:{color:0xfff0c0,intensity:.95},
@@ -667,6 +688,7 @@ function applyLevelTheme(id){
   if(ambientLight){ambientLight.color.setHex(L.ambient.color);ambientLight.intensity=L.ambient.intensity;}
   if(playerLight){playerLight.color.setHex(L.playerLight.color);playerLight.intensity=L.playerLight.intensity;}
   for(const l of roomLights){l.color.setHex(L.roomLight.color);l.intensity=L.roomLight.intensity;}
+  if(typeof SND!=='undefined'&&L.ambientSound)SND.ambient(L.ambientSound);
 }
 /* ---- exit portal (noclip zone) + level progression ---- */
 const LEVEL_ORDER=['arena','backrooms'];
@@ -1907,7 +1929,7 @@ function tryLock(){
   }catch(e){dragLook=true;}
 }
 function startGame(withLock){
-  SND.init();SND.ambient();
+  SND.init();SND.ambient(LEVELS[currentLevel].ambientSound);
   $('startScreen').classList.add('hidden');
   $('deathScreen').classList.add('hidden');
   $('hud').style.display='block';

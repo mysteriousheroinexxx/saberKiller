@@ -41,3 +41,9 @@
   reposition + enemy/pickup clear + wave reset; G.nextLevel(); resetGame restores arena.
   Verified stepping into portal transitions arena->backrooms (fog #2a2410, player back at
   start, transition screen hides), portal renders, zero errors.
+- 2026-11-20: M2.3 done — per-level ambient sound profiles: SND.ambient(profile) now
+  rebuilds switchable node graphs ('drone' = arena low drone; 'fluorescent' = Backrooms
+  120Hz mains hum + 240Hz harmonic + flickering 2.8kHz buzz), stopAmbient() + ambientInfo()
+  debug; LEVELS.ambientSound field; applyLevelTheme + startGame drive the profile.
+  Verified arena(drone,3 nodes)<->backrooms(fluorescent,4 nodes) via setLevel AND portal
+  transition, zero errors. Lighting profile already handled by applyLevelTheme (M2.1).
