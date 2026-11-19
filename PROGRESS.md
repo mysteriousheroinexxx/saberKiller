@@ -23,3 +23,9 @@
   applied to mouse-look multiplier, SND master gain, and camera.fov; SETTINGS buttons on
   start + pause screens with back-navigation. Verified open/apply/persist-across-reload/
   back cycle (camera.fov=90, sens=2 stored + restored), zero errors.
+- 2026-11-20: M1.5 done — visual-novel dialogue shell: bottom VN box (portrait + name
+  plate + typewriter text + ▸ choice buttons + click/space hint), reusable Dialogue
+  engine (open/advance/close, branching nodes, choice actions, pauses game while open,
+  Space/Enter routing), DIALOGUE_DEMO wanderer tree + G.dialogue() trigger. Verified
+  typewriter -> 2 branching choices -> [Leave] closes & resumes game, zero errors.
+  MILESTONE 1 (UI polish) COMPLETE.

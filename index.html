@@ -69,6 +69,25 @@
     box-shadow:0 0 8px #a00a;cursor:pointer}
   .settings input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
     background:var(--doom-red);border:2px solid #f44;box-shadow:0 0 8px #a00a;cursor:pointer}
+  /* ---------- visual-novel dialogue shell ---------- */
+  #dialogueBox{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
+    width:min(860px,94vw);display:flex;gap:16px;z-index:55;pointer-events:auto;
+    background:linear-gradient(#160a06f2,#0a0503f2);border:2px solid #4a2a18;border-radius:8px;
+    box-shadow:0 0 40px #000c,0 0 24px #a006;padding:16px 20px;cursor:pointer;animation:panelIn .3s ease-out}
+  #dialogueBox.hidden{display:none}
+  #dlgPortrait{width:96px;height:96px;object-fit:cover;border-radius:6px;border:2px solid #4a3a22;
+    flex-shrink:0;background:#0c0a06}
+  #dlgBody{flex:1;min-width:0;display:flex;flex-direction:column}
+  #dlgName{color:var(--doom-amber);font-weight:bold;letter-spacing:.2em;font-size:14px;margin-bottom:6px;
+    text-shadow:0 0 10px #e8a02066}
+  #dlgText{color:#e8dcc8;font-size:15px;line-height:1.7;min-height:52px}
+  #dlgChoices{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+  .dlgChoice{font-family:inherit;text-align:left;font-size:14px;color:#f0e2c4;background:#241a10;
+    border:1px solid #4a3a22;border-radius:4px;padding:7px 12px;cursor:pointer;transition:background .12s,border-color .12s}
+  .dlgChoice:hover{background:#3a2a16;border-color:#8a6a3a}
+  .dlgChoice:before{content:"▸ ";color:var(--doom-amber)}
+  #dlgAdvance{align-self:flex-end;color:#8a7a5c;font-size:11px;letter-spacing:.15em;margin-top:6px;
+    opacity:0;transition:opacity .2s;animation:flicker 1.6s infinite}
   #deathTitle{color:#f00;font-size:min(10vw,80px);letter-spacing:.14em;line-height:1;
     text-shadow:0 0 40px #f00,0 4px 0 #400;font-weight:bold;animation:flicker 2.2s infinite}
   #deathStats{color:var(--doom-amber);font-size:17px;margin:20px 0 30px;line-height:1.9;letter-spacing:.06em}
@@ -241,6 +260,16 @@
       <label><span class="sLabel">FIELD OF VIEW <b id="fovVal">72</b></span><input type="range" id="fovSlider" min="60" max="110" step="1"></label>
     </div>
     <button class="bigbtn" id="settingsBackBtn" style="margin-top:26px">BACK</button>
+  </div>
+</div>
+
+<div id="dialogueBox" class="hidden">
+  <img id="dlgPortrait" alt="">
+  <div id="dlgBody">
+    <div id="dlgName"></div>
+    <div id="dlgText"></div>
+    <div id="dlgChoices"></div>
+    <div id="dlgAdvance">▼ click / space</div>
   </div>
 </div>
 
@@ -1705,11 +1734,48 @@ function levelTransition(title,flavor,onMid,done){
   setTimeout(()=>{try{if(onMid)onMid();}catch(e){console.warn('transition onMid:',e);}},950);
   setTimeout(()=>{ts.classList.add('hidden');transBusy=false;if(done)done();},2100);
 }
+/* ---- visual-novel dialogue engine (shell; M6 supplies NPC trees) ---- */
+const DIALOGUE_DEMO={
+  start:{name:'WANDERER',portrait:'assets/pfp.png',text:"You're awake. I thought I was the only one left in these yellow halls.",next:'q'},
+  q:{name:'WANDERER',portrait:'assets/pfp.png',text:"The lights never stop humming. Tell me — do you hear them too?",
+    choices:[{label:'"I hear them. What is this place?"',next:'lore'},{label:'"Stay back. I\'m armed."',next:'warn'}]},
+  lore:{name:'WANDERER',portrait:'assets/pfp.png',text:"The Backrooms. Level 0, they call it. No way out that I've found... but there are others. Traders. Talk to them.",next:'end'},
+  warn:{name:'WANDERER',portrait:'assets/pfp.png',text:"Easy. I'm no entity. Just a wanderer, like you. Keep your weapon — you'll need it.",next:'end'},
+  end:{name:'WANDERER',portrait:'assets/pfp.png',text:"Stay safe out there. And if you hear something wandering nearby... run.",
+    choices:[{label:'[Leave]',next:null}]}
+};
+const Dialogue=(()=>{
+  let tree=null,node=null,typing=false,fullText='',shown=0,typeTimer=null,active=false,onClose=null;
+  function finishType(){clearInterval(typeTimer);typing=false;$('dlgText').textContent=fullText;
+    if(node.choices&&node.choices.length)renderChoices();else $('dlgAdvance').style.opacity=1;}
+  function renderChoices(){const c=$('dlgChoices');c.innerHTML='';
+    node.choices.forEach(ch=>{const b=document.createElement('button');b.className='dlgChoice';
+      b.textContent=ch.label;b.onclick=e=>{e.stopPropagation();if(ch.action)ch.action();
+        if(ch.next)show(ch.next);else close();};c.appendChild(b);});}
+  function show(id){node=tree[id];if(!node){close();return;}
+    $('dlgName').textContent=node.name||'';
+    const p=$('dlgPortrait');if(node.portrait){p.src=node.portrait;p.style.display='block';}else p.style.display='none';
+    $('dlgChoices').innerHTML='';$('dlgAdvance').style.opacity=0;
+    fullText=node.text||'';shown=0;typing=true;$('dlgText').textContent='';
+    clearInterval(typeTimer);
+    typeTimer=setInterval(()=>{shown+=2;$('dlgText').textContent=fullText.slice(0,shown);
+      if(shown>=fullText.length)finishType();},24);}
+  function open(t,start,closeCb){tree=t;onClose=closeCb||null;active=true;WS.paused=true;
+    $('dialogueBox').classList.remove('hidden');show(start||'start');}
+  function advance(){if(!active)return;if(typing){finishType();return;}
+    if(node.choices&&node.choices.length)return;
+    if(node.next)show(node.next);else close();}
+  function close(){active=false;clearInterval(typeTimer);$('dialogueBox').classList.add('hidden');
+    WS.paused=false;if(onClose)onClose();}
+  $('dialogueBox').addEventListener('click',advance);
+  return {open,advance,close,isActive:()=>active};
+})();
 
 /* ---------------- input ---------------- */
 let mouseDown=false;
 function bindInput(){
   addEventListener('keydown',e=>{
+    if(Dialogue.isActive()){if(e.code==='Space'||e.code==='Enter'){Dialogue.advance();e.preventDefault();}return;}
     keys[e.code]=true;
     if(e.code==='Digit1'&&P.weapon!==0){P.weapon=0;P.switchT=.22;gunPistol.visible=true;gunShotgun.visible=false;}
     if(e.code==='Digit2'&&P.weapon!==1){P.weapon=1;P.switchT=.22;gunPistol.visible=false;gunShotgun.visible=true;}
@@ -1831,6 +1897,7 @@ window.G={
   hurt(v){hurtPlayer(v);},
   addAmmo(){P.bullets+=99;P.shells+=30;},
   transition(title){levelTransition(title||'LEVEL 0 — THE LOBBY');},
+  dialogue(){Dialogue.open(DIALOGUE_DEMO,'start');},
   fps:0
 };
 
