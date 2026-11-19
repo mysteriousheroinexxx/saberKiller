@@ -33,7 +33,7 @@ Reference: mono-yellow worn chevron wallpaper, damp stained beige carpet,
 fixtures, randomly segmented empty rooms/hallways, non-Euclidean disorientation,
 scattered wall outlets, occasional pitch-black rooms / blood-red rooms.
 - [x] 3.1 Procedural yellow-wallpaper + damp-carpet + ceiling-tile textures (KTG pipeline)
-- [ ] 3.2 Fluorescent light fixtures (emissive panels) + flicker + 120Hz hum-buzz audio
+- [x] 3.2 Fluorescent light fixtures (emissive panels) + flicker + 120Hz hum-buzz audio
 - [ ] 3.3 Randomly segmented room layout generator (non-grid, varied room shapes)
 - [ ] 3.4 Disorientation touches: occasional dark rooms, outlets, torn wallpaper, whispers
 - [ ] 3.5 Wire Level 0 as a playable level with an exit to Level 1

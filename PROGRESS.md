@@ -59,3 +59,9 @@
   ceiling maps per level (wallMeshes tagged by type, floorMesh/ceilMesh refs). Verified
   arena<->backrooms texture swap numerically + screenshot shows authentic Level 0 look
   (yellow walls / beige carpet / tiled ceiling), zero errors.
+- 2026-11-20: M3.2 done — fluorescent ceiling fixtures: createFluorescents() builds a grid
+  of 64 emissive rectangular panels (MeshBasicMaterial) inset in the ceiling, shown only in
+  backrooms (applyLevelTheme toggles visibility); per-fixture random flicker (brief dimming)
+  animated in updatePlayer. 120Hz hum-buzz audio already shipped in M2.3. Verified 64
+  fixtures hidden in arena / visible in backrooms, flicker active, panels render in ceiling
+  grid (screenshot), zero errors.

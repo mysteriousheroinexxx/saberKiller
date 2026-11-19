@@ -650,7 +650,7 @@ let scene,camera,renderer,raycaster;
 let wallMeshes=[],zombies=[],hitMeshes=[],pickups=[],particles=[],tracers=[],decals=[];
 let muzzleLight,muzzleSprite,gunGroup,gunPistol,gunShotgun,playerLight;
 let TEX={};
-let ambientLight=null,roomLights=[],floorMesh=null,ceilMesh=null;
+let ambientLight=null,roomLights=[],floorMesh=null,ceilMesh=null,fluorescentGroup=null,fixtures=[];
 const P={ // player
   pos:new THREE.Vector3(16*CELL,0,16*CELL), yaw:0,pitch:0,
   hp:100,bullets:48,shells:8,weapon:0,kills:0,
@@ -737,6 +737,7 @@ function applyLevelTheme(id){
   if(playerLight){playerLight.color.setHex(L.playerLight.color);playerLight.intensity=L.playerLight.intensity;}
   for(const l of roomLights){l.color.setHex(L.roomLight.color);l.intensity=L.roomLight.intensity;}
   if(typeof SND!=='undefined'&&L.ambientSound)SND.ambient(L.ambientSound);
+  if(fluorescentGroup)fluorescentGroup.visible=(id==='backrooms');
   // per-level textures (walls / floor / ceiling)
   if(L.wallTex)for(const im of wallMeshes){const tx=TEX[L.wallTex[im.userData.wallType]];
     if(tx&&im.material.map!==tx){im.material.map=tx;im.material.needsUpdate=true;}}
@@ -762,6 +763,16 @@ function createExitPortal(cx,cz){
   const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true}));
   sp.scale.set(2.2,.55,1);sp.position.y=2.95;g.add(sp);
   scene.add(g);exitPortal=g;exitPortal.userData.rift=rift;
+}
+function createFluorescents(){
+  fluorescentGroup=new THREE.Group();
+  const geo=new THREE.PlaneGeometry(1.7,1.1);
+  for(let z=2;z<MAPH-1;z+=4)for(let x=2;x<MAPW-1;x+=4){
+    const m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:0xfff6d8}));
+    m.rotation.x=Math.PI/2;m.position.set(x*CELL+CELL/2,WALLH-0.05,z*CELL+CELL/2);
+    fluorescentGroup.add(m);fixtures.push({mesh:m,t:R(0,2),on:true});
+  }
+  fluorescentGroup.visible=false;scene.add(fluorescentGroup);
 }
 function goNextLevel(){
   if(transBusy||!LEVELS[currentLevel])return;
@@ -800,6 +811,7 @@ function initScene(){
     l.position.set(x*CELL,WALLH-.4,z*CELL);scene.add(l);roomLights.push(l);
   }
   createExitPortal(5,5);
+  createFluorescents();
 
   // floor + ceiling
   const floorTex=TEX.floor_tile.clone();floorTex.needsUpdate=true;floorTex.repeat.set(MAPW,MAPH);
@@ -1697,6 +1709,12 @@ function updatePlayer(dt){
     exitPortal.userData.rift.material.opacity=.25+Math.sin(performance.now()/300)*.12;
     exitPortal.userData.rift.rotation.y+=dt*.4;
     if(WS.playing&&!WS.paused&&!transBusy&&Math.hypot(P.pos.x-exitPos.x,P.pos.z-exitPos.z)<1.4)goNextLevel();
+  }
+  // fluorescent flicker (Backrooms)
+  if(fluorescentGroup&&fluorescentGroup.visible){
+    for(const f of fixtures){f.t-=dt;
+      if(f.t<=0){f.on=Math.random()>0.12;f.t=f.on?R(0.5,3):R(0.03,0.15);}
+      const b=f.on?1:0.22;f.mesh.material.color.setRGB(b,b*0.97,b*0.82);}
   }
   // heartbeat
   if(P.hp<30){hbTimer-=dt;if(hbTimer<=0){SND.heartbeat();hbTimer=.95;}}
