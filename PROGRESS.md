@@ -142,3 +142,9 @@
   "[E] Talk to NAME" HUD prompt within 2.5m; KeyE opens the existing Dialogue engine with the
   NPC's tree. Verified NPC present, prompt shows on approach, E opens dialogue box (portrait +
   name + typewriter), zero errors. (Dialogue engine shell already existed from M1.5.)
+- 2026-11-20: M6.2 done — verified + extended the dialogue engine: nodes/typewriter/portrait/
+  branching choices all functional; added a 'gift' branch to DIALOGUE_DEMO whose choice action
+  grants an item (Progress.addItem('almondWater',1) + showMsg), demonstrating choices-with-
+  effects and bridging to M7 trading. Verified full branch flow start->q->lore->gift->end->
+  leave, choice buttons render (screenshot), almondWater 0->1 via choice action, clean close,
+  zero errors.

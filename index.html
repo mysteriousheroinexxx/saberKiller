@@ -2371,7 +2371,10 @@ const DIALOGUE_DEMO={
   start:{name:'WANDERER',portrait:'assets/pfp.png',text:"You're awake. I thought I was the only one left in these yellow halls.",next:'q'},
   q:{name:'WANDERER',portrait:'assets/pfp.png',text:"The lights never stop humming. Tell me — do you hear them too?",
     choices:[{label:'"I hear them. What is this place?"',next:'lore'},{label:'"Stay back. I\'m armed."',next:'warn'}]},
-  lore:{name:'WANDERER',portrait:'assets/pfp.png',text:"The Backrooms. Level 0, they call it. No way out that I've found... but there are others. Traders. Talk to them.",next:'end'},
+  lore:{name:'WANDERER',portrait:'assets/pfp.png',text:"The Backrooms. Level 0, they call it. No way out that I've found... but there are others. Traders. Talk to them.",
+    choices:[{label:'"Any advice?"',next:'end'},{label:'"Can you spare supplies?"',next:'gift'}]},
+  gift:{name:'WANDERER',portrait:'assets/pfp.png',text:"Here — Almond Water. It keeps you sane down here. Take it.",
+    choices:[{label:'[Take the Almond Water]',action:()=>{Progress.addItem('almondWater',1);showMsg('+1 Almond Water');},next:'end'}]},
   warn:{name:'WANDERER',portrait:'assets/pfp.png',text:"Easy. I'm no entity. Just a wanderer, like you. Keep your weapon — you'll need it.",next:'end'},
   end:{name:'WANDERER',portrait:'assets/pfp.png',text:"Stay safe out there. And if you hear something wandering nearby... run.",
     choices:[{label:'[Leave]',next:null}]}

@@ -52,7 +52,7 @@ scattered wall outlets, occasional pitch-black rooms / blood-red rooms.
 
 ## Milestone 6 — Visual-novel NPC interaction
 - [x] 6.1 NPC entities (idle animation, approach prompt "E to talk")
-- [ ] 6.2 Dialogue engine: nodes, typewriter text, portrait, branching choices
+- [x] 6.2 Dialogue engine: nodes, typewriter text, portrait, branching choices
 - [ ] 6.3 Write NPC characters + dialogue trees (Backrooms wanderers / M.E.G. agents)
 - [ ] 6.4 NPC portraits (reuse pfp.png style / generate / CC0)
 
