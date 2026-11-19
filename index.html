@@ -956,23 +956,28 @@ function buildTrim(){
   mk(new THREE.BoxGeometry(CELL,0.18,0.08),baseMat,fz,0.09);
   mk(new THREE.BoxGeometry(0.1,0.12,CELL),cornMat,fx,WALLH-0.06);
   mk(new THREE.BoxGeometry(CELL,0.12,0.1),cornMat,fz,WALLH-0.06);
-  // door frames: posts + lintel at 1-cell passages
-  const posts=[],lintX=[],lintZ=[];
+  // door frames: posts + curved arch header at 1-cell passages
+  const posts=[],arches=[];
   for(let z=1;z<MAPH-1;z++)for(let x=1;x<MAPW-1;x++){
     if(grid[z][x]!==0)continue;
     const wlx=isWall(x-1,z),wrx=isWall(x+1,z),wlz=isWall(x,z-1),wrz=isWall(x,z+1);
     if(wlx&&wrx&&!wlz&&!wrz){
       posts.push([x*CELL+0.1,z*CELL+CELL/2]);posts.push([x*CELL+CELL-0.1,z*CELL+CELL/2]);
-      lintX.push([x*CELL+CELL/2,z*CELL+CELL/2]);
+      arches.push([x*CELL+CELL/2,z*CELL+CELL/2,0]);
     }else if(wlz&&wrz&&!wlx&&!wrx){
       posts.push([x*CELL+CELL/2,z*CELL+0.1]);posts.push([x*CELL+CELL/2,z*CELL+CELL-0.1]);
-      lintZ.push([x*CELL+CELL/2,z*CELL+CELL/2]);
+      arches.push([x*CELL+CELL/2,z*CELL+CELL/2,Math.PI/2]);
     }
   }
   const frameMat=new THREE.MeshLambertMaterial({color:0x4a4038});
   mk(new THREE.BoxGeometry(0.18,WALLH,0.18),frameMat,posts,WALLH/2);
-  mk(new THREE.BoxGeometry(CELL,0.2,0.2),frameMat,lintX,WALLH-0.1);
-  mk(new THREE.BoxGeometry(0.2,0.2,CELL),frameMat,lintZ,WALLH-0.1);
+  if(arches.length){
+    const archGeo=new THREE.TorusGeometry(0.85,0.09,8,16,Math.PI);
+    const aim=new THREE.InstancedMesh(archGeo,frameMat,arches.length);
+    const d=new THREE.Object3D();
+    arches.forEach((a,i)=>{d.position.set(a[0],WALLH-0.95,a[1]);d.rotation.set(0,a[2],0);d.updateMatrix();aim.setMatrixAt(i,d.matrix);});
+    aim.instanceMatrix.needsUpdate=true;scene.add(aim);trimMeshes.push(aim);
+  }
 }
 function initScene(){
   scene=new THREE.Scene();

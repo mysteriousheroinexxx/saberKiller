@@ -95,3 +95,9 @@
   debris chunks on the floor, 6 shelf units (back panel + 3 boards); start/portal cells kept
   clear; rebuilt per layout with nested-geometry disposal. Verified crate + shelf render
   (screenshots), 48 props in backrooms / hidden in arena, zero errors.
+- 2026-11-20: M4.3 done — replaced flat door lintels with curved arch headers (half-torus
+  InstancedMesh, oriented per passage axis) over 1-cell passages, keeping the side posts;
+  rooms now connect through arched openings rather than square holes. Verified 31 arch
+  instances in backrooms, curved arch render over a passage (screenshot), zero errors.
+  (Partial walls / varied heights deferred — they need collision rework to avoid invisible
+  upper-half blocking; arches are the delivered smoother-transition mechanism.)
