@@ -15,7 +15,7 @@ bootable with zero console errors. If a sub-task is too big, split it into
 smaller `[ ]` sub-tasks inline rather than half-finishing it.
 
 ## Milestone 1 — UI polish
-- [ ] 1.1 Cohesive theme: title/start/pause/death screens, fonts, color palette, spacing
+- [x] 1.1 Cohesive theme: title/start/pause/death screens, fonts, color palette, spacing
 - [ ] 1.2 HUD polish: crosshair, hit-marker, damage vignette, low-HP pulse, ammo/health bars
 - [ ] 1.3 Level-transition / "noclip" screen between levels (Backrooms flavor text)
 - [ ] 1.4 Settings panel (mouse sensitivity, volume, FOV) persisted to localStorage

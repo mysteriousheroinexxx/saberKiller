@@ -18,24 +18,45 @@
   /* ---------- overlays ---------- */
   .overlay{position:fixed;inset:0;display:flex;flex-direction:column;
     align-items:center;justify-content:center;z-index:40;text-align:center;
-    background:radial-gradient(ellipse at center,#1a0505 0%,#000 80%)}
+    background:
+      radial-gradient(ellipse at 50% 38%,#2a0808 0%,#120303 45%,#000 85%);
+    padding:24px}
+  .overlay:before{content:"";position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(0deg,#0000 0 2px,#0003 2px 4px);opacity:.5}
   .overlay.hidden{display:none}
-  .title{font-size:min(9vw,72px);font-weight:bold;letter-spacing:.12em;
-    color:var(--doom-red);text-shadow:0 0 24px #f00,0 4px 0 #400;
+  .panel{position:relative;display:flex;flex-direction:column;align-items:center;
+    padding:42px 56px;max-width:min(680px,92vw);
+    background:linear-gradient(#160a06ee,#0a0503ee);
+    border:2px solid #4a2a18;border-radius:6px;
+    box-shadow:0 0 0 1px #000,0 0 60px #a00a,inset 0 0 40px #000a;
+    animation:panelIn .45s cubic-bezier(.2,.9,.3,1.2)}
+  @keyframes panelIn{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
+  .title{font-size:min(8.5vw,64px);font-weight:bold;letter-spacing:.1em;line-height:1.05;
+    background:linear-gradient(#ff5a3c,#c81e1e 55%,#7a1010);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 0 18px #f008) drop-shadow(0 3px 0 #300);
     animation:flicker 3s infinite}
-  .subtitle{color:var(--doom-amber);letter-spacing:.35em;margin:10px 0 26px;font-size:14px}
+  .rule{width:220px;height:2px;margin:16px 0 4px;
+    background:linear-gradient(90deg,transparent,var(--doom-amber),transparent)}
+  .subtitle{color:var(--doom-amber);letter-spacing:.32em;margin:12px 0 24px;font-size:13px;
+    text-shadow:0 0 12px #e8a02066}
   @keyframes flicker{0%,100%{opacity:1}92%{opacity:1}93%{opacity:.6}94%{opacity:1}97%{opacity:.75}98%{opacity:1}}
-  .controls{color:#9a8a70;font-size:14px;line-height:1.9;margin-bottom:30px}
-  .controls b{color:#e0d0b0}
-  .bigbtn{font-family:inherit;font-size:22px;font-weight:bold;letter-spacing:.2em;
-    color:#fff;background:var(--doom-red);border:3px solid #f44;
-    padding:14px 44px;cursor:pointer;text-shadow:0 2px 0 #600;
-    box-shadow:0 0 30px #a00a}
-  .bigbtn:hover{background:#e02828;box-shadow:0 0 44px #f00c}
-  .hint{margin-top:22px;color:#665c4c;font-size:12px;letter-spacing:.15em}
-  #deathTitle{color:#f00;font-size:min(11vw,90px);letter-spacing:.15em;
-    text-shadow:0 0 40px #f00;font-weight:bold}
-  #deathStats{color:var(--doom-amber);font-size:18px;margin:18px 0 30px;line-height:1.8}
+  .controls{color:#9a8a70;font-size:14px;line-height:2.1;margin-bottom:28px}
+  .controls b{color:#f0e2c4;background:#241a10;border:1px solid #4a3a22;border-bottom-width:2px;
+    border-radius:3px;padding:1px 7px;font-size:12px;letter-spacing:.05em}
+  .bigbtn{font-family:inherit;font-size:21px;font-weight:bold;letter-spacing:.22em;
+    color:#fff;background:linear-gradient(#e02828,#a01414);border:2px solid #f44;
+    border-radius:4px;padding:15px 48px;cursor:pointer;text-shadow:0 2px 0 #600;
+    box-shadow:0 0 26px #a00a,inset 0 1px 0 #ffffff33;
+    transition:transform .12s,box-shadow .12s,background .12s}
+  .bigbtn:hover{background:linear-gradient(#f03838,#b81818);box-shadow:0 0 44px #f00c,inset 0 1px 0 #ffffff44;transform:translateY(-2px)}
+  .bigbtn:active{transform:translateY(1px);box-shadow:0 0 18px #a00a}
+  .bigbtn:focus-visible{outline:2px solid var(--doom-amber);outline-offset:3px}
+  .hint{margin-top:24px;color:#665c4c;font-size:11px;letter-spacing:.14em;line-height:1.7}
+  #deathTitle{color:#f00;font-size:min(10vw,80px);letter-spacing:.14em;line-height:1;
+    text-shadow:0 0 40px #f00,0 4px 0 #400;font-weight:bold;animation:flicker 2.2s infinite}
+  #deathStats{color:var(--doom-amber);font-size:17px;margin:20px 0 30px;line-height:1.9;letter-spacing:.06em}
+  #pauseScreen .title{font-size:min(8vw,52px)}
   #loadBox{width:min(560px,86vw)}
   #loadTitle{color:var(--doom-green);letter-spacing:.25em;font-size:16px;margin-bottom:14px}
   #loadBarOuter{height:18px;border:2px solid #2a5a30;background:#041006}
@@ -115,26 +136,35 @@
 </div>
 
 <div id="startScreen" class="overlay hidden">
-  <div class="title">SABER KILL SIMULATOR</div>
-  <div class="subtitle">A DOOM-LIKE &middot; PROCEDURAL WORLD &middot; ANIMATED SABER HORDE</div>
-  <div class="controls">
-    <b>WASD</b> move &nbsp;&middot;&nbsp; <b>MOUSE</b> aim &nbsp;&middot;&nbsp; <b>CLICK / HOLD</b> shoot<br>
-    <b>1 / 2</b> pistol / shotgun &nbsp;&middot;&nbsp; <b>SHIFT</b> sprint &nbsp;&middot;&nbsp; <b>ESC</b> pause<br>
-    Survive the waves of Saber. They keep coming. Headshots deal double damage. huhuhu
+  <div class="panel">
+    <div class="title">SABER KILL SIMULATOR</div>
+    <div class="rule"></div>
+    <div class="subtitle">A DOOM-LIKE &middot; PROCEDURAL WORLD &middot; ANIMATED SABER HORDE</div>
+    <div class="controls">
+      <b>WASD</b> move &nbsp;&middot;&nbsp; <b>MOUSE</b> aim &nbsp;&middot;&nbsp; <b>CLICK / HOLD</b> shoot<br>
+      <b>1 / 2</b> pistol / shotgun &nbsp;&middot;&nbsp; <b>SHIFT</b> sprint &nbsp;&middot;&nbsp; <b>ESC</b> pause<br>
+      Survive the waves of Saber. They keep coming. Headshots deal double damage. huhuhu
+    </div>
+    <button class="bigbtn" id="startBtn">CLICK TO PLAY</button>
+    <div class="hint">PROCEDURAL WORLD IN THE SPIRIT OF .KKRIEGER &middot; SABER MODELS &amp; WEAPONS VIA GLB</div>
   </div>
-  <button class="bigbtn" id="startBtn">CLICK TO PLAY</button>
-  <div class="hint">PROCEDURAL WORLD IN THE SPIRIT OF .KKRIEGER &middot; SABER MODELS &amp; WEAPONS VIA GLB</div>
 </div>
 
 <div id="pauseScreen" class="overlay hidden">
-  <div class="title" style="font-size:44px">PAUSED</div>
-  <button class="bigbtn" id="resumeBtn" style="margin-top:26px">CLICK TO RESUME</button>
+  <div class="panel">
+    <div class="title">PAUSED</div>
+    <div class="rule"></div>
+    <button class="bigbtn" id="resumeBtn" style="margin-top:26px">CLICK TO RESUME</button>
+  </div>
 </div>
 
 <div id="deathScreen" class="overlay hidden">
-  <div id="deathTitle">YOU DIED</div>
-  <div id="deathStats"></div>
-  <button class="bigbtn" id="restartBtn">CLICK TO TRY AGAIN</button>
+  <div class="panel">
+    <div id="deathTitle">YOU DIED</div>
+    <div class="rule"></div>
+    <div id="deathStats"></div>
+    <button class="bigbtn" id="restartBtn">CLICK TO TRY AGAIN</button>
+  </div>
 </div>
 
 <div id="errScreen" class="overlay hidden"><div id="errBox"></div></div>
