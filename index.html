@@ -668,6 +668,37 @@ function applyLevelTheme(id){
   if(playerLight){playerLight.color.setHex(L.playerLight.color);playerLight.intensity=L.playerLight.intensity;}
   for(const l of roomLights){l.color.setHex(L.roomLight.color);l.intensity=L.roomLight.intensity;}
 }
+/* ---- exit portal (noclip zone) + level progression ---- */
+const LEVEL_ORDER=['arena','backrooms'];
+let exitPortal=null;const exitPos=new THREE.Vector3();
+function createExitPortal(cx,cz){
+  const [wx,wz]=cellCenter(cx,cz);exitPos.set(wx,0,wz);
+  const g=new THREE.Group();g.position.set(wx,0,wz);
+  const rift=new THREE.Mesh(new THREE.BoxGeometry(1.7,2.7,.25),
+    new THREE.MeshBasicMaterial({color:0xf0e040,transparent:true,opacity:.3}));
+  rift.position.y=1.35;g.add(rift);
+  const edge=new THREE.LineSegments(new THREE.EdgesGeometry(rift.geometry),
+    new THREE.LineBasicMaterial({color:0xfff080}));edge.position.y=1.35;g.add(edge);
+  const pl=new THREE.PointLight(0xf0e040,.9,8,2);pl.position.y=1.6;g.add(pl);
+  const cv=document.createElement('canvas');cv.width=256;cv.height=64;const c=cv.getContext('2d');
+  c.fillStyle='#f0e040';c.font='bold 30px monospace';c.textAlign='center';c.fillText('NOCLIP ▸',128,42);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true}));
+  sp.scale.set(2.2,.55,1);sp.position.y=2.95;g.add(sp);
+  scene.add(g);exitPortal=g;exitPortal.userData.rift=rift;
+}
+function goNextLevel(){
+  if(transBusy||!LEVELS[currentLevel])return;
+  const i=LEVEL_ORDER.indexOf(currentLevel);
+  const next=LEVEL_ORDER[(i+1)%LEVEL_ORDER.length];
+  const L=LEVELS[next];
+  levelTransition(L.name,null,()=>{
+    applyLevelTheme(next);
+    P.pos.set(16*CELL,0,16*CELL);P.yaw=0;P.pitch=0;
+    for(const zb of [...zombies])removeZombie(zb);
+    for(const p of pickups)scene.remove(p.mesh);pickups.length=0;
+    WS.wave=0;WS.phase='intermission';WS.timer=2.2;WS.queue=0;
+  });
+}
 
 /* ---------------- scene ---------------- */
 function initScene(){
@@ -691,6 +722,7 @@ function initScene(){
     l.position.set(x*CELL,WALLH-.4,z*CELL);scene.add(l);roomLights.push(l);
   }
   applyLevelTheme('arena');
+  createExitPortal(5,5);
 
   // floor + ceiling
   const floorTex=TEX.floor_tile.clone();floorTex.needsUpdate=true;floorTex.repeat.set(MAPW,MAPH);
@@ -1581,6 +1613,12 @@ function updatePlayer(dt){
   gunGroup.rotation.x=P.kick*1.4;
   // held fire
   if(mouseDown)shoot();
+  // exit portal proximity + pulse
+  if(exitPortal){
+    exitPortal.userData.rift.material.opacity=.25+Math.sin(performance.now()/300)*.12;
+    exitPortal.userData.rift.rotation.y+=dt*.4;
+    if(WS.playing&&!WS.paused&&!transBusy&&Math.hypot(P.pos.x-exitPos.x,P.pos.z-exitPos.z)<1.4)goNextLevel();
+  }
   // heartbeat
   if(P.hp<30){hbTimer-=dt;if(hbTimer<=0){SND.heartbeat();hbTimer=.95;}}
 }
@@ -1888,6 +1926,7 @@ function resetGame(){
   P.cool=0;P.dead=false;P.dmgFlash=0;P.grinT=0;
   gunPistol.visible=true;gunShotgun.visible=false;
   WS.wave=0;WS.phase='idle';WS.queue=0;
+  applyLevelTheme('arena');
 }
 
 /* ---------------- debug / test API ---------------- */
@@ -1935,6 +1974,7 @@ window.G={
   dialogue(){Dialogue.open(DIALOGUE_DEMO,'start');},
   setLevel(id){if(LEVELS[id]){applyLevelTheme(id);banner(LEVELS[id].name,LEVELS[id].sub);}},
   get level(){return currentLevel;},
+  nextLevel(){goNextLevel();},
   fps:0
 };
 

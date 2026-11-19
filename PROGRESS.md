@@ -35,3 +35,9 @@
   Verified theme switch numerically (arena fog #050508 -> backrooms #2a2410, yellow
   ambient/player/room lights) + banner, zero errors. NOTE: walls still show arena
   lava/brick textures — the mono-yellow Backrooms TEXTURE swap is M3.
+- 2026-11-20: M2.2 done — exit portal (glowing yellow noclip rift + NOCLIP label + light,
+  pulsing/rotating) placed in a reachable cell; player-proximity trigger in updatePlayer;
+  LEVEL_ORDER + goNextLevel() drives levelTransition -> applyLevelTheme(next) + player
+  reposition + enemy/pickup clear + wave reset; G.nextLevel(); resetGame restores arena.
+  Verified stepping into portal transitions arena->backrooms (fog #2a2410, player back at
+  start, transition screen hides), portal renders, zero errors.

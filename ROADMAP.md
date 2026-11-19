@@ -23,7 +23,7 @@ smaller `[ ]` sub-tasks inline rather than half-finishing it.
 
 ## Milestone 2 — Multi-level architecture
 - [x] 2.1 Level registry + loader (each level = layout + textures + entities + ambient)
-- [ ] 2.2 Level transition trigger (exit door / noclip zone) + fade + load next
+- [x] 2.2 Level transition trigger (exit door / noclip zone) + fade + load next
 - [ ] 2.3 Per-level ambient sound + lighting profile
 - [ ] 2.4 Progression state (which level, inventory) persisted across transitions
 
