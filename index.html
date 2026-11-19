@@ -665,6 +665,14 @@ function layoutWarehouse(){
   carve(14,14,18,18);                    // keep player start open
   carve(4,4,6,6);                        // keep exit portal open
 }
+/* Level 2 Pipe Dreams: narrow 2-wide maintenance tunnel grid */
+function layoutPipes(){
+  const carve=(x0,z0,x1,z1)=>{for(let z=z0;z<=z1;z++)for(let x=x0;x<=x1;x++)grid[z][x]=0;};
+  for(let z=2;z<MAPH-2;z+=4)carve(1,z,MAPW-2,z+1);   // horizontal tunnels
+  for(let x=2;x<MAPW-2;x+=6)carve(x,1,x+1,MAPH-2);   // vertical connectors
+  carve(14,14,18,18);                    // keep player start open
+  carve(4,4,6,6);                        // keep exit portal open
+}
 function assignWallVariants(){
   for(let z=0;z<MAPH;z++)for(let x=0;x<MAPW;x++){
     if(grid[z][x]===0)continue;
@@ -709,7 +717,7 @@ function revealAround(px,pz,r){
 let currentLayout='arena';
 function setLayout(type){
   for(let z=0;z<MAPH;z++){grid[z]=[];for(let x=0;x<MAPW;x++)grid[z][x]=1;}
-  if(type==='backrooms')layoutBackrooms();else if(type==='warehouse')layoutWarehouse();else layoutArena();
+  if(type==='backrooms')layoutBackrooms();else if(type==='warehouse')layoutWarehouse();else if(type==='pipes')layoutPipes();else layoutArena();
   assignWallVariants();computeReach();
   explored.clear();revealAround(16*CELL,16*CELL,3);
 }
@@ -721,7 +729,7 @@ let wallMeshes=[],trimMeshes=[],zombies=[],hitMeshes=[],pickups=[],particles=[],
 let muzzleLight,muzzleSprite,gunGroup,gunPistol,gunShotgun,playerLight;
 let TEX={};
 let ambientLight=null,roomLights=[],floorMesh=null,ceilMesh=null,fluorescentGroup=null,fixtures=[],outletGroup=null,propGroup=null,whisperTimer=8;
-let BARREL_TEMPLATE=null;
+let BARREL_TEMPLATE=null,pipeGroup=null,steamGroup=null,steamPuffs=[];
 const P={ // player
   pos:new THREE.Vector3(16*CELL,0,16*CELL), yaw:0,pitch:0,
   hp:100,bullets:48,shells:8,weapon:0,kills:0,
@@ -809,6 +817,16 @@ const LEVELS={
     wallTex:{1:'wall_concrete',2:'wall_concrete',3:'wall_concrete'}, floorTex:'floor_tile', ceilTex:'ceil_metal',
     ambientSound:'drone',
     layout:'warehouse', enemies:'saber'
+  },
+  pipedreams:{
+    name:'LEVEL 2 — PIPE DREAMS', sub:'Maintenance tunnels',
+    fogColor:0x0a1410, fogDensity:.07,
+    ambient:{color:0x2a3a30,intensity:.45},
+    playerLight:{color:0xc0ffe0,intensity:.9},
+    roomLight:{color:0x70a080,intensity:.45},
+    wallTex:{1:'wall_concrete',2:'wall_tech',3:'wall_concrete'}, floorTex:'floor_tile', ceilTex:'ceil_metal',
+    ambientSound:'drone',
+    layout:'pipes', enemies:'saber'
   }
 };
 let currentLevel='arena';
@@ -822,7 +840,7 @@ function applyLevelTheme(id){
   if(typeof SND!=='undefined'&&L.ambientSound)SND.ambient(L.ambientSound);
   if(fluorescentGroup)fluorescentGroup.visible=(id==='backrooms');
   if(outletGroup)outletGroup.visible=(id==='backrooms');
-  if(L.layout&&L.layout!==currentLayout){currentLayout=L.layout;setLayout(L.layout);buildWalls();buildTrim();buildMinimapWalls();createOutlets();createProps();}
+  if(L.layout&&L.layout!==currentLayout){currentLayout=L.layout;setLayout(L.layout);buildWalls();buildTrim();buildMinimapWalls();createOutlets();createProps();createPipes();createSteam();}
   // per-level textures (walls / floor / ceiling)
   if(L.wallTex)for(const im of wallMeshes){const tx=TEX[L.wallTex[im.userData.wallType]];
     if(tx&&im.material.map!==tx){im.material.map=tx;im.material.needsUpdate=true;}}
@@ -832,7 +850,7 @@ function applyLevelTheme(id){
     tx.repeat.set(MAPW,MAPH);ceilMesh.material.map=tx;ceilMesh.material.needsUpdate=true;}
 }
 /* ---- exit portal (noclip zone) + level progression ---- */
-const LEVEL_ORDER=['arena','backrooms','habitable'];
+const LEVEL_ORDER=['arena','backrooms','habitable','pipedreams'];
 let exitPortal=null;const exitPos=new THREE.Vector3();
 function createExitPortal(cx,cz){
   const [wx,wz]=cellCenter(cx,cz);exitPos.set(wx,0,wz);
@@ -943,6 +961,49 @@ function createProps(){
   }
   propGroup.visible=true;
 }
+/* Level 2 pipes: horizontal pipe runs along tunnel walls near the ceiling */
+function createPipes(){
+  if(!pipeGroup){pipeGroup=new THREE.Group();scene.add(pipeGroup);}
+  while(pipeGroup.children.length){const c=pipeGroup.children[0];pipeGroup.remove(c);if(c.geometry)c.geometry.dispose();if(c.dispose)c.dispose();}
+  if(currentLevel!=='pipedreams'){pipeGroup.visible=false;return;}
+  const fx=[],fz=[];
+  for(let z=0;z<MAPH;z++)for(let x=0;x<MAPW;x++){
+    if(grid[z][x]!==0)continue;
+    if(isWall(x+1,z))fx.push([x*CELL+CELL-0.15,z*CELL+CELL/2]);
+    if(isWall(x-1,z))fx.push([x*CELL+0.15,z*CELL+CELL/2]);
+    if(isWall(x,z+1))fz.push([x*CELL+CELL/2,z*CELL+CELL-0.15]);
+    if(isWall(x,z-1))fz.push([x*CELL+CELL/2,z*CELL+0.15]);
+  }
+  const mat=new THREE.MeshLambertMaterial({color:0x6a7a6a});
+  const mk=(geo,pos,rot)=>{if(!pos.length)return;
+    const im=new THREE.InstancedMesh(geo,mat,pos.length);const d=new THREE.Object3D();
+    pos.forEach((p,i)=>{d.position.set(p[0],2.8,p[1]);d.rotation.set(rot[0],rot[1],rot[2]);d.updateMatrix();im.setMatrixAt(i,d.matrix);});
+    im.instanceMatrix.needsUpdate=true;pipeGroup.add(im);};
+  mk(new THREE.CylinderGeometry(0.1,0.1,CELL,8),fx,[Math.PI/2,0,0]);
+  mk(new THREE.CylinderGeometry(0.1,0.1,CELL,8),fz,[0,0,Math.PI/2]);
+  pipeGroup.visible=true;
+}
+/* Level 2 steam: rising fading puffs */
+function createSteam(){
+  if(!steamGroup){steamGroup=new THREE.Group();scene.add(steamGroup);}
+  while(steamGroup.children.length){const c=steamGroup.children[0];steamGroup.remove(c);if(c.material)c.material.dispose();}
+  steamPuffs=[];
+  if(currentLevel!=='pipedreams'){steamGroup.visible=false;return;}
+  const cv=document.createElement('canvas');cv.width=cv.height=64;
+  const cx=cv.getContext('2d');
+  const g=cx.createRadialGradient(32,32,2,32,32,30);
+  g.addColorStop(0,'rgba(220,230,225,0.5)');g.addColorStop(1,'rgba(220,230,225,0)');
+  cx.fillStyle=g;cx.fillRect(0,0,64,64);
+  const tex=new THREE.CanvasTexture(cv);
+  for(let i=0;i<10&&floorCells.length;i++){
+    const [x,z]=floorCells[(Math.random()*floorCells.length)|0];
+    const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,opacity:0,depthWrite:false}));
+    sp.position.set(x*CELL+R(0.3,CELL-0.3),R(0.5,2.0),z*CELL+R(0.3,CELL-0.3));
+    steamGroup.add(sp);
+    steamPuffs.push({sp,baseY:sp.position.y,t:Math.random()*3,life:R(2,4)});
+  }
+  steamGroup.visible=true;
+}
 function goNextLevel(){
   if(transBusy||!LEVELS[currentLevel])return;
   const i=LEVEL_ORDER.indexOf(currentLevel);
@@ -1048,6 +1109,8 @@ function initScene(){
   createFluorescents();
   createOutlets();
   createProps();
+  createPipes();
+  createSteam();
   loadBarrel();
 
   // floor + ceiling
@@ -1947,6 +2010,15 @@ function updatePlayer(dt){
   }
   // minimap exploration reveal
   revealAround(P.pos.x,P.pos.z,3);
+  // steam puffs (Pipe Dreams)
+  if(steamGroup&&steamGroup.visible){
+    for(const p of steamPuffs){p.t+=dt;
+      if(p.t>p.life){p.t=0;p.baseY=R(0.3,1.5);}
+      const k=p.t/p.life;
+      p.sp.position.y=p.baseY+k*1.5;
+      p.sp.material.opacity=Math.sin(k*Math.PI)*0.4;
+      p.sp.scale.setScalar(0.6+k*1.2);}
+  }
   // fluorescent flicker (Backrooms)
   if(fluorescentGroup&&fluorescentGroup.visible){
     for(const f of fixtures){if(f.dead){f.mesh.material.color.setRGB(.08,.08,.06);continue;}

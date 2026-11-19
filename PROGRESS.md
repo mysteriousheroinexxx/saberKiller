@@ -122,3 +122,9 @@
   + concrete walls. Crates/barrels already scatter via createProps. Verified distinct open
   layout (832 floor cells vs backrooms 407), concrete render + columns + crates (screenshot),
   start/portal open, enemies spawn, zero errors.
+- 2026-11-20: M5.3 done — added Level 2 "Pipe Dreams": LEVELS.pipedreams (green-teal industrial
+  tint, dense fog), layoutPipes() (narrow 2-wide maintenance tunnel grid), createPipes()
+  (476 instanced horizontal pipe runs along tunnel walls near ceiling), createSteam() (10
+  rising/fading sprite puffs animated in updatePlayer); extended LEVEL_ORDER to 4 levels.
+  Verified narrow layout (592 cells), pipes + animating steam, full chain arena->backrooms->
+  habitable->pipedreams->arena, tunnel/pipes/steam render (screenshot), zero errors.
