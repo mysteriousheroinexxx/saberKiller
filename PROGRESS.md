@@ -128,3 +128,11 @@
   rising/fading sprite puffs animated in updatePlayer); extended LEVEL_ORDER to 4 levels.
   Verified narrow layout (592 cells), pipes + animating steam, full chain arena->backrooms->
   habitable->pipedreams->arena, tunnel/pipes/steam render (screenshot), zero errors.
+- 2026-11-20: M5.4 done — added Level 3 "The Dungeon": KTG.wallStone (ashlar blocks + mortar),
+  layoutDungeon() (4 corner chambers + central chamber + corridor ring), LEVELS.dungeon
+  (warm torch-lit amber), createTorches() (10 flame sprites + 4 flickering point lights),
+  createTraps() (6 spike pressure plates dealing 8 dmg/0.8s when stepped on); LEVEL_ORDER now
+  5 levels. FIXED a reachability bug (central chamber sealed from outer ring -> only 87
+  cells): extended connectors to span to corridors -> 455/455 reachable. Verified trap damage
+  (hp 100->84), far-corner enemy approaches, full 5-level chain, zero errors. MILESTONE 5
+  (expand map / more levels) COMPLETE.
