@@ -440,7 +440,37 @@ const KTG = (() => {
     const k=Math.max(0,1-d*1.4+n*.3);
     return [255*k,220*k*k,120*k*k*k];
   }
+  /* Backrooms wall: worn mono-yellow chevron wallpaper, damp stains */
+  function wallYellow(u,v){
+    const n=fbm(u*8,v*8,5)*.5+.5;
+    const stain=Math.pow(turb(u*4,v*4,4),2);
+    const zig=Math.abs(((u*8)%1)-.5);
+    const chev=Math.sin((v*10+zig*2)*Math.PI*2)*.5+.5;
+    const stripe=.86+chev*.14;
+    let base=(150+n*55-stain*55)*stripe;
+    const damp=Math.max(0,(v-.6))*turb(u*6,v*2,3)*1.2;
+    base-=damp*70;
+    return [base*1.05,base*.92,base*.45];
+  }
+  /* Backrooms floor: damp beige Berber carpet */
+  function carpetDamp(u,v){
+    const fiber=fbm(u*40,v*40,4)*.5+.5;
+    const stain=Math.pow(turb(u*5,v*5,4),2);
+    const n=fbm(u*12,v*12,3)*.5+.5;
+    const base=85+fiber*45+n*20-stain*50;
+    return [base*1.05,base*.92,base*.62];
+  }
+  /* Backrooms ceiling: mineral-fiber tiles (grid + speckle) */
+  function ceilTile(u,v){
+    const px=(u*4)%1,py=(v*4)%1;
+    const grid=(px<.04||px>.96||py<.04||py>.96)?0.5:1;
+    const speck=fbm(u*50,v*50,3)*.5+.5;
+    const n=fbm(u*10,v*10,3)*.5+.5;
+    const base=(130+speck*40+n*20)*grid;
+    return [base*1.02,base*.98,base*.8];
+  }
   return {make,wallTech,wallBrick,wallHell,floorTile,ceilMetal,
+          wallYellow,carpetDamp,ceilTile,
           zombieSkin,blood,gunMetal,healthTex,ammoTex,flash,fbm,turb};
 })();
 
@@ -620,7 +650,7 @@ let scene,camera,renderer,raycaster;
 let wallMeshes=[],zombies=[],hitMeshes=[],pickups=[],particles=[],tracers=[],decals=[];
 let muzzleLight,muzzleSprite,gunGroup,gunPistol,gunShotgun,playerLight;
 let TEX={};
-let ambientLight=null,roomLights=[];
+let ambientLight=null,roomLights=[],floorMesh=null,ceilMesh=null;
 const P={ // player
   pos:new THREE.Vector3(16*CELL,0,16*CELL), yaw:0,pitch:0,
   hp:100,bullets:48,shells:8,weapon:0,kills:0,
@@ -646,6 +676,9 @@ const texJobs=[
   ['wall_hell',  ()=>KTG.make('wall_hell',256,KTG.wallHell)],
   ['floor_tile', ()=>KTG.make('floor_tile',256,KTG.floorTile)],
   ['ceil_metal', ()=>KTG.make('ceil_metal',256,KTG.ceilMetal)],
+  ['wall_yellow',()=>KTG.make('wall_yellow',256,KTG.wallYellow)],
+  ['carpet_damp',()=>KTG.make('carpet_damp',256,KTG.carpetDamp)],
+  ['ceil_tile',  ()=>KTG.make('ceil_tile',256,KTG.ceilTile)],
   ['zombie_skin',()=>KTG.make('zombie_skin',256,KTG.zombieSkin)],
   ['blood_decal',()=>KTG.make('blood_decal',128,KTG.blood)],
   ['gun_metal',  ()=>KTG.make('gun_metal',128,KTG.gunMetal)],
@@ -682,7 +715,7 @@ const LEVELS={
     ambient:{color:0x606070,intensity:.5},
     playerLight:{color:0xffd8a0,intensity:.85},
     roomLight:{color:0xff7030,intensity:.5},
-    wallTex:{1:'wall_tech',2:'wall_brick',3:'wall_hell'},
+    wallTex:{1:'wall_tech',2:'wall_brick',3:'wall_hell'}, floorTex:'floor_tile', ceilTex:'ceil_metal',
     layout:'arena', enemies:'saber'
   },
   backrooms:{
@@ -691,7 +724,7 @@ const LEVELS={
     ambient:{color:0xb0a060,intensity:.75},
     playerLight:{color:0xfff0c0,intensity:.95},
     roomLight:{color:0xf0e070,intensity:.75},
-    wallTex:{1:'wall_tech',2:'wall_brick',3:'wall_hell'},
+    wallTex:{1:'wall_yellow',2:'wall_yellow',3:'wall_yellow'}, floorTex:'carpet_damp', ceilTex:'ceil_tile',
     layout:'arena', enemies:'saber'
   }
 };
@@ -704,6 +737,13 @@ function applyLevelTheme(id){
   if(playerLight){playerLight.color.setHex(L.playerLight.color);playerLight.intensity=L.playerLight.intensity;}
   for(const l of roomLights){l.color.setHex(L.roomLight.color);l.intensity=L.roomLight.intensity;}
   if(typeof SND!=='undefined'&&L.ambientSound)SND.ambient(L.ambientSound);
+  // per-level textures (walls / floor / ceiling)
+  if(L.wallTex)for(const im of wallMeshes){const tx=TEX[L.wallTex[im.userData.wallType]];
+    if(tx&&im.material.map!==tx){im.material.map=tx;im.material.needsUpdate=true;}}
+  if(L.floorTex&&floorMesh&&TEX[L.floorTex]){const tx=TEX[L.floorTex].clone();tx.needsUpdate=true;
+    tx.repeat.set(MAPW,MAPH);floorMesh.material.map=tx;floorMesh.material.needsUpdate=true;}
+  if(L.ceilTex&&ceilMesh&&TEX[L.ceilTex]){const tx=TEX[L.ceilTex].clone();tx.needsUpdate=true;
+    tx.repeat.set(MAPW,MAPH);ceilMesh.material.map=tx;ceilMesh.material.needsUpdate=true;}
 }
 /* ---- exit portal (noclip zone) + level progression ---- */
 const LEVEL_ORDER=['arena','backrooms'];
@@ -759,18 +799,17 @@ function initScene(){
     const l=new THREE.PointLight(0xff7030,.5,13,2);
     l.position.set(x*CELL,WALLH-.4,z*CELL);scene.add(l);roomLights.push(l);
   }
-  applyLevelTheme('arena');
   createExitPortal(5,5);
 
   // floor + ceiling
   const floorTex=TEX.floor_tile.clone();floorTex.needsUpdate=true;floorTex.repeat.set(MAPW,MAPH);
   const floor=new THREE.Mesh(new THREE.PlaneGeometry(MAPW*CELL,MAPH*CELL),
     new THREE.MeshLambertMaterial({map:floorTex}));
-  floor.rotation.x=-Math.PI/2;floor.position.set(MAPW*CELL/2,0,MAPH*CELL/2);scene.add(floor);
+  floor.rotation.x=-Math.PI/2;floor.position.set(MAPW*CELL/2,0,MAPH*CELL/2);scene.add(floor);floorMesh=floor;
   const ceilTex=TEX.ceil_metal.clone();ceilTex.needsUpdate=true;ceilTex.repeat.set(MAPW,MAPH);
   const ceil=new THREE.Mesh(new THREE.PlaneGeometry(MAPW*CELL,MAPH*CELL),
     new THREE.MeshLambertMaterial({map:ceilTex}));
-  ceil.rotation.x=Math.PI/2;ceil.position.set(MAPW*CELL/2,WALLH,MAPH*CELL/2);scene.add(ceil);
+  ceil.rotation.x=Math.PI/2;ceil.position.set(MAPW*CELL/2,WALLH,MAPH*CELL/2);scene.add(ceil);ceilMesh=ceil;
 
   // walls: one InstancedMesh per texture type
   const box=new THREE.BoxGeometry(CELL,WALLH,CELL);
@@ -786,8 +825,9 @@ function initScene(){
       dummy.position.set(x*CELL+CELL/2,WALLH/2,z*CELL+CELL/2);
       dummy.updateMatrix();im.setMatrixAt(i++,dummy.matrix);
     }
-    im.instanceMatrix.needsUpdate=true;scene.add(im);wallMeshes.push(im);
+    im.instanceMatrix.needsUpdate=true;im.userData.wallType=t;scene.add(im);wallMeshes.push(im);
   }
+  applyLevelTheme('arena');
 
   // muzzle flash light + sprite
   muzzleLight=new THREE.PointLight(0xffb040,0,11,2);

@@ -52,3 +52,10 @@
   guard); saved on level transition + wave start; G.progress/G.addItem. Verified items
   persist across portal transition AND page reload, level saved, useItem deducts + rejects
   overdraw, zero errors. MILESTONE 2 (multi-level architecture) COMPLETE.
+- 2026-11-20: M3.1 done — procedural Backrooms textures in KTG pipeline: wallYellow
+  (worn mono-yellow chevron wallpaper + damp stains), carpetDamp (beige Berber carpet),
+  ceilTile (mineral-fiber drop-ceiling grid + speckle); registered in TEX; LEVELS gained
+  floorTex/ceilTex + backrooms all-yellow wallTex; applyLevelTheme now swaps wall/floor/
+  ceiling maps per level (wallMeshes tagged by type, floorMesh/ceilMesh refs). Verified
+  arena<->backrooms texture swap numerically + screenshot shows authentic Level 0 look
+  (yellow walls / beige carpet / tiled ceiling), zero errors.
