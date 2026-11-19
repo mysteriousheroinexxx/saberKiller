@@ -13,3 +13,8 @@
   hit-marker flashing on hit, red health + amber ammo bars under status numbers,
   low-HP/ammo pulse + damage vignette. Verified numerically (hitmarker.show, bar
   widths track HP/ammo, low class at HP<30) + screenshot, zero errors.
+- 2026-11-20: M1.3 done — reusable noclip level-transition shell: Backrooms mono-yellow
+  panel (NOCLIP DETECTED tag, level title, italic lore flavor text from a pool, animated
+  progress bar), levelTransition(title,flavor,onMid,done) with mid-callback for level
+  loads + G.transition() debug trigger. Verified show->onMid->hide cycle, one-line title,
+  zero errors. M2 will wire it to real level loads.

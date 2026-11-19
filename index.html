@@ -57,6 +57,21 @@
     text-shadow:0 0 40px #f00,0 4px 0 #400;font-weight:bold;animation:flicker 2.2s infinite}
   #deathStats{color:var(--doom-amber);font-size:17px;margin:20px 0 30px;line-height:1.9;letter-spacing:.06em}
   #pauseScreen .title{font-size:min(8vw,52px)}
+  /* ---------- noclip / level transition (Backrooms mono-yellow) ---------- */
+  #transitionScreen{background:radial-gradient(ellipse at 50% 40%,#3a3410 0%,#1c1806 50%,#0a0800 90%)}
+  .noclip{position:relative;display:flex;flex-direction:column;align-items:center;
+    padding:40px 54px;max-width:min(640px,92vw);text-align:center;
+    background:linear-gradient(#2a2408ee,#141004ee);
+    border:2px solid #6a5a1a;border-radius:6px;
+    box-shadow:0 0 60px #cc0a,inset 0 0 40px #000a;animation:panelIn .4s ease-out}
+  .noclipTag{color:#e8d020;font-size:12px;letter-spacing:.3em;margin-bottom:18px;animation:flicker 1.4s infinite}
+  #transTitle{color:#f0e070;font-size:min(6vw,33px);font-weight:bold;letter-spacing:.08em;
+    text-shadow:0 0 24px #cc0,0 2px 0 #440;line-height:1.15;white-space:nowrap}
+  .transRule{width:200px;height:2px;margin:16px 0;background:linear-gradient(90deg,transparent,#e8d020,transparent)}
+  #transFlavor{color:#b8a850;font-size:14px;line-height:1.8;font-style:italic;max-width:480px;margin-bottom:24px}
+  .transBar{width:260px;height:8px;border:1px solid #6a5a1a;background:#0c0a02;overflow:hidden}
+  .transBar i{display:block;height:100%;width:0%;background:linear-gradient(90deg,#8a7a10,#f0e040);transition:width .9s linear}
+  .transHint{margin-top:14px;color:#7a6a30;font-size:11px;letter-spacing:.2em;animation:flicker 2s infinite}
   #loadBox{width:min(560px,86vw)}
   #loadTitle{color:var(--doom-green);letter-spacing:.25em;font-size:16px;margin-bottom:14px}
   #loadBarOuter{height:18px;border:2px solid #2a5a30;background:#041006}
@@ -184,6 +199,17 @@
     <div class="rule"></div>
     <div id="deathStats"></div>
     <button class="bigbtn" id="restartBtn">CLICK TO TRY AGAIN</button>
+  </div>
+</div>
+
+<div id="transitionScreen" class="overlay hidden">
+  <div class="noclip">
+    <div class="noclipTag">⚠ NOCLIP DETECTED — REALITY BREACH</div>
+    <div id="transTitle">LEVEL 0 — THE LOBBY</div>
+    <div class="transRule"></div>
+    <div id="transFlavor"></div>
+    <div class="transBar"><i id="transBarFill"></i></div>
+    <div class="transHint">reconfiguring spatial geometry…</div>
   </div>
 </div>
 
@@ -1613,6 +1639,26 @@ function updateHUD(){
   $('lowhp').style.opacity=P.hp<30?(.35+Math.sin(performance.now()/180)*.15):0;
   drawFace();drawMinimap();
 }
+/* ---- level transition (noclip) — reusable shell; M2 wires real level loads ---- */
+const TRANS_FLAVOR=[
+  "If you're not careful and you noclip out of reality in the wrong areas, you'll end up in the Backrooms.",
+  "Nothing but the stink of old moist carpet, the madness of mono-yellow, and the endless hum-buzz of fluorescent lights.",
+  "Approximately six hundred million square miles of randomly segmented empty rooms to be trapped in.",
+  "God save you if you hear something wandering around nearby, because it sure as hell has heard you.",
+  "The lights flicker. The walls repeat. You are not sure you walked here, or were always here."
+];
+let transBusy=false;
+function levelTransition(title,flavor,onMid,done){
+  if(transBusy)return;transBusy=true;
+  const ts=$('transitionScreen');
+  $('transTitle').textContent=title;
+  $('transFlavor').textContent=flavor||TRANS_FLAVOR[(Math.random()*TRANS_FLAVOR.length)|0];
+  $('transBarFill').style.width='0%';
+  ts.classList.remove('hidden');
+  requestAnimationFrame(()=>{$('transBarFill').style.width='100%';});
+  setTimeout(()=>{try{if(onMid)onMid();}catch(e){console.warn('transition onMid:',e);}},950);
+  setTimeout(()=>{ts.classList.add('hidden');transBusy=false;if(done)done();},2100);
+}
 
 /* ---------------- input ---------------- */
 let mouseDown=false;
@@ -1722,6 +1768,7 @@ window.G={
   killAll(){for(const zb of [...zombies])if(zb.state!=='dying'){zb.hp=0;zb.state='dying';zb.dieT=0;P.kills++;}},
   hurt(v){hurtPlayer(v);},
   addAmmo(){P.bullets+=99;P.shells+=30;},
+  transition(title){levelTransition(title||'LEVEL 0 — THE LOBBY');},
   fps:0
 };
 
