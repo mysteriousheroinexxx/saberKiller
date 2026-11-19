@@ -101,3 +101,10 @@
   instances in backrooms, curved arch render over a passage (screenshot), zero errors.
   (Partial walls / varied heights deferred — they need collision rework to avoid invisible
   upper-half blocking; arches are the delivered smoother-transition mechanism.)
+- 2026-11-20: M4.4 done — established Blender asset pipeline: tools/blender_prop.py builds a
+  low-poly metal barrel (cylinder + 2 torus rings + lid, PBR mats) -> assets/prop_barrel.glb
+  via Blender 5.3 headless; loadBarrel() loads it (Lambert conversion), createProps() instances
+  6 barrel clones against walls with a procedural-cylinder fallback, shared-geometry disposal
+  guard so rebuilds don't break the template. Verified template loads, barrel bbox 0.74x0.91x
+  0.72 on floor, 6 barrels render (screenshot), survive arena<->backrooms rebuild, zero errors.
+  MILESTONE 4 (less blocky maps + Blender assets) COMPLETE.

@@ -42,7 +42,7 @@ scattered wall outlets, occasional pitch-black rooms / blood-red rooms.
 - [x] 4.1 Wall/geometry variety: beveled trim, baseboards, door frames, pillars (Blender)
 - [x] 4.2 Props: furniture, crates, shelves, debris (Blender low-poly, CC0 textures)
 - [x] 4.3 Smoother transitions between rooms (arches, partial walls, varied heights)
-- [ ] 4.4 Asset pipeline: tools/blender_*.py -> assets/*.glb, loaded + instanced in-game
+- [x] 4.4 Asset pipeline: tools/blender_*.py -> assets/*.glb, loaded + instanced in-game
 
 ## Milestone 5 — Expand the map / more levels
 - [ ] 5.1 Larger interconnected Level 0 (multi-room, landmarks, minimap reveals)

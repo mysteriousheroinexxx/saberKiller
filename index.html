@@ -691,6 +691,7 @@ let wallMeshes=[],trimMeshes=[],zombies=[],hitMeshes=[],pickups=[],particles=[],
 let muzzleLight,muzzleSprite,gunGroup,gunPistol,gunShotgun,playerLight;
 let TEX={};
 let ambientLight=null,roomLights=[],floorMesh=null,ceilMesh=null,fluorescentGroup=null,fixtures=[],outletGroup=null,propGroup=null,whisperTimer=8;
+let BARREL_TEMPLATE=null;
 const P={ // player
   pos:new THREE.Vector3(16*CELL,0,16*CELL), yaw:0,pitch:0,
   hp:100,bullets:48,shells:8,weapon:0,kills:0,
@@ -857,7 +858,7 @@ function createOutlets(){
 /* low-poly props: crates against walls + scattered debris (non-arena levels) */
 function createProps(){
   if(!propGroup){propGroup=new THREE.Group();scene.add(propGroup);}
-  while(propGroup.children.length){const c=propGroup.children[0];propGroup.remove(c);c.traverse(o=>{if(o.geometry)o.geometry.dispose();});}
+  while(propGroup.children.length){const c=propGroup.children[0];propGroup.remove(c);c.traverse(o=>{if(o.geometry&&!o.userData.shared)o.geometry.dispose();});}
   if(currentLevel==='arena'){propGroup.visible=false;return;}
   const crateMat=new THREE.MeshLambertMaterial({map:TEX.crate});
   const debrisMat=new THREE.MeshLambertMaterial({color:0x5a5048});
@@ -895,6 +896,19 @@ function createProps(){
     for(let s=0;s<3;s++){const board=new THREE.Mesh(new THREE.BoxGeometry(dx!==0?0.35:1.2,0.05,dx!==0?1.2:0.35),shelfMat);
       board.position.set(dx!==0?-dx*0.15:0,0.4+s*0.5,dz!==0?-dz*0.15:0);g.add(board);}
     g.position.set(wx,0,wz);propGroup.add(g);sh++;
+  }
+  // Blender barrel props (asset pipeline) with procedural fallback
+  for(let i=0,br=0;i<200&&br<6&&floorCells.length;i++){
+    const [x,z]=floorCells[(Math.random()*floorCells.length)|0];
+    if(Math.abs(x-16)<3&&Math.abs(z-16)<3)continue;
+    if(Math.abs(x-5)<2&&Math.abs(z-5)<2)continue;
+    const [dx,dz]=dirs[(Math.random()*4)|0];
+    if(!isWall(x+dx,z+dz))continue;
+    const wx=x*CELL+CELL/2+dx*(CELL/2-0.4),wz=z*CELL+CELL/2+dz*(CELL/2-0.4);
+    let b;
+    if(BARREL_TEMPLATE){b=BARREL_TEMPLATE.clone();b.traverse(o=>o.userData.shared=true);b.position.set(wx,0,wz);}
+    else{b=new THREE.Mesh(new THREE.CylinderGeometry(0.34,0.34,0.9,14),new THREE.MeshLambertMaterial({color:0x404850}));b.position.set(wx,0.45,wz);}
+    propGroup.add(b);br++;
   }
   propGroup.visible=true;
 }
@@ -1003,6 +1017,7 @@ function initScene(){
   createFluorescents();
   createOutlets();
   createProps();
+  loadBarrel();
 
   // floor + ceiling
   const floorTex=TEX.floor_tile.clone();floorTex.needsUpdate=true;floorTex.repeat.set(MAPW,MAPH);
@@ -1060,6 +1075,17 @@ function buildGuns(){
   loadWeaponModels();
 }
 /* ---- real weapon viewmodels (handgun.glb / shotgun.glb) ---- */
+function loadBarrel(){
+  if(!THREE.GLTFLoader)return;
+  new THREE.GLTFLoader().load('assets/prop_barrel.glb',g=>{
+    g.scene.traverse(o=>{if(o.isMesh){
+      const c=o.material&&o.material.color?o.material.color.clone():new THREE.Color(0x404850);
+      o.material=new THREE.MeshLambertMaterial({color:c,emissive:0x0a0a0c});
+    }});
+    BARREL_TEMPLATE=g.scene;
+    if(currentLevel!=='arena')createProps();
+  },undefined,()=>{});
+}
 function loadWeaponModels(){
   if(!THREE.GLTFLoader)return;
   const L=new THREE.GLTFLoader();
