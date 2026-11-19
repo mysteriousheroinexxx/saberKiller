@@ -18,7 +18,7 @@ smaller `[ ]` sub-tasks inline rather than half-finishing it.
 - [x] 1.1 Cohesive theme: title/start/pause/death screens, fonts, color palette, spacing
 - [x] 1.2 HUD polish: crosshair, hit-marker, damage vignette, low-HP pulse, ammo/health bars
 - [x] 1.3 Level-transition / "noclip" screen between levels (Backrooms flavor text)
-- [ ] 1.4 Settings panel (mouse sensitivity, volume, FOV) persisted to localStorage
+- [x] 1.4 Settings panel (mouse sensitivity, volume, FOV) persisted to localStorage
 - [ ] 1.5 Dialogue UI shell (portrait + typewriter text box + choice buttons) — reused by M6
 
 ## Milestone 2 — Multi-level architecture

@@ -53,6 +53,22 @@
   .bigbtn:active{transform:translateY(1px);box-shadow:0 0 18px #a00a}
   .bigbtn:focus-visible{outline:2px solid var(--doom-amber);outline-offset:3px}
   .hint{margin-top:24px;color:#665c4c;font-size:11px;letter-spacing:.14em;line-height:1.7}
+  .smallbtn{font-family:inherit;font-size:13px;font-weight:bold;letter-spacing:.2em;
+    color:#d8c8a8;background:transparent;border:1px solid #4a3a22;border-radius:4px;
+    padding:8px 26px;margin-top:14px;cursor:pointer;transition:background .12s,border-color .12s,color .12s}
+  .smallbtn:hover{background:#241a10;border-color:#8a6a3a;color:#f0e2c4}
+  .smallbtn:focus-visible{outline:2px solid var(--doom-amber);outline-offset:2px}
+  .settings{display:flex;flex-direction:column;gap:20px;width:min(420px,80vw);margin:6px 0 8px}
+  .settings label{display:flex;flex-direction:column;gap:8px;text-align:left}
+  .sLabel{font-size:12px;letter-spacing:.18em;color:#9a8a70;display:flex;justify-content:space-between}
+  .sLabel b{color:var(--doom-amber);font-weight:bold}
+  .settings input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:6px;
+    background:#241a10;border:1px solid #4a3a22;border-radius:3px;outline:none;cursor:pointer}
+  .settings input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:16px;height:16px;border-radius:50%;background:var(--doom-red);border:2px solid #f44;
+    box-shadow:0 0 8px #a00a;cursor:pointer}
+  .settings input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+    background:var(--doom-red);border:2px solid #f44;box-shadow:0 0 8px #a00a;cursor:pointer}
   #deathTitle{color:#f00;font-size:min(10vw,80px);letter-spacing:.14em;line-height:1;
     text-shadow:0 0 40px #f00,0 4px 0 #400;font-weight:bold;animation:flicker 2.2s infinite}
   #deathStats{color:var(--doom-amber);font-size:17px;margin:20px 0 30px;line-height:1.9;letter-spacing:.06em}
@@ -181,6 +197,7 @@
       Survive the waves of Saber. They keep coming. Headshots deal double damage. huhuhu
     </div>
     <button class="bigbtn" id="startBtn">CLICK TO PLAY</button>
+    <button class="smallbtn" id="settingsBtn">SETTINGS</button>
     <div class="hint">PROCEDURAL WORLD IN THE SPIRIT OF .KKRIEGER &middot; SABER MODELS &amp; WEAPONS VIA GLB</div>
   </div>
 </div>
@@ -190,6 +207,7 @@
     <div class="title">PAUSED</div>
     <div class="rule"></div>
     <button class="bigbtn" id="resumeBtn" style="margin-top:26px">CLICK TO RESUME</button>
+    <button class="smallbtn" id="settingsBtn2">SETTINGS</button>
   </div>
 </div>
 
@@ -210,6 +228,19 @@
     <div id="transFlavor"></div>
     <div class="transBar"><i id="transBarFill"></i></div>
     <div class="transHint">reconfiguring spatial geometry…</div>
+  </div>
+</div>
+
+<div id="settingsScreen" class="overlay hidden">
+  <div class="panel">
+    <div class="title" style="font-size:min(7vw,40px)">SETTINGS</div>
+    <div class="rule"></div>
+    <div class="settings">
+      <label><span class="sLabel">MOUSE SENSITIVITY <b id="sensVal">1.0</b></span><input type="range" id="sensSlider" min="0.2" max="3" step="0.1"></label>
+      <label><span class="sLabel">VOLUME <b id="volVal">50%</b></span><input type="range" id="volSlider" min="0" max="1" step="0.05"></label>
+      <label><span class="sLabel">FIELD OF VIEW <b id="fovVal">72</b></span><input type="range" id="fovSlider" min="60" max="110" step="1"></label>
+    </div>
+    <button class="bigbtn" id="settingsBackBtn" style="margin-top:26px">BACK</button>
   </div>
 </div>
 
@@ -384,6 +415,20 @@ const KTG = (() => {
           zombieSkin,blood,gunMetal,healthTex,ammoTex,flash,fbm,turb};
 })();
 
+/* ---------------- settings (persisted to localStorage) ---------------- */
+const SETTINGS=(()=>{
+  const KEY='sks.settings.v1';
+  const def={sens:1.0,volume:0.5,fov:72};
+  let s={...def};
+  try{const raw=localStorage.getItem(KEY);if(raw)s={...def,...JSON.parse(raw)};}catch(e){}
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(s));}catch(e){}}
+  function apply(){
+    if(typeof camera!=='undefined'&&camera){camera.fov=s.fov;camera.updateProjectionMatrix();}
+    if(typeof SND!=='undefined')SND.setVolume(s.volume);
+  }
+  return {get:()=>s,set(k,v){s[k]=v;save();apply();},apply,save};
+})();
+
 /* ---------------- synthesized audio (V2 spirit) ---------------- */
 const SND = (() => {
   let ctx=null, master=null, noiseBuf=null, ambientOn=false;
@@ -391,7 +436,7 @@ const SND = (() => {
     if(ctx)return;
     try{
       ctx=new (window.AudioContext||window.webkitAudioContext)();
-      master=ctx.createGain();master.gain.value=.5;master.connect(ctx.destination);
+      master=ctx.createGain();master.gain.value=SETTINGS.get().volume;master.connect(ctx.destination);
       noiseBuf=ctx.createBuffer(1,ctx.sampleRate*2,ctx.sampleRate);
       const d=noiseBuf.getChannelData(0);
       for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
@@ -447,7 +492,8 @@ const SND = (() => {
       const lfo=ctx.createOscillator();lfo.frequency.value=.13;
       const lg=ctx.createGain();lg.gain.value=.012;lfo.connect(lg);lg.connect(wg.gain);
       s.connect(bf);bf.connect(wg);wg.connect(master);s.start();lfo.start();
-    }
+    },
+    setVolume(v){if(master)master.gain.value=v;}
   };
 })();
 
@@ -565,7 +611,7 @@ function initScene(){
   scene=new THREE.Scene();
   scene.background=new THREE.Color(0x050508);
   scene.fog=new THREE.FogExp2(0x050508,.042);
-  camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.05,120);
+  camera=new THREE.PerspectiveCamera(SETTINGS.get().fov,innerWidth/innerHeight,.05,120);
   renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
   renderer.setSize(innerWidth,innerHeight);
@@ -1680,8 +1726,8 @@ function bindInput(){
     if(locked){dx=e.movementX;dy=e.movementY;}
     else if(dragLook&&mouseDown){dx=e.clientX-lastMX;dy=e.clientY-lastMY;}
     lastMX=e.clientX;lastMY=e.clientY;
-    P.yaw-=dx*.0023;
-    P.pitch-=dy*.0023;
+    P.yaw-=dx*.0023*SETTINGS.get().sens;
+    P.pitch-=dy*.0023*SETTINGS.get().sens;
     P.pitch=Math.max(-1.45,Math.min(1.45,P.pitch));
   });
   document.addEventListener('pointerlockchange',()=>{
@@ -1698,6 +1744,22 @@ function bindInput(){
     $('pauseScreen').classList.add('hidden');WS.paused=false;tryLock();
   };
   $('restartBtn').onclick=()=>{resetGame();startGame(true);};
+  // settings panel (persisted)
+  const refreshSettingsLabels=()=>{const s=SETTINGS.get();
+    $('sensVal').textContent=s.sens.toFixed(1);
+    $('volVal').textContent=Math.round(s.volume*100)+'%';
+    $('fovVal').textContent=s.fov;};
+  let settingsReturn='startScreen';
+  const openSettings=from=>{settingsReturn=from;$(from).classList.add('hidden');
+    const s=SETTINGS.get();$('sensSlider').value=s.sens;$('volSlider').value=s.volume;$('fovSlider').value=s.fov;
+    refreshSettingsLabels();$('settingsScreen').classList.remove('hidden');};
+  $('settingsBtn').onclick=()=>openSettings('startScreen');
+  $('settingsBtn2').onclick=()=>openSettings('pauseScreen');
+  $('settingsBackBtn').onclick=()=>{$('settingsScreen').classList.add('hidden');$(settingsReturn).classList.remove('hidden');};
+  $('sensSlider').oninput=e=>{SETTINGS.set('sens',parseFloat(e.target.value));refreshSettingsLabels();};
+  $('volSlider').oninput=e=>{SETTINGS.set('volume',parseFloat(e.target.value));refreshSettingsLabels();};
+  $('fovSlider').oninput=e=>{SETTINGS.set('fov',parseInt(e.target.value));refreshSettingsLabels();};
+  SETTINGS.apply();
 }
 function tryLock(){
   try{

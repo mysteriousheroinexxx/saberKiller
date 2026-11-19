@@ -18,3 +18,8 @@
   progress bar), levelTransition(title,flavor,onMid,done) with mid-callback for level
   loads + G.transition() debug trigger. Verified show->onMid->hide cycle, one-line title,
   zero errors. M2 will wire it to real level loads.
+- 2026-11-20: M1.4 done — settings panel: SETTINGS module persisted to localStorage
+  (sks.settings.v1), sliders for mouse sensitivity / volume / FOV with live value labels,
+  applied to mouse-look multiplier, SND master gain, and camera.fov; SETTINGS buttons on
+  start + pause screens with back-navigation. Verified open/apply/persist-across-reload/
+  back cycle (camera.fov=90, sens=2 stored + restored), zero errors.
