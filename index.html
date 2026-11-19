@@ -595,8 +595,7 @@ const SND = (() => {
 /* ---------------- map ---------------- */
 const MAPW=32, MAPH=32, CELL=2, WALLH=3.4;
 const grid=[]; // 0 floor, 1..3 wall type
-(function buildMap(){
-  for(let z=0;z<MAPH;z++){grid[z]=[];for(let x=0;x<MAPW;x++)grid[z][x]=1;}
+function layoutArena(){
   const carve=(x0,z0,x1,z1)=>{for(let z=z0;z<=z1;z++)for(let x=x0;x<=x1;x++)grid[z][x]=0;};
   carve(11,11,20,20);                    // central arena
   carve(2,2,8,8); carve(23,2,29,8);      // corner rooms
@@ -604,19 +603,36 @@ const grid=[]; // 0 floor, 1..3 wall type
   carve(14,1,17,30); carve(1,14,30,17);  // cross corridors
   carve(12,3,19,6); carve(12,25,19,28);  // side alcoves
   carve(3,12,6,19); carve(25,12,28,19);
-  // connectors: corner rooms -> alcoves (without these the corner
-  // rooms are sealed and zombies spawned there can never be reached)
-  carve(4,8,5,12); carve(26,8,27,12);
+  carve(4,8,5,12); carve(26,8,27,12);    // corner->alcove connectors
   carve(4,19,5,23); carve(26,19,27,23);
-  // pillars in the arena (cover)
-  for(const [x,z] of [[13,13],[18,13],[13,18],[18,18]])grid[z][x]=2;
-  // wall variants by hash
+  for(const [x,z] of [[13,13],[18,13],[13,18],[18,18]])grid[z][x]=2; // pillars
+}
+/* Backrooms: randomly segmented irregular rooms via random wall runs + doorways */
+function layoutBackrooms(){
+  const carve=(x0,z0,x1,z1)=>{for(let z=z0;z<=z1;z++)for(let x=x0;x<=x1;x++)grid[z][x]=0;};
+  const ri=(a,b)=>a+((Math.random()*(b-a+1))|0);
+  carve(1,1,MAPW-2,MAPH-2);              // open interior
+  for(let i=0;i<7;i++){                  // vertical wall runs
+    const x=ri(2,MAPW-3),z0=ri(1,6),z1=ri(MAPH-7,MAPH-2);
+    for(let z=z0;z<=z1;z++)grid[z][x]=1;
+    for(let d=0,nd=ri(1,3);d<nd;d++){const z=ri(z0,z1);grid[z][x]=0;if(z+1<=z1)grid[z+1][x]=0;}
+  }
+  for(let i=0;i<7;i++){                  // horizontal wall runs
+    const z=ri(2,MAPH-3),x0=ri(1,6),x1=ri(MAPW-7,MAPW-2);
+    for(let x=x0;x<=x1;x++)grid[z][x]=1;
+    for(let d=0,nd=ri(1,3);d<nd;d++){const x=ri(x0,x1);grid[z][x]=0;if(x+1<=x1)grid[z][x+1]=0;}
+  }
+  for(let i=0;i<10;i++)grid[ri(2,MAPH-3)][ri(2,MAPW-3)]=1; // scattered pillars
+  carve(14,14,18,18);                    // keep player start open
+  carve(4,4,6,6);                        // keep exit portal open
+}
+function assignWallVariants(){
   for(let z=0;z<MAPH;z++)for(let x=0;x<MAPW;x++){
     if(grid[z][x]===0)continue;
     const h=(x*73856093 ^ z*19349663)>>>0;
     grid[z][x]=1+(h%10<5?0:h%10<8?1:2);
   }
-})();
+}
 const isWall=(x,z)=>x<0||z<0||x>=MAPW||z>=MAPH||grid[z][x]>0;
 const cellOf=v=>Math.floor(v/CELL);
 function circleHitsWall(px,pz,r){
@@ -630,9 +646,11 @@ function circleHitsWall(px,pz,r){
   return false;
 }
 const floorCells=[];
-// flood-fill from player start: only spawn on cells the player can reach
 const _reach=new Set();
-{
+const cellCenter=(x,z)=>[x*CELL+CELL/2,z*CELL+CELL/2];
+// flood-fill from player start: only spawn on cells the player can reach
+function computeReach(){
+  _reach.clear();floorCells.length=0;
   const stack=[[16,16]];
   while(stack.length){
     const [x,z]=stack.pop();const k=x+','+z;
@@ -640,10 +658,16 @@ const _reach=new Set();
     _reach.add(k);
     stack.push([x+1,z],[x-1,z],[x,z+1],[x,z-1]);
   }
+  for(let z=0;z<MAPH;z++)for(let x=0;x<MAPW;x++)
+    if(grid[z][x]===0&&_reach.has(x+','+z))floorCells.push([x,z]);
 }
-for(let z=0;z<MAPH;z++)for(let x=0;x<MAPW;x++)
-  if(grid[z][x]===0&&_reach.has(x+','+z))floorCells.push([x,z]);
-const cellCenter=(x,z)=>[x*CELL+CELL/2,z*CELL+CELL/2];
+let currentLayout='arena';
+function setLayout(type){
+  for(let z=0;z<MAPH;z++){grid[z]=[];for(let x=0;x<MAPW;x++)grid[z][x]=1;}
+  if(type==='backrooms')layoutBackrooms();else layoutArena();
+  assignWallVariants();computeReach();
+}
+setLayout('arena');
 
 /* ---------------- globals ---------------- */
 let scene,camera,renderer,raycaster;
@@ -725,7 +749,7 @@ const LEVELS={
     playerLight:{color:0xfff0c0,intensity:.95},
     roomLight:{color:0xf0e070,intensity:.75},
     wallTex:{1:'wall_yellow',2:'wall_yellow',3:'wall_yellow'}, floorTex:'carpet_damp', ceilTex:'ceil_tile',
-    layout:'arena', enemies:'saber'
+    layout:'backrooms', enemies:'saber'
   }
 };
 let currentLevel='arena';
@@ -738,6 +762,7 @@ function applyLevelTheme(id){
   for(const l of roomLights){l.color.setHex(L.roomLight.color);l.intensity=L.roomLight.intensity;}
   if(typeof SND!=='undefined'&&L.ambientSound)SND.ambient(L.ambientSound);
   if(fluorescentGroup)fluorescentGroup.visible=(id==='backrooms');
+  if(L.layout&&L.layout!==currentLayout){currentLayout=L.layout;setLayout(L.layout);buildWalls();buildMinimapWalls();}
   // per-level textures (walls / floor / ceiling)
   if(L.wallTex)for(const im of wallMeshes){const tx=TEX[L.wallTex[im.userData.wallType]];
     if(tx&&im.material.map!==tx){im.material.map=tx;im.material.needsUpdate=true;}}
@@ -790,6 +815,26 @@ function goNextLevel(){
 }
 
 /* ---------------- scene ---------------- */
+function buildWalls(){
+  for(const im of wallMeshes){scene.remove(im);if(im.geometry)im.geometry.dispose();if(im.dispose)im.dispose();}
+  wallMeshes.length=0;
+  const L=LEVELS[currentLevel]||LEVELS.arena;
+  const box=new THREE.BoxGeometry(CELL,WALLH,CELL);
+  const mats={1:TEX[L.wallTex[1]],2:TEX[L.wallTex[2]],3:TEX[L.wallTex[3]]};
+  const counts={1:0,2:0,3:0};
+  for(let z=0;z<MAPH;z++)for(let x=0;x<MAPW;x++)if(grid[z][x]>0)counts[grid[z][x]]++;
+  const dummy=new THREE.Object3D();
+  for(const t of [1,2,3]){
+    const im=new THREE.InstancedMesh(box,new THREE.MeshLambertMaterial({map:mats[t]}),counts[t]);
+    let i=0;
+    for(let z=0;z<MAPH;z++)for(let x=0;x<MAPW;x++){
+      if(grid[z][x]!==t)continue;
+      dummy.position.set(x*CELL+CELL/2,WALLH/2,z*CELL+CELL/2);
+      dummy.updateMatrix();im.setMatrixAt(i++,dummy.matrix);
+    }
+    im.instanceMatrix.needsUpdate=true;im.userData.wallType=t;scene.add(im);wallMeshes.push(im);
+  }
+}
 function initScene(){
   scene=new THREE.Scene();
   scene.background=new THREE.Color(0x050508);
@@ -823,22 +868,8 @@ function initScene(){
     new THREE.MeshLambertMaterial({map:ceilTex}));
   ceil.rotation.x=Math.PI/2;ceil.position.set(MAPW*CELL/2,WALLH,MAPH*CELL/2);scene.add(ceil);ceilMesh=ceil;
 
-  // walls: one InstancedMesh per texture type
-  const box=new THREE.BoxGeometry(CELL,WALLH,CELL);
-  const mats={1:TEX.wall_tech,2:TEX.wall_brick,3:TEX.wall_hell};
-  const counts={1:0,2:0,3:0};
-  for(let z=0;z<MAPH;z++)for(let x=0;x<MAPW;x++)if(grid[z][x]>0)counts[grid[z][x]]++;
-  const dummy=new THREE.Object3D();
-  for(const t of [1,2,3]){
-    const im=new THREE.InstancedMesh(box,new THREE.MeshLambertMaterial({map:mats[t]}),counts[t]);
-    let i=0;
-    for(let z=0;z<MAPH;z++)for(let x=0;x<MAPW;x++){
-      if(grid[z][x]!==t)continue;
-      dummy.position.set(x*CELL+CELL/2,WALLH/2,z*CELL+CELL/2);
-      dummy.updateMatrix();im.setMatrixAt(i++,dummy.matrix);
-    }
-    im.instanceMatrix.needsUpdate=true;im.userData.wallType=t;scene.add(im);wallMeshes.push(im);
-  }
+  // walls (per-level layout)
+  buildWalls();
   applyLevelTheme('arena');
 
   // muzzle flash light + sprite

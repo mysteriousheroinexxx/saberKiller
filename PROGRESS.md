@@ -65,3 +65,10 @@
   animated in updatePlayer. 120Hz hum-buzz audio already shipped in M2.3. Verified 64
   fixtures hidden in arena / visible in backrooms, flicker active, panels render in ceiling
   grid (screenshot), zero errors.
+- 2026-11-20: M3.3 done — refactored fixed buildMap into reusable layoutArena()/
+  layoutBackrooms() (random wall runs + doorways + scattered pillars = irregular segmented
+  rooms) + assignWallVariants/computeReach/setLayout; extracted buildWalls() (disposes +
+  rebuilds InstancedMeshes from grid per level wallTex); applyLevelTheme regenerates layout
+  + walls + minimap on layout change; LEVELS.backrooms.layout='backrooms'. Verified
+  backrooms distinct reachable layout (644 floor cells vs arena 540), start/portal cells
+  open, enemies spawn, arena<->backrooms swap, labyrinth screenshot, zero errors.
