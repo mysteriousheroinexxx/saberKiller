@@ -186,3 +186,9 @@
   model + Mixamo royalty-free animations, handgun/shotgun, pfp.png; legacy athena/saber_animated
   noted). 8.1/8.2 evaluated NOT NEEDED — procedural quality sufficient across 5 levels, so no
   CC0 downloads required (condition not met). MILESTONE 8 COMPLETE.
+- 2026-11-20: M9.1 done — full playthrough audit across all 5 levels: reachability, NPC
+  talkability, combat kills, ambient, portal chain. FOUND+FIXED backrooms sealed pockets
+  (random doorways left ~46 unreachable cells): added ensureConnected() bridge pass in
+  setLayout (carves minimal walls to connect sealed floor to start region). Re-audit: all
+  levels fully reachable (backrooms 735/735, stress x4 connected), NPCs talkable, combat KILL
+  OK on every level, full portal chain, zero errors. Trades verified in M7.

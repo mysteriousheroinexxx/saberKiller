@@ -771,10 +771,29 @@ function revealAround(px,pz,r){
   for(let z=cz-r;z<=cz+r;z++)for(let x=cx-r;x<=cx+r;x++)
     if(x>=0&&z>=0&&x<MAPW&&z<MAPH)explored.add(x+','+z);
 }
+/* bridge any sealed floor pockets to the start-connected region (minimal wall carving) */
+function ensureConnected(){
+  for(let iter=0;iter<300;iter++){
+    const reach=new Set();const stack=[[16,16]];
+    while(stack.length){const[x,z]=stack.pop();const k=x+','+z;
+      if(reach.has(k)||isWall(x,z))continue;reach.add(k);
+      stack.push([x+1,z],[x-1,z],[x,z+1],[x,z-1]);}
+    let bridged=false;
+    for(let z=1;z<MAPH-1&&!bridged;z++)for(let x=1;x<MAPW-1&&!bridged;x++){
+      if(grid[z][x]!==0||reach.has(x+','+z))continue;
+      for(const[dx,dz]of[[1,0],[-1,0],[0,1],[0,-1]]){
+        const wx=x+dx,wz=z+dz;
+        if(isWall(wx,wz)&&!isWall(wx+dx,wz+dz)&&reach.has((wx+dx)+','+(wz+dz))){grid[wz][wx]=0;bridged=true;break;}
+      }
+    }
+    if(!bridged)break;
+  }
+}
 let currentLayout='arena';
 function setLayout(type){
   for(let z=0;z<MAPH;z++){grid[z]=[];for(let x=0;x<MAPW;x++)grid[z][x]=1;}
   if(type==='backrooms')layoutBackrooms();else if(type==='warehouse')layoutWarehouse();else if(type==='pipes')layoutPipes();else if(type==='dungeon')layoutDungeon();else layoutArena();
+  ensureConnected();
   assignWallVariants();computeReach();
   explored.clear();revealAround(16*CELL,16*CELL,3);
 }

@@ -68,7 +68,7 @@ scattered wall outlets, occasional pitch-black rooms / blood-red rooms.
 - [x] 8.3 License/attribution recorded in assets/CREDITS.md
 
 ## Milestone 9 — Integration, balance, final polish
-- [ ] 9.1 Full playthrough verification: all levels reachable, NPCs talkable, trades work
+- [x] 9.1 Full playthrough verification: all levels reachable, NPCs talkable, trades work
 - [ ] 9.2 Balance: enemy density per level, resource economy, difficulty curve
 - [ ] 9.3 Performance pass (instancing, disposal, texture budgets) for a full horde
 - [ ] 9.4 Final README + credits + git tag
