@@ -2397,6 +2397,40 @@ const DIALOGUE_DELVER={
     choices:[{label:'[Take scrap]',action:()=>{Progress.addItem('scrap',3);showMsg('+3 Scrap');},next:'end'}]},
   end:{name:'DELVER',portrait:'assets/pfp.png',text:"Go quietly. And if the torches go out all at once... don't breathe.",choices:[{label:'[Leave]',next:null}]}
 };
+/* procedural NPC portraits (hooded busts, per-character palette + marks) */
+function makePortrait(bg,robe,skin,eye,kind){
+  const cv=document.createElement('canvas');cv.width=cv.height=256;const c=cv.getContext('2d');
+  const g=c.createLinearGradient(0,0,0,256);g.addColorStop(0,bg[0]);g.addColorStop(1,bg[1]);
+  c.fillStyle=g;c.fillRect(0,0,256,256);
+  c.fillStyle=robe;                                   // shoulders
+  c.beginPath();c.moveTo(30,256);c.quadraticCurveTo(128,150,226,256);c.closePath();c.fill();
+  c.beginPath();c.arc(128,108,72,Math.PI,0);          // hood
+  c.lineTo(200,165);c.quadraticCurveTo(128,185,56,165);c.closePath();c.fill();
+  c.fillStyle=skin;c.beginPath();c.ellipse(128,122,42,52,0,0,Math.PI*2);c.fill(); // face
+  c.fillStyle='rgba(0,0,0,0.25)';c.beginPath();c.ellipse(128,96,44,20,0,Math.PI,0);c.fill(); // hood shadow
+  c.fillStyle=eye;                                    // eyes
+  c.beginPath();c.ellipse(110,118,7,4,0,0,Math.PI*2);c.fill();
+  c.beginPath();c.ellipse(146,118,7,4,0,0,Math.PI*2);c.fill();
+  c.strokeStyle='rgba(0,0,0,0.4)';c.lineWidth=2;c.beginPath();c.moveTo(118,152);c.lineTo(138,152);c.stroke();
+  if(kind==='wanderer'){c.strokeStyle='#cfd6e0';c.lineWidth=3;  // pale hair strands
+    for(let i=0;i<5;i++){c.beginPath();c.moveTo(96+i*16,86);c.quadraticCurveTo(94+i*16,108,98+i*16,112);c.stroke();}}
+  if(kind==='agent'){c.fillStyle='#c0d0c0';c.fillRect(150,200,26,16); // shoulder badge
+    c.fillStyle='#3a5a3a';c.fillRect(154,204,18,8);}
+  if(kind==='delver'){c.strokeStyle='rgba(120,40,30,0.7)';c.lineWidth=3; // scar
+    c.beginPath();c.moveTo(150,100);c.lineTo(160,140);c.stroke();}
+  return cv.toDataURL('image/png');
+}
+function genPortraits(){
+  const p={
+    wanderer:makePortrait(['#1a2030','#0a0e18'],'#4a6a8a','#e0c8a0','#6a9ac0','wanderer'),
+    agent:makePortrait(['#1a2a1a','#0a140a'],'#5a7a5a','#d8c098','#8ac08a','agent'),
+    delver:makePortrait(['#2a1a10','#140a06'],'#7a5a4a','#c8a878','#c08a5a','delver')
+  };
+  for(const id in DIALOGUE_DEMO)DIALOGUE_DEMO[id].portrait=p.wanderer;
+  for(const id in DIALOGUE_AGENT)DIALOGUE_AGENT[id].portrait=p.agent;
+  for(const id in DIALOGUE_DELVER)DIALOGUE_DELVER[id].portrait=p.delver;
+}
+genPortraits();
 const Dialogue=(()=>{
   let tree=null,node=null,typing=false,fullText='',shown=0,typeTimer=null,active=false,onClose=null;
   function finishType(){clearInterval(typeTimer);typing=false;$('dlgText').textContent=fullText;

@@ -54,7 +54,7 @@ scattered wall outlets, occasional pitch-black rooms / blood-red rooms.
 - [x] 6.1 NPC entities (idle animation, approach prompt "E to talk")
 - [x] 6.2 Dialogue engine: nodes, typewriter text, portrait, branching choices
 - [x] 6.3 Write NPC characters + dialogue trees (Backrooms wanderers / M.E.G. agents)
-- [ ] 6.4 NPC portraits (reuse pfp.png style / generate / CC0)
+- [x] 6.4 NPC portraits (reuse pfp.png style / generate / CC0)
 
 ## Milestone 7 — Resource exchange / trading
 - [ ] 7.1 Inventory + currency (e.g. "almond water" / scrap as Backrooms currency)

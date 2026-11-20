@@ -153,3 +153,8 @@
   scrap) and DIALOGUE_DELVER (cryptic Delver: fear/treasure branches, +3 scrap), alongside the
   WANDERER demo tree; createNPCs now assigns each NPC its own tree. Verified all three open
   distinct name+text, agent ration grants items, zero errors.
+- 2026-11-20: M6.4 done — procedural NPC portraits: makePortrait() draws hooded busts on
+  canvas (per-character palette + distinguishing marks: wanderer pale hair, agent shoulder
+  badge, delver scar) -> dataURLs; genPortraits() assigns each dialogue tree its own portrait
+  (player HUD keeps pfp.png). Verified 3 distinct generated portraits render in dialogue
+  (screenshot), zero errors. MILESTONE 6 (visual-novel NPC interaction) COMPLETE.
