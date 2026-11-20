@@ -193,6 +193,121 @@
     background:radial-gradient(ellipse at center,transparent 55%,#600000aa 100%)}
   #scanlines{position:fixed;inset:0;pointer-events:none;z-index:60;opacity:.10;
     background:repeating-linear-gradient(0deg,#000 0 1px,transparent 1px 3px)}
+
+  /* ================= osu!-inspired tilted springy theme =================
+     Lifted from ppy/osu (MIT): MainMenuButton parallelogram shear (WEDGE_WIDTH/
+     height = 20/100 ~= -11deg), hover width x1.5 via Easing.OutElastic, icon
+     beat-bounce (+-8deg, scale 1.2, squash 0.9), additive click flash; OsuLogo
+     beat squash->elastic rebound + ripple; palette Pink #ff66aa / Purple #8866ee. */
+  :root{
+    --osu-pink:#ff66aa; --osu-pink-light:#ff99cc; --osu-pink-dark:#cc5288; --osu-pink-darker:#bb1177;
+    --osu-purple:#8866ee; --osu-purple-dark:#6644cc;
+    --osu-bg0:#241b36; --osu-bg1:#1a1228; --osu-panel:#2c2140;
+    --osu-shear:-11deg;
+    --osu-spring:cubic-bezier(.34,1.56,.64,1);
+    --osu-elastic:cubic-bezier(.5,1.75,.35,.95);
+  }
+  html,body{font-family:"Torus","Segoe UI","Nunito","Quicksand",system-ui,sans-serif}
+
+  /* drifting triangles backdrop (osu! intro triangles) */
+  .overlay{background:radial-gradient(ellipse at 50% 35%,#3a2a55 0%,#241b36 45%,#120c1e 90%)}
+  .overlay:after{content:"";position:absolute;inset:-50% 0;pointer-events:none;z-index:0;
+    background-image:
+      linear-gradient(60deg,transparent 47%,#ffffff09 47% 53%,transparent 53%),
+      linear-gradient(-60deg,transparent 47%,#ffffff07 47% 53%,transparent 53%);
+    background-size:120px 200px;animation:osuTri 26s linear infinite;opacity:.8}
+  @keyframes osuTri{from{transform:translateY(0)}to{transform:translateY(200px)}}
+  .overlay>*{position:relative;z-index:1}
+
+  /* panels: rounded purple boxes, elastic entrance, pink glow */
+  .panel{z-index:0;background:linear-gradient(#2c2140f2,#1e1530f2);border:2px solid var(--osu-pink-dark);
+    border-radius:14px;box-shadow:0 0 0 1px #0006,0 10px 40px #000a,0 0 40px #ff66aa33,inset 0 1px 0 #ffffff14;
+    animation:osuPanelIn .55s var(--osu-elastic)}
+  @keyframes osuPanelIn{0%{opacity:0;transform:scale(.82)}60%{opacity:1;transform:scale(1.05)}80%{transform:scale(.98)}100%{transform:scale(1)}}
+  .title{background:linear-gradient(#ffddee,#ff66aa 55%,#cc5288);-webkit-background-clip:text;background-clip:text;
+    color:transparent;filter:drop-shadow(0 0 18px #ff66aa88) drop-shadow(0 3px 0 #6b2e49);
+    animation:osuBeat 1.1s ease-in-out infinite}
+  @keyframes osuBeat{0%,100%{transform:scale(1)}12%{transform:scale(.965)}30%{transform:scale(1.035)}50%{transform:scale(1)}}
+  /* osu! logo ripple behind the start title */
+  #startScreen .panel::before{content:"";position:absolute;left:50%;top:90px;width:170px;height:170px;
+    transform:translate(-50%,-50%);border:2px solid #ff66aa55;border-radius:50%;z-index:-1;
+    animation:osuRipple 1.1s ease-out infinite}
+  @keyframes osuRipple{0%{transform:translate(-50%,-50%) scale(.55);opacity:.75}100%{transform:translate(-50%,-50%) scale(1.6);opacity:0}}
+  .rule{background:linear-gradient(90deg,transparent,var(--osu-pink),transparent)}
+  .subtitle{color:var(--osu-pink-light);text-shadow:0 0 12px #ff66aa66}
+  .controls{color:#b8a8cc}
+  .controls b{color:#ffddee;background:#3a2a55;border:1px solid #6644cc;border-bottom-width:2px}
+  .hint{color:#8a7a9c}
+
+  /* tilted parallelogram buttons: sheared bg, upright label, elastic hover, click flash */
+  .bigbtn,.smallbtn{position:relative;z-index:0;background:transparent;border:none;overflow:visible;
+    text-shadow:0 2px 0 #0007;transition:transform .5s var(--osu-spring)}
+  .bigbtn{color:#fff;padding:16px 52px}
+  .smallbtn{color:#ffddee;padding:9px 28px}
+  .bigbtn:before,.smallbtn:before{content:"";position:absolute;inset:0;z-index:-1;border-radius:8px;
+    transform:skewX(var(--osu-shear));transition:transform .5s var(--osu-spring),filter .2s,box-shadow .3s;
+    box-shadow:0 6px 18px #0007,0 0 22px #ff66aa44,inset 0 1px 0 #ffffff33}
+  .bigbtn:before{background:linear-gradient(#ff8fbf,#ff66aa 55%,#cc5288);border:2px solid #ff99cc}
+  .smallbtn:before{background:linear-gradient(#3a2a55,#2c2140);border:2px solid #6644cc}
+  .bigbtn:hover,.smallbtn:hover{transform:translateY(-2px)}
+  .bigbtn:hover:before{transform:skewX(var(--osu-shear)) scaleX(1.16);filter:brightness(1.12);
+    box-shadow:0 8px 26px #0008,0 0 40px #ff66aa88,inset 0 1px 0 #ffffff44}
+  .smallbtn:hover:before{transform:skewX(var(--osu-shear)) scaleX(1.12);border-color:var(--osu-pink);box-shadow:0 0 26px #ff66aa55}
+  .bigbtn:active:before,.smallbtn:active:before{transform:skewX(var(--osu-shear)) scaleX(1.04) scaleY(.92);filter:brightness(1.5)}
+  .bigbtn:focus-visible,.smallbtn:focus-visible{outline:2px solid var(--osu-pink-light);outline-offset:4px}
+  .bigbtn:after,.smallbtn:after{content:"";position:absolute;inset:0;z-index:-1;border-radius:8px;
+    transform:skewX(var(--osu-shear));background:#fff;opacity:0;pointer-events:none;transition:opacity .5s ease-out}
+  .bigbtn:active:after,.smallbtn:active:after{opacity:.55;transition:none}
+
+  /* dialogue */
+  #dialogueBox{background:linear-gradient(#2c2140f5,#1e1530f5);border:2px solid var(--osu-pink-dark);
+    border-radius:14px;box-shadow:0 10px 40px #000b,0 0 30px #ff66aa33;animation:osuPanelIn .4s var(--osu-elastic)}
+  #dlgPortrait{border:2px solid var(--osu-pink-dark);border-radius:10px}
+  #dlgName{color:var(--osu-pink-light);text-shadow:0 0 10px #ff66aa66}
+  #dlgText{color:#f0e6f5}
+  #dlgAdvance{color:#b8a8cc}
+  .dlgChoice{background:#2c2140;border:1px solid #6644cc;color:#ffddee;
+    transition:transform .35s var(--osu-spring),background .2s,border-color .2s,box-shadow .3s}
+  .dlgChoice:hover{background:#3a2a55;border-color:var(--osu-pink);transform:translateX(5px);box-shadow:0 0 18px #ff66aa44}
+  .dlgChoice:before{color:var(--osu-pink)}
+
+  /* settings + inventory */
+  .sLabel{color:#b8a8cc}.sLabel b{color:var(--osu-pink-light)}
+  .settings input[type=range]{background:#2c2140;border:1px solid #6644cc}
+  .settings input[type=range]::-webkit-slider-thumb{background:var(--osu-pink);border:2px solid #ff99cc;box-shadow:0 0 8px #ff66aa88}
+  .settings input[type=range]::-moz-range-thumb{background:var(--osu-pink);border:2px solid #ff99cc;box-shadow:0 0 8px #ff66aa88}
+  .invRow{background:#2c2140;border:1px solid #6644cc}
+  .invName{color:#e8dcf5}.invName small{color:#9a8abc}
+  .invRow b{color:var(--osu-pink-light)}
+  .invUse{background:#6644cc;color:#ffddee;border:1px solid var(--osu-pink)}
+  .invUse:hover{background:var(--osu-purple)}
+  .invHint{color:#9a8abc}
+  #deathTitle{color:var(--osu-pink);text-shadow:0 0 40px #ff66aa,0 4px 0 #6b2e49}
+  #deathStats{color:var(--osu-pink-light)}
+
+  /* HUD osu! accents */
+  #statusbar{background:linear-gradient(#2c2140,#1e1530);border:3px solid var(--osu-pink-dark);
+    box-shadow:0 -4px 24px #000c,0 0 24px #ff66aa22}
+  .stat{border-right:2px solid #4a3a66}
+  .stat .label{color:#9a8abc}
+  .stat .value{font-variant-numeric:tabular-nums}
+  #hpVal{color:#ff6688}#ammoVal{color:var(--osu-pink-light)}#killVal{color:#e8dcf5}#waveVal{color:#aa88ff}
+  .bar{background:#1e1530;border:1px solid #4a3a66}
+  .bar.hp i{background:linear-gradient(90deg,#cc5288,#ff66aa)}
+  .bar.ammo i{background:linear-gradient(90deg,#6644cc,#aa88ff)}
+  #face{border:2px solid var(--osu-pink-dark)}
+  #minimap{border:2px solid var(--osu-pink-dark);background:#1a1228cc}
+  #scrapHud{color:var(--osu-pink-light);background:#241b36cc;border:1px solid var(--osu-pink-dark)}
+  #npcPrompt{color:#ffddee;background:#241b36dd;border:1px solid var(--osu-pink)}
+  #waveBanner{color:var(--osu-pink);text-shadow:0 0 30px #ff66aa}
+  #waveSub{color:var(--osu-pink-light)}
+  #crosshair{--ch:#ff99cc}
+  #pickupMsg{color:var(--osu-pink-light)}
+
+  @media (prefers-reduced-motion:reduce){
+    .title,#startScreen .panel::before,.overlay:after,.panel,#dialogueBox{animation:none}
+    .bigbtn:before,.smallbtn:before,.bigbtn,.smallbtn,.dlgChoice{transition:none}
+  }
 </style>
 </head>
 <body>

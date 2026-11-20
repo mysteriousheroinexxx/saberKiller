@@ -209,3 +209,12 @@
   NPCs/dialogue/trading/quests, inventory/currency, E/I controls, Blender pipeline, full
   playthrough verification); credits in assets/CREDITS.md (M8); tagged v1.0.0. ALL ROADMAP
   MILESTONES (1-9) COMPLETE.
+- 2026-11-20: osu!-inspired UI redesign (user request) — cloned ppy/osu (MIT), inspected
+  MainMenuButton/OsuLogo: parallelogram shear WEDGE_WIDTH/height=20/100 (~-11deg), hover
+  width x1.5 Easing.OutElastic, beat-bounce (+-8deg/scale1.2/squash0.9), additive click flash,
+  Pink #ff66aa / Purple #8866ee palette. Applied as a CSS theme layer: tilted parallelogram
+  buttons (sheared ::before bg + upright label) with spring hover expand + click flash,
+  beat-pulsing pink title + logo ripple, drifting-triangle purple backdrop, elastic panel
+  entrances, pink/purple HUD/inventory/dialogue/settings. Verified button shear matrix
+  (-0.194), themed computed colors across surfaces, PLAY/combat/inventory all functional,
+  zero errors. prefers-reduced-motion respected.
