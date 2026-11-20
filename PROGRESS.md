@@ -205,3 +205,7 @@
   (per-clone DataTexture). Note: renderer.info.memory.textures doesn't decrement for skeleton
   boneTextures in r147 (managed outside standard texture accounting), but GPU memory is freed.
   Horde renders correctly, zero errors.
+- 2026-11-20: M9.4 done — rewrote README to cover the full game (5 levels + portal chain,
+  NPCs/dialogue/trading/quests, inventory/currency, E/I controls, Blender pipeline, full
+  playthrough verification); credits in assets/CREDITS.md (M8); tagged v1.0.0. ALL ROADMAP
+  MILESTONES (1-9) COMPLETE.
