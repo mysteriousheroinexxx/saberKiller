@@ -553,9 +553,9 @@ const SETTINGS=(()=>{
 /* ---------------- progression / inventory (persisted) ---------------- */
 const Progress=(()=>{
   const KEY='sks.progress.v1';
-  const def={level:'arena',kills:0,maxWave:0,items:{scrap:0,almondWater:0,keys:0},shop:{bullets:3,health:2,keys:1}};
-  let s={...def,items:{...def.items},shop:{...def.shop}};
-  try{const raw=localStorage.getItem(KEY);if(raw){const p=JSON.parse(raw);s={...def,...p,items:{...def.items,...(p.items||{})},shop:{...def.shop,...(p.shop||{})}};}}catch(e){}
+  const def={level:'arena',kills:0,maxWave:0,items:{scrap:0,almondWater:0,keys:0},shop:{bullets:3,health:2,keys:1},quests:{delverWater:0}};
+  let s={...def,items:{...def.items},shop:{...def.shop},quests:{...def.quests}};
+  try{const raw=localStorage.getItem(KEY);if(raw){const p=JSON.parse(raw);s={...def,...p,items:{...def.items,...(p.items||{})},shop:{...def.shop,...(p.shop||{})},quests:{...def.quests,...(p.quests||{})}};}}catch(e){}
   function save(){try{if(typeof currentLevel!=='undefined')s.level=currentLevel;
     if(typeof P!=='undefined')s.kills=P.kills;
     localStorage.setItem(KEY,JSON.stringify(s));}catch(e){}}
@@ -2422,10 +2422,19 @@ const DIALOGUE_AGENT={
 const DIALOGUE_DELVER={
   start:{name:'DELVER',portrait:'assets/pfp.png',text:"Shh. You're loud. The stone remembers loud things.",next:'warn'},
   warn:{name:'DELVER',portrait:'assets/pfp.png',text:"I've delved these halls longer than you've been awake. The spikes bite. The torches lie. Want my counsel?",
-    choices:[{label:'"What should I fear?"',next:'fear'},{label:'"Any treasure?"',next:'treasure'}]},
+    choices:buildDelverWarnChoices},
   fear:{name:'DELVER',portrait:'assets/pfp.png',text:"The plates on the floor — step around them. And the entities... they hear your heartbeat. Keep it calm.",next:'end'},
   treasure:{name:'DELVER',portrait:'assets/pfp.png',text:"Scrap, buried in the dark. Take this — I've no use for it where I'm going.",
     choices:[{label:'[Take scrap]',action:()=>{Progress.addItem('scrap',3);showMsg('+3 Scrap');},next:'end'}]},
+  favorOffer:{name:'DELVER',portrait:'assets/pfp.png',text:"I need 2 Almond Water for the road below. Bring them and I'll pay you well — 5 scrap and a key.",
+    choices:[{label:'[Accept the favor]',action:()=>{Progress.get().quests.delverWater=1;Progress.save();showMsg('Favor accepted: bring 2 Almond Water');},next:'end'},
+      {label:'[Not now]',next:'end'}]},
+  favorActive:{name:'DELVER',portrait:'assets/pfp.png',text:"Got my 2 Almond Water? The dark down there is thirsty work.",
+    choices:()=>{const n=Progress.get().items.almondWater||0;
+      if(n>=2)return [{label:'[Deliver 2 Almond Water]',action:()=>{Progress.useItem('almondWater',2);Progress.addItem('scrap',5);Progress.addItem('keys',1);Progress.get().quests.delverWater=2;Progress.save();showMsg('Favor complete: +5 scrap, +1 key');},next:'favorDone'},{label:'[Not yet]',next:'end'}];
+      return [{label:'[I\'ll find some ('+n+'/2)]',next:'end'}];}},
+  favorDone:{name:'DELVER',portrait:'assets/pfp.png',text:"Good. The water will keep me sane below. Take this key — it opens more than doors. Go quietly.",
+    choices:[{label:'[Leave]',next:'end'}]},
   end:{name:'DELVER',portrait:'assets/pfp.png',text:"Go quietly. And if the torches go out all at once... don't breathe.",choices:[{label:'[Leave]',next:null}]}
 };
 /* procedural NPC portraits (hooded busts, per-character palette + marks) */
@@ -2533,6 +2542,15 @@ function buildTradeChoices(){
     buy('keys',5,'[Buy a key — 5 scrap]',()=>{Progress.addItem('keys',1);}),
     {label:'[Sell Almond Water — +2 scrap]',action:()=>tradeSell(()=>Progress.useItem('almondWater',1),2,'Sold Almond Water'),next:'trade'},
     {label:'[Done trading]',next:'end'}
+  ];
+}
+function buildDelverWarnChoices(){
+  const q=Progress.get().quests.delverWater;
+  const favorNext=q===0?'favorOffer':q===1?'favorActive':'favorDone';
+  return [
+    {label:'"What should I fear?"',next:'fear'},
+    {label:'"Any treasure?"',next:'treasure'},
+    {label:q===2?'"About that water..."':'"Need anything?"',next:favorNext}
   ];
 }
 

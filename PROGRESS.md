@@ -175,3 +175,9 @@
   gates on stock + scrap, decrements stock, saves. Verified labels show counts, 3 buys deplete
   bullets 3->0, SOLD OUT blocks further purchases (scrap unchanged), stock persists across
   reload, zero errors.
+- 2026-11-20: M7.4 done — quests/favors: Progress.quests {delverWater:0/1/2} (persisted);
+  Delver favor branch (favorOffer/favorActive/favorDone) with buildDelverWarnChoices() routing
+  by quest state and dynamic favorActive choices tracking inventory ("(N/2)"); deliver consumes
+  2 Almond Water, grants +5 scrap +1 key. Verified full lifecycle offer->accept->active->
+  deliver->done, reward + item consumption, zero errors. MILESTONE 7 (resource exchange /
+  trading) COMPLETE.

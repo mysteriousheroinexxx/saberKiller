@@ -60,7 +60,7 @@ scattered wall outlets, occasional pitch-black rooms / blood-red rooms.
 - [x] 7.1 Inventory + currency (e.g. "almond water" / scrap as Backrooms currency)
 - [x] 7.2 Trade UI: buy/sell ammo, health, keys, items via dialogue choices
 - [x] 7.3 NPC shops with stock + prices; transactions update inventory/HUD
-- [ ] 7.4 Quests/favors: NPC asks for an item -> reward (ties dialogue to gameplay)
+- [x] 7.4 Quests/favors: NPC asks for an item -> reward (ties dialogue to gameplay)
 
 ## Milestone 8 — Online resources (only if needed, CC0/permissive)
 - [ ] 8.1 Source CC0 textures (ambientCG/PolyHaven) for carpet/concrete/metal if procedural falls short
