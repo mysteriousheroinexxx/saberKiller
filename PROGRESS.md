@@ -158,3 +158,8 @@
   badge, delver scar) -> dataURLs; genPortraits() assigns each dialogue tree its own portrait
   (player HUD keeps pfp.png). Verified 3 distinct generated portraits render in dialogue
   (screenshot), zero errors. MILESTONE 6 (visual-novel NPC interaction) COMPLETE.
+- 2026-11-20: M7.1 done — inventory + currency UI: an INVENTORY panel (I key toggles, pauses
+  game) listing SCRAP (currency), ALMOND WATER (+40 HP, USE button), KEYS with live counts;
+  a persistent top-left scrap HUD readout updated in updateHUD; useAlmondWater() consumes via
+  Progress.useItem and heals +40 HP. Verified I opens/closes + pause/resume, counts render,
+  water heals 50->90 and decrements 2->1, scrap readout 5, panel screenshot, zero errors.

@@ -173,6 +173,20 @@
     color:#9fe0ff;font-size:16px;letter-spacing:.12em;opacity:0;transition:opacity .2s;
     text-shadow:0 1px 4px #000;background:#0a141ccc;padding:6px 14px;border:1px solid #2a5a7a;
     border-radius:4px}
+  #scrapHud{position:absolute;top:12px;left:12px;color:#ffd070;font-size:14px;
+    letter-spacing:.12em;text-shadow:0 1px 3px #000;background:#0c0a06aa;padding:5px 10px;
+    border:1px solid #3a2c16;border-radius:4px}
+  .invList{display:flex;flex-direction:column;gap:10px;margin:8px 0;min-width:min(80vw,360px)}
+  .invRow{display:flex;align-items:center;gap:12px;background:#12100a;border:1px solid #2c2216;
+    padding:10px 14px;border-radius:4px}
+  .invName{flex:1;color:#d8c8a0;font-size:14px;letter-spacing:.08em}
+  .invName small{color:#8a7a5a;letter-spacing:.05em}
+  .invRow b{color:#ffd070;font-size:18px;min-width:28px;text-align:right}
+  .invUse{background:#2a4a2a;color:#c0f0c0;border:1px solid #4a7a4a;padding:5px 12px;
+    font-size:12px;letter-spacing:.1em;cursor:pointer;border-radius:3px}
+  .invUse:hover{background:#3a6a3a}
+  .invUse:disabled{opacity:.4;cursor:default}
+  .invHint{color:#8a7a5a;font-size:12px;letter-spacing:.08em;margin-top:6px}
   #damage{position:fixed;inset:0;pointer-events:none;z-index:15;opacity:0;
     background:radial-gradient(ellipse at center,transparent 35%,#a00000cc 100%)}
   #lowhp{position:fixed;inset:0;pointer-events:none;z-index:14;opacity:0;
@@ -191,6 +205,7 @@
   <div id="waveBanner"></div><div id="waveSub"></div>
   <div id="pickupMsg"></div>
   <div id="npcPrompt"></div>
+  <div id="scrapHud">⚙ <b id="scrapVal">0</b> SCRAP</div>
   <div id="weaponName"></div>
   <div id="statusbar">
     <div class="stat"><span class="label">HEALTH</span><span class="value" id="hpVal">100</span><div class="bar hp"><i id="hpBar"></i></div></div>
@@ -265,6 +280,20 @@
       <label><span class="sLabel">FIELD OF VIEW <b id="fovVal">72</b></span><input type="range" id="fovSlider" min="60" max="110" step="1"></label>
     </div>
     <button class="bigbtn" id="settingsBackBtn" style="margin-top:26px">BACK</button>
+  </div>
+</div>
+
+<div id="inventoryScreen" class="overlay hidden">
+  <div class="panel">
+    <div class="title" style="font-size:min(7vw,40px)">INVENTORY</div>
+    <div class="rule"></div>
+    <div class="invList">
+      <div class="invRow"><span class="invName">SCRAP <small>(currency)</small></span><b id="invScrap">0</b></div>
+      <div class="invRow"><span class="invName">ALMOND WATER <small>(+40 HP)</small></span><b id="invWater">0</b><button class="invUse" id="useWaterBtn">USE</button></div>
+      <div class="invRow"><span class="invName">KEYS</span><b id="invKeys">0</b></div>
+    </div>
+    <div class="invHint">[I] close · scrap trades with NPCs</div>
+    <button class="bigbtn" id="invBackBtn" style="margin-top:18px">CLOSE</button>
   </div>
 </div>
 
@@ -2335,6 +2364,7 @@ function updateHUD(){
   const w=WEAPONS[P.weapon];
   $('ammoVal').textContent=P[w.ammo];
   $('killVal').textContent=P.kills;
+  $('scrapVal').textContent=Progress.get().items.scrap||0;
   $('waveVal').textContent=WS.wave;
   $('weaponName').textContent=`[${P.weapon+1}] ${w.name}`;
   const ammoCap=w.ammo==='bullets'?120:40;
@@ -2458,12 +2488,32 @@ const Dialogue=(()=>{
   return {open,advance,close,isActive:()=>active};
 })();
 
+/* ---------------- inventory / currency ---------------- */
+function refreshInventory(){
+  const it=Progress.get().items;
+  $('invScrap').textContent=it.scrap||0;
+  $('invWater').textContent=it.almondWater||0;
+  $('invKeys').textContent=it.keys||0;
+  $('scrapVal').textContent=it.scrap||0;
+  $('useWaterBtn').disabled=(it.almondWater||0)<1||P.hp>=100;
+}
+function toggleInventory(){
+  const el=$('inventoryScreen');
+  if(el.classList.contains('hidden')){refreshInventory();el.classList.remove('hidden');WS.paused=true;}
+  else{el.classList.add('hidden');if(!P.dead)WS.paused=false;}
+}
+function useAlmondWater(){
+  if(P.hp>=100){showMsg('Health already full');return;}
+  if(Progress.useItem('almondWater',1)){P.hp=Math.min(100,P.hp+40);showMsg('+40 HP (Almond Water)');refreshInventory();}
+}
+
 /* ---------------- input ---------------- */
 let mouseDown=false;
 function bindInput(){
   addEventListener('keydown',e=>{
     if(Dialogue.isActive()){if(e.code==='Space'||e.code==='Enter'){Dialogue.advance();e.preventDefault();}return;}
     if(e.code==='KeyE'&&nearNPC&&WS.playing&&!WS.paused){Dialogue.open(nearNPC.tree,'start');e.preventDefault();return;}
+    if(e.code==='KeyI'&&WS.playing&&!Dialogue.isActive()){toggleInventory();e.preventDefault();return;}
     keys[e.code]=true;
     if(e.code==='Digit1'&&P.weapon!==0){P.weapon=0;P.switchT=.22;gunPistol.visible=true;gunShotgun.visible=false;}
     if(e.code==='Digit2'&&P.weapon!==1){P.weapon=1;P.switchT=.22;gunPistol.visible=false;gunShotgun.visible=true;}
@@ -2510,6 +2560,8 @@ function bindInput(){
   $('settingsBtn').onclick=()=>openSettings('startScreen');
   $('settingsBtn2').onclick=()=>openSettings('pauseScreen');
   $('settingsBackBtn').onclick=()=>{$('settingsScreen').classList.add('hidden');$(settingsReturn).classList.remove('hidden');};
+  $('invBackBtn').onclick=toggleInventory;
+  $('useWaterBtn').onclick=useAlmondWater;
   $('sensSlider').oninput=e=>{SETTINGS.set('sens',parseFloat(e.target.value));refreshSettingsLabels();};
   $('volSlider').oninput=e=>{SETTINGS.set('volume',parseFloat(e.target.value));refreshSettingsLabels();};
   $('fovSlider').oninput=e=>{SETTINGS.set('fov',parseInt(e.target.value));refreshSettingsLabels();};

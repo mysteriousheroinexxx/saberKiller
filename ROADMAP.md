@@ -57,7 +57,7 @@ scattered wall outlets, occasional pitch-black rooms / blood-red rooms.
 - [x] 6.4 NPC portraits (reuse pfp.png style / generate / CC0)
 
 ## Milestone 7 — Resource exchange / trading
-- [ ] 7.1 Inventory + currency (e.g. "almond water" / scrap as Backrooms currency)
+- [x] 7.1 Inventory + currency (e.g. "almond water" / scrap as Backrooms currency)
 - [ ] 7.2 Trade UI: buy/sell ammo, health, keys, items via dialogue choices
 - [ ] 7.3 NPC shops with stock + prices; transactions update inventory/HUD
 - [ ] 7.4 Quests/favors: NPC asks for an item -> reward (ties dialogue to gameplay)
