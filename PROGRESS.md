@@ -181,3 +181,8 @@
   2 Almond Water, grants +5 scrap +1 key. Verified full lifecycle offer->accept->active->
   deliver->done, reward + item consumption, zero errors. MILESTONE 7 (resource exchange /
   trading) COMPLETE.
+- 2026-11-20: M8 done — wrote assets/CREDITS.md documenting provenance/licenses (three.js MIT;
+  original procedural textures/audio/portraits/layouts + Blender barrel; user-provided Saber
+  model + Mixamo royalty-free animations, handgun/shotgun, pfp.png; legacy athena/saber_animated
+  noted). 8.1/8.2 evaluated NOT NEEDED — procedural quality sufficient across 5 levels, so no
+  CC0 downloads required (condition not met). MILESTONE 8 COMPLETE.

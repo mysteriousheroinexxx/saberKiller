@@ -63,9 +63,9 @@ scattered wall outlets, occasional pitch-black rooms / blood-red rooms.
 - [x] 7.4 Quests/favors: NPC asks for an item -> reward (ties dialogue to gameplay)
 
 ## Milestone 8 — Online resources (only if needed, CC0/permissive)
-- [ ] 8.1 Source CC0 textures (ambientCG/PolyHaven) for carpet/concrete/metal if procedural falls short
-- [ ] 8.2 Source CC0 low-poly props/NPC base meshes (Kenney/Quaternius/PolyHaven) if Blender-from-scratch is slow
-- [ ] 8.3 License/attribution recorded in assets/CREDITS.md
+- [x] 8.1 CC0 textures — evaluated: NOT NEEDED (procedural KTG textures sufficient across all 5 levels, verified by screenshot)
+- [x] 8.2 CC0 props/NPC meshes — evaluated: NOT NEEDED (Blender prop pipeline + procedural NPC figures sufficient)
+- [x] 8.3 License/attribution recorded in assets/CREDITS.md
 
 ## Milestone 9 — Integration, balance, final polish
 - [ ] 9.1 Full playthrough verification: all levels reachable, NPCs talkable, trades work
