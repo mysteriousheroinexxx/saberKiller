@@ -70,5 +70,5 @@ scattered wall outlets, occasional pitch-black rooms / blood-red rooms.
 ## Milestone 9 — Integration, balance, final polish
 - [x] 9.1 Full playthrough verification: all levels reachable, NPCs talkable, trades work
 - [x] 9.2 Balance: enemy density per level, resource economy, difficulty curve
-- [ ] 9.3 Performance pass (instancing, disposal, texture budgets) for a full horde
+- [x] 9.3 Performance pass (instancing, disposal, texture budgets) for a full horde
 - [ ] 9.4 Final README + credits + git tag

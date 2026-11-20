@@ -1784,6 +1784,7 @@ function removeZombie(zb){
   const mats=new Set();
   zb.group.traverse(o=>{if(o.isMesh){
     if(!zb.rigid)o.geometry.dispose(); // GLB geometry is shared with the template
+    if(o.isSkinnedMesh&&o.skeleton&&o.skeleton.boneTexture)o.skeleton.boneTexture.dispose();
     mats.add(o.material);}});
   mats.forEach(m=>m.dispose());
   hitMeshes=hitMeshes.filter(m=>m.userData.zb!==zb);
@@ -1967,7 +1968,7 @@ function updateParticles(dt){
   }
 }
 function addDecal(x,z){
-  if(decals.length>34){const old=decals.shift();scene.remove(old.mesh);}
+  if(decals.length>34){const old=decals.shift();scene.remove(old.mesh);old.mesh.geometry.dispose();old.mesh.material.dispose();}
   const m=new THREE.Mesh(new THREE.CircleGeometry(R(.4,.75),12),
     new THREE.MeshBasicMaterial({map:TEX.blood_decal,transparent:true,opacity:.9,depthWrite:false}));
   m.rotation.x=-Math.PI/2;m.rotation.z=R(0,6.28);
@@ -1978,11 +1979,11 @@ function updateDecals(dt){
   for(const d of [...decals]){
     d.t+=dt;
     if(d.t>18){d.mesh.material.opacity=Math.max(0,.9*(1-(d.t-18)/4));
-      if(d.t>22){scene.remove(d.mesh);decals.splice(decals.indexOf(d),1);}}
+      if(d.t>22){scene.remove(d.mesh);d.mesh.geometry.dispose();d.mesh.material.dispose();decals.splice(decals.indexOf(d),1);}}
   }
 }
 function addTracer(from,to){
-  if(tracers.length>14){const old=tracers.shift();scene.remove(old.line);}
+  if(tracers.length>14){const old=tracers.shift();scene.remove(old.line);old.line.geometry.dispose();old.line.material.dispose();}
   const geo=new THREE.BufferGeometry().setFromPoints([from,to]);
   const line=new THREE.Line(geo,new THREE.LineBasicMaterial({color:0xffcc66,transparent:true,opacity:.85}));
   scene.add(line);tracers.push({line,t:0});
@@ -1990,7 +1991,7 @@ function addTracer(from,to){
 function updateTracers(dt){
   for(const t of [...tracers]){
     t.t+=dt;
-    if(t.t>.07){scene.remove(t.line);tracers.splice(tracers.indexOf(t),1);continue;}
+    if(t.t>.07){scene.remove(t.line);t.line.geometry.dispose();t.line.material.dispose();tracers.splice(tracers.indexOf(t),1);continue;}
     t.line.material.opacity=.85*(1-t.t/.07);
   }
 }

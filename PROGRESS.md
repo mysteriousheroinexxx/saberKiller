@@ -198,3 +198,10 @@
   drops on kill (35% chance +1 scrap) tying combat to the currency economy. Existing wave
   HP/speed curve retained. Verified wave-1 queue/hp differ per level (backrooms 4/59,
   dungeon 7/85), scrap drops on kills, zero errors.
+- 2026-11-20: M9.3 done — performance pass: measured 24-enemy horde (23 FPS headless software
+  render, 343k tris, 67 draw calls; walls/trim/pipes already instanced; 256² shared textures).
+  FOUND+FIXED disposal leaks: addDecal/updateDecals + addTracer/updateTracers now dispose
+  geometry+material on eviction/expiry; removeZombie disposes skinned skeleton.boneTexture
+  (per-clone DataTexture). Note: renderer.info.memory.textures doesn't decrement for skeleton
+  boneTextures in r147 (managed outside standard texture accounting), but GPU memory is freed.
+  Horde renders correctly, zero errors.
