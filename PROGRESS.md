@@ -192,3 +192,9 @@
   setLayout (carves minimal walls to connect sealed floor to start region). Re-audit: all
   levels fully reachable (backrooms 735/735, stress x4 connected), NPCs talkable, combat KILL
   OK on every level, full portal chain, zero errors. Trades verified in M7.
+- 2026-11-20: M9.2 done — balance: BALANCE table (per-level density + tough multipliers);
+  startWave queue scaled by density (backrooms 0.6 fewer, habitable 1.2 more); enemyHp()
+  scales HP by level toughness (replaces flat 55+wave*10 across all 4 spawn paths); scrap
+  drops on kill (35% chance +1 scrap) tying combat to the currency economy. Existing wave
+  HP/speed curve retained. Verified wave-1 queue/hp differ per level (backrooms 4/59,
+  dungeon 7/85), scrap drops on kills, zero errors.
