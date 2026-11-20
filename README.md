@@ -24,9 +24,12 @@ Click CLICK TO PLAY. Mouse is captured via pointer lock; ESC pauses.
     WASD / arrows   move (arrows also turn)
     Mouse           aim
     Click / hold    shoot
+    Left Alt        toggle between free cursor and pointer lock
+    R               reload current weapon (also reloads automatically on empty)
     1 / 2           pistol / shotgun
     Shift           sprint
     E               talk to a nearby NPC
+    Up / Down       navigate dialogue choices; Enter / Space select
     I               inventory (use Almond Water, see scrap/keys)
     Esc             pause
 
@@ -60,6 +63,10 @@ warehouse, Delver in the dungeon). Approach and press E for a visual-novel dialo
 - The M.E.G. Agent runs a shop: buy bullets / health / keys with scrap, sell
   Almond Water. Stock is limited and persists ("(N left)" / "SOLD OUT").
 - The Delver offers a favor quest: bring 2 Almond Water for +5 scrap and a key.
+
+In Level 0, the exit gate is sealed. Find the Summoner Wizard and agree to help gather
+the three reagents. Sabers rush the wizard while his 40-second portal rite is underway;
+keep him alive, then reach the gate once the portal opens.
 
 Currency is scrap (dropped by kills, gifted, and traded). Almond Water heals +40 HP
 from the inventory (I). Keys are a quest/trade reward.
@@ -130,7 +137,10 @@ normalizes Mixamo exports; `tools/blender_rig.py` is the legacy procedural rig.
 
 - Three.js r147 (vendored, MIT) — upgraded from r128 so cloned SkinnedMeshes
   deform correctly while moving.
-- Single index.html + vendored three.min.js / GLTFLoader / SkeletonUtils.
+- `js/engine.js` owns reusable world/combat systems; `js/systems/` holds shared
+  gameplay modules such as weapon definitions and reload timing; `js/levels/`
+  contains level-specific story and encounter logic. The HUD remains in `index.html`.
+- Vendored three.min.js / GLTFLoader / SkeletonUtils.
 - InstancedMesh walls/trim/pipes, pooled particles/tracers/decals, per-enemy
   material + mixer + skeleton.boneTexture disposal between waves.
 - Per-level layout generators with a connectivity bridge pass (ensureConnected)

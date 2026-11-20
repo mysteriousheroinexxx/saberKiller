@@ -218,3 +218,12 @@
   entrances, pink/purple HUD/inventory/dialogue/settings. Verified button shear matrix
   (-0.194), themed computed colors across surfaces, PLAY/combat/inventory all functional,
   zero errors. prefers-reduced-motion respected.
+- 2026-11-20: current-level handoff — extracted shared weapon data/reload timing to
+  `js/systems/weapons.js`; added pistol/shotgun magazines, timed manual/automatic reload,
+  reserve display, and an angled RPG-style health meter. Completed the Level 0 plug-in
+  lifecycle and added the Summoner gate/40-second defense encounter: sabers target and
+  damage the wizard, and the gate remains sealed until the rite completes. Updated the
+  level and control documentation. Browser verification remains pending.
+- 2026-11-20: input accessibility — Left Alt toggles free cursor mode without opening
+  the pause screen; Left Alt again restores pointer lock. Dialogue choices support
+  Up/Down focus navigation and Enter/Space activation.
