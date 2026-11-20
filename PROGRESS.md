@@ -169,3 +169,9 @@
   scrap, done) looping back to the trade node. Verified full transaction sequence numerically
   (scrap 10->7->5->0, bullets +24, hp +50, key +1, insufficient-funds guard, sell +2 scrap),
   trade menu render with prices + agent portrait + scrap HUD (screenshot), zero errors.
+- 2026-11-20: M7.3 done — NPC shops with limited stock: Progress.shop {bullets:3,health:2,
+  keys:1} (persisted); Dialogue engine gained choicesOf() supporting dynamic choice functions;
+  buildTradeChoices() renders stock-aware labels ("(N left)" / "SOLD OUT"); tradeBuyStock()
+  gates on stock + scrap, decrements stock, saves. Verified labels show counts, 3 buys deplete
+  bullets 3->0, SOLD OUT blocks further purchases (scrap unchanged), stock persists across
+  reload, zero errors.

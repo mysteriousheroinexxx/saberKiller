@@ -553,9 +553,9 @@ const SETTINGS=(()=>{
 /* ---------------- progression / inventory (persisted) ---------------- */
 const Progress=(()=>{
   const KEY='sks.progress.v1';
-  const def={level:'arena',kills:0,maxWave:0,items:{scrap:0,almondWater:0,keys:0}};
-  let s={...def,items:{...def.items}};
-  try{const raw=localStorage.getItem(KEY);if(raw){const p=JSON.parse(raw);s={...def,...p,items:{...def.items,...(p.items||{})}};}}catch(e){}
+  const def={level:'arena',kills:0,maxWave:0,items:{scrap:0,almondWater:0,keys:0},shop:{bullets:3,health:2,keys:1}};
+  let s={...def,items:{...def.items},shop:{...def.shop}};
+  try{const raw=localStorage.getItem(KEY);if(raw){const p=JSON.parse(raw);s={...def,...p,items:{...def.items,...(p.items||{})},shop:{...def.shop,...(p.shop||{})}};}}catch(e){}
   function save(){try{if(typeof currentLevel!=='undefined')s.level=currentLevel;
     if(typeof P!=='undefined')s.kills=P.kills;
     localStorage.setItem(KEY,JSON.stringify(s));}catch(e){}}
@@ -2413,14 +2413,7 @@ const DIALOGUE_AGENT={
   start:{name:'M.E.G. AGENT',portrait:'assets/pfp.png',text:"Hold up — friendly. M.E.G., Major Explorer Group. We map these levels and help wanderers survive.",next:'offer'},
   offer:{name:'M.E.G. AGENT',portrait:'assets/pfp.png',text:"You look like you've been through it. We've got an outpost nearby. Supplies, info, or trade?",
     choices:[{label:'"What supplies?"',next:'supplies'},{label:'"Tell me about the levels."',next:'levels'},{label:'"Let\'s trade."',next:'trade'}]},
-  trade:{name:'M.E.G. AGENT',portrait:'assets/pfp.png',text:"Scrap talks. What'll it be?",
-    choices:[
-      {label:'[Buy 24 bullets — 3 scrap]',action:()=>tradeBuy(3,()=>{P.bullets=Math.min(120,P.bullets+24);},'Bought 24 bullets'),next:'trade'},
-      {label:'[Buy +50 HP — 2 scrap]',action:()=>tradeBuy(2,()=>{P.hp=Math.min(100,P.hp+50);},'Bought +50 HP'),next:'trade'},
-      {label:'[Buy a key — 5 scrap]',action:()=>tradeBuy(5,()=>{Progress.addItem('keys',1);},'Bought a key'),next:'trade'},
-      {label:'[Sell Almond Water — +2 scrap]',action:()=>tradeSell(()=>Progress.useItem('almondWater',1),2,'Sold Almond Water'),next:'trade'},
-      {label:'[Done trading]',next:'end'}
-    ]},
+  trade:{name:'M.E.G. AGENT',portrait:'assets/pfp.png',text:"Scrap talks. What'll it be?",choices:buildTradeChoices},
   supplies:{name:'M.E.G. AGENT',portrait:'assets/pfp.png',text:"Almond Water for the sanity, scrap for trading. Here — take a ration. On the house.",
     choices:[{label:'[Accept ration]',action:()=>{Progress.addItem('almondWater',1);Progress.addItem('scrap',2);showMsg('+1 Almond Water, +2 Scrap');},next:'end'}]},
   levels:{name:'M.E.G. AGENT',portrait:'assets/pfp.png',text:"Level 0 is the Lobby — yellow, endless. Level 1 is this warehouse. Deeper gets worse. Follow the exit rifts, and watch for entities.",next:'end'},
@@ -2471,10 +2464,11 @@ function genPortraits(){
 genPortraits();
 const Dialogue=(()=>{
   let tree=null,node=null,typing=false,fullText='',shown=0,typeTimer=null,active=false,onClose=null;
+  function choicesOf(n){return typeof n.choices==='function'?n.choices():n.choices;}
   function finishType(){clearInterval(typeTimer);typing=false;$('dlgText').textContent=fullText;
-    if(node.choices&&node.choices.length)renderChoices();else $('dlgAdvance').style.opacity=1;}
+    const ch=choicesOf(node);if(ch&&ch.length)renderChoices();else $('dlgAdvance').style.opacity=1;}
   function renderChoices(){const c=$('dlgChoices');c.innerHTML='';
-    node.choices.forEach(ch=>{const b=document.createElement('button');b.className='dlgChoice';
+    choicesOf(node).forEach(ch=>{const b=document.createElement('button');b.className='dlgChoice';
       b.textContent=ch.label;b.onclick=e=>{e.stopPropagation();if(ch.action)ch.action();
         if(ch.next)show(ch.next);else close();};c.appendChild(b);});}
   function show(id){node=tree[id];if(!node){close();return;}
@@ -2488,7 +2482,7 @@ const Dialogue=(()=>{
   function open(t,start,closeCb){tree=t;onClose=closeCb||null;active=true;WS.paused=true;
     $('dialogueBox').classList.remove('hidden');show(start||'start');}
   function advance(){if(!active)return;if(typing){finishType();return;}
-    if(node.choices&&node.choices.length)return;
+    const ch=choicesOf(node);if(ch&&ch.length)return;
     if(node.next)show(node.next);else close();}
   function close(){active=false;clearInterval(typeTimer);$('dialogueBox').classList.add('hidden');
     WS.paused=false;if(onClose)onClose();}
@@ -2521,6 +2515,25 @@ function tradeBuy(price,grant,label){
 function tradeSell(consume,reward,label){
   if(!consume()){showMsg('Nothing to sell');return;}
   Progress.addItem('scrap',reward);showMsg(label);refreshInventory();
+}
+function tradeBuyStock(stockKey,price,grant,label){
+  const sh=Progress.get().shop;
+  if((sh[stockKey]||0)<=0){showMsg('Sold out');return;}
+  if((Progress.get().items.scrap||0)<price){showMsg('Not enough scrap');return;}
+  sh[stockKey]--;Progress.useItem('scrap',price);grant();Progress.save();showMsg(label);refreshInventory();
+}
+function buildTradeChoices(){
+  const sh=Progress.get().shop;
+  const buy=(key,price,label,grant)=>({
+    label:sh[key]>0?label+' ('+sh[key]+' left)':label+' — SOLD OUT',
+    action:()=>tradeBuyStock(key,price,grant,label),next:'trade'});
+  return [
+    buy('bullets',3,'[Buy 24 bullets — 3 scrap]',()=>{P.bullets=Math.min(120,P.bullets+24);}),
+    buy('health',2,'[Buy +50 HP — 2 scrap]',()=>{P.hp=Math.min(100,P.hp+50);}),
+    buy('keys',5,'[Buy a key — 5 scrap]',()=>{Progress.addItem('keys',1);}),
+    {label:'[Sell Almond Water — +2 scrap]',action:()=>tradeSell(()=>Progress.useItem('almondWater',1),2,'Sold Almond Water'),next:'trade'},
+    {label:'[Done trading]',next:'end'}
+  ];
 }
 
 /* ---------------- input ---------------- */
