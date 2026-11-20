@@ -2411,8 +2411,16 @@ const DIALOGUE_DEMO={
 };
 const DIALOGUE_AGENT={
   start:{name:'M.E.G. AGENT',portrait:'assets/pfp.png',text:"Hold up — friendly. M.E.G., Major Explorer Group. We map these levels and help wanderers survive.",next:'offer'},
-  offer:{name:'M.E.G. AGENT',portrait:'assets/pfp.png',text:"You look like you've been through it. We've got an outpost nearby. Want supplies, or information?",
-    choices:[{label:'"What supplies?"',next:'supplies'},{label:'"Tell me about the levels."',next:'levels'}]},
+  offer:{name:'M.E.G. AGENT',portrait:'assets/pfp.png',text:"You look like you've been through it. We've got an outpost nearby. Supplies, info, or trade?",
+    choices:[{label:'"What supplies?"',next:'supplies'},{label:'"Tell me about the levels."',next:'levels'},{label:'"Let\'s trade."',next:'trade'}]},
+  trade:{name:'M.E.G. AGENT',portrait:'assets/pfp.png',text:"Scrap talks. What'll it be?",
+    choices:[
+      {label:'[Buy 24 bullets — 3 scrap]',action:()=>tradeBuy(3,()=>{P.bullets=Math.min(120,P.bullets+24);},'Bought 24 bullets'),next:'trade'},
+      {label:'[Buy +50 HP — 2 scrap]',action:()=>tradeBuy(2,()=>{P.hp=Math.min(100,P.hp+50);},'Bought +50 HP'),next:'trade'},
+      {label:'[Buy a key — 5 scrap]',action:()=>tradeBuy(5,()=>{Progress.addItem('keys',1);},'Bought a key'),next:'trade'},
+      {label:'[Sell Almond Water — +2 scrap]',action:()=>tradeSell(()=>Progress.useItem('almondWater',1),2,'Sold Almond Water'),next:'trade'},
+      {label:'[Done trading]',next:'end'}
+    ]},
   supplies:{name:'M.E.G. AGENT',portrait:'assets/pfp.png',text:"Almond Water for the sanity, scrap for trading. Here — take a ration. On the house.",
     choices:[{label:'[Accept ration]',action:()=>{Progress.addItem('almondWater',1);Progress.addItem('scrap',2);showMsg('+1 Almond Water, +2 Scrap');},next:'end'}]},
   levels:{name:'M.E.G. AGENT',portrait:'assets/pfp.png',text:"Level 0 is the Lobby — yellow, endless. Level 1 is this warehouse. Deeper gets worse. Follow the exit rifts, and watch for entities.",next:'end'},
@@ -2505,6 +2513,14 @@ function toggleInventory(){
 function useAlmondWater(){
   if(P.hp>=100){showMsg('Health already full');return;}
   if(Progress.useItem('almondWater',1)){P.hp=Math.min(100,P.hp+40);showMsg('+40 HP (Almond Water)');refreshInventory();}
+}
+function tradeBuy(price,grant,label){
+  if((Progress.get().items.scrap||0)<price){showMsg('Not enough scrap');return;}
+  Progress.useItem('scrap',price);grant();showMsg(label);refreshInventory();
+}
+function tradeSell(consume,reward,label){
+  if(!consume()){showMsg('Nothing to sell');return;}
+  Progress.addItem('scrap',reward);showMsg(label);refreshInventory();
 }
 
 /* ---------------- input ---------------- */

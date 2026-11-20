@@ -163,3 +163,9 @@
   a persistent top-left scrap HUD readout updated in updateHUD; useAlmondWater() consumes via
   Progress.useItem and heals +40 HP. Verified I opens/closes + pause/resume, counts render,
   water heals 50->90 and decrements 2->1, scrap readout 5, panel screenshot, zero errors.
+- 2026-11-20: M7.2 done — trade UI via dialogue choices: tradeBuy(price,grant)/tradeSell
+  (consume,reward) helpers (scrap-gated, refresh inventory); added a 'trade' branch to
+  DIALOGUE_AGENT (buy 24 bullets/3 scrap, +50 HP/2 scrap, key/5 scrap, sell Almond Water/+2
+  scrap, done) looping back to the trade node. Verified full transaction sequence numerically
+  (scrap 10->7->5->0, bullets +24, hp +50, key +1, insufficient-funds guard, sell +2 scrap),
+  trade menu render with prices + agent portrait + scrap HUD (screenshot), zero errors.
