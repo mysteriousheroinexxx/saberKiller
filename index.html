@@ -160,7 +160,7 @@
   .stat .value{font-size:38px;font-weight:bold;line-height:1.05;
     text-shadow:0 0 10px currentColor,0 2px 0 #000}
   #hpVal{color:var(--doom-red)} #ammoVal{color:var(--doom-amber)}
-  #killVal{color:#cfcfcf} #waveVal{color:var(--doom-green)}
+  #killVal{color:#cfcfcf} #saberVal{color:var(--doom-green)}
   #face{width:64px;height:64px;image-rendering:pixelated;margin:0 14px;
     border:2px solid #2c2216;background:#0c0a06}
   #weaponName{position:absolute;right:16px;bottom:96px;color:#9a8a6a;
@@ -178,7 +178,10 @@
   #missionHud{position:absolute;left:50%;top:14px;transform:translateX(-50%);opacity:0;
     padding:8px 16px;background:#241b36e8;border:1px solid var(--osu-pink-dark);border-radius:7px;
     color:#ffddee;font-size:14px;font-weight:bold;letter-spacing:.14em;text-shadow:0 0 10px #ff66aa77;
-    box-shadow:0 4px 18px #0008;transition:opacity .2s;white-space:nowrap}
+    box-shadow:0 4px 18px #0008;transition:opacity .2s;width:min(320px,80vw);white-space:normal}
+  #summonerBarTrack{height:8px;margin-top:6px;background:#100c17;border:1px solid #5d3b66;border-radius:5px;overflow:hidden}
+  #summonerBarFill{height:100%;width:100%;background:linear-gradient(90deg,#d64762,#f5a0a0);transition:width .2s}
+  #summonerStatus{display:block;margin-top:6px;font-size:11px;letter-spacing:.1em;text-align:center}
   #reloadVal{display:block;min-height:14px;color:var(--osu-pink-light);font-size:10px;
     font-weight:bold;letter-spacing:.13em;text-shadow:0 0 8px #ff66aa66}
   #npcPrompt{position:absolute;left:50%;top:70%;transform:translateX(-50%);
@@ -303,7 +306,7 @@
   .stat{border-right:2px solid #4a3a66}
   .stat .label{color:#9a8abc}
   .stat .value{font-variant-numeric:tabular-nums}
-  #hpVal{color:#ff6688}#ammoVal{color:var(--osu-pink-light)}#killVal{color:#e8dcf5}#waveVal{color:#aa88ff}
+  #hpVal{color:#ff6688}#ammoVal{color:var(--osu-pink-light)}#killVal{color:#e8dcf5}#saberVal{color:#aa88ff}
   .bar{background:#1e1530;border:1px solid #4a3a66}
   .bar.hp i{background:linear-gradient(90deg,#cc5288,#ff66aa)}
   .bar.ammo i{background:linear-gradient(90deg,#6644cc,#aa88ff)}
@@ -340,7 +343,7 @@
     <canvas id="face" width="64" height="64"></canvas>
     <div class="stat"><span class="label">AMMO</span><span class="value" id="ammoVal">12 / 36</span><div class="bar ammo"><i id="ammoBar"></i></div><span id="reloadVal"></span></div>
     <div class="stat"><span class="label">KILLS</span><span class="value" id="killVal">0</span></div>
-    <div class="stat"><span class="label">WAVE</span><span class="value" id="waveVal">1</span></div>
+    <div class="stat"><span class="label">SABERS</span><span class="value" id="saberVal">0</span></div>
   </div>
 </div>
 <div id="damage"></div><div id="lowhp"></div><div id="scanlines"></div>
@@ -361,7 +364,7 @@
     <div class="controls">
       <b>WASD</b> move &nbsp;&middot;&nbsp; <b>MOUSE</b> aim &nbsp;&middot;&nbsp; <b>CLICK / HOLD</b> shoot<br>
       <b>1 / 2</b> pistol / shotgun &nbsp;&middot;&nbsp; <b>SHIFT</b> sprint &nbsp;&middot;&nbsp; <b>ESC</b> pause<br>
-      Survive the waves of Saber. They keep coming. Headshots deal double damage. huhuhu
+      Sabers arrive in timed groups. Headshots deal double damage. huhuhu
     </div>
     <button class="bigbtn" id="startBtn">CLICK TO PLAY</button>
     <button class="smallbtn" id="settingsBtn">SETTINGS</button>

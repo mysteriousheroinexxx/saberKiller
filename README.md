@@ -55,7 +55,7 @@ enemy balance (density + toughness). A fog-of-war minimap reveals as you explore
 
 ## NPCs, dialogue, trading & quests
 
-Friendly robed NPCs idle in the levels (Wanderer in the Lobby, M.E.G. Agent in the
+Friendly NPCs idle in the levels (the Mixamo sorcerer in the Lobby, M.E.G. Agent in the
 warehouse, Delver in the dungeon). Approach and press E for a visual-novel dialogue
 (portrait, typewriter text, branching choices):
 
@@ -131,7 +131,11 @@ Low-poly props are generated headless in Blender 5.3 and loaded/instanced in-gam
     ~/bin/blender-5.3.0-linux-x64/blender --background --python tools/blender_prop.py -- assets/prop_barrel.glb
 
 `tools/blender_prop.py` builds the metal barrel; `tools/blender_clean.py`
-normalizes Mixamo exports; `tools/blender_rig.py` is the legacy procedural rig.
+normalizes Mixamo character exports; `tools/blender_animation.py` exports compact
+animation-only Mixamo rigs; `tools/blender_rig.py` is the legacy procedural rig.
+The Lobby sorcerer uses the idle character mesh, with a matching running clip loaded
+and available for later movement states. Its base-color texture is extracted from the
+original T-pose GLB and reused across the animated mesh's matching UV layout.
 
 ## Tech
 

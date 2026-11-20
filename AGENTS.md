@@ -29,6 +29,13 @@ Read `ROADMAP.md` for the ordered build plan and `PROGRESS.md` for what's done.
   Ground/scale from a TRUE skinned bbox (`skinnedWorldBox`), not Box3.setFromObject.
   Re-attach skin from `assets/saber.glb` by mesh-name leading digit. See skill
   reference `mixamo-glb-normalization.md`.
+- Summoner Sorcerer: normalize the user's `makimaSorcererIdleStanding.glb` with
+  `tools/blender_clean.py`; use `tools/blender_animation.py` on the running export to
+  keep only its Mixamo rig/actions. The idle GLB is the mesh source; action clips bind
+  by matching `mixamorig:*` bone names. Ground/scale via `skinnedWorldBox`, clone with
+  `THREE.SkeletonUtils.clone`. Both Mixamo exports strip materials; reattach the user's
+  base-color image extracted from `makimaTpose.glb` (`assets/makimaSorcerer_baseColor.png`)
+  to the animated mesh chunks, which share the original UV layout.
 - Blender 5.3 headless: `~/bin/blender-5.3.0-linux-x64/blender --background
   --python <script> -- <args>` (use `env -i HOME=$HOME PATH=/usr/bin:/bin` to
   avoid Python-env poisoning). Design low-poly props/NPCs here -> assets/*.glb.

@@ -19,8 +19,9 @@ export function updateReload(player,dt){
   player.reloadT=Math.max(0,player.reloadT-dt);
   if(player.reloadT!==0||player.reloadWeapon<0)return;
   const weapon=WEAPONS[player.reloadWeapon],key=weapon.ammo;
-  const loaded=Math.min(weapon.capacity,player[key]);
+  const needed=Math.max(0,weapon.capacity-player.mag[key]);
+  const loaded=Math.min(needed,player[key]);
   player[key]-=loaded;
-  player.mag[key]=loaded;
+  player.mag[key]+=loaded;
   player.reloadWeapon=-1;
 }

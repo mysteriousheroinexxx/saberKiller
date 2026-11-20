@@ -30,6 +30,18 @@ procedurally at runtime and carry no external license.
   they are **not CC0** and may not be redistributed as a standalone asset pack.
   `*_clean.glb` are derivative re-exports (unit-normalized) of the user's Mixamo downloads.
 - **`handgun.glb`, `shotgun.glb`** — weapon viewmodels supplied by the user.
+- **`makimaSorcererIdleStanding_clean.glb`** and **`makimaSorcererActions.glb`** —
+  normalized derivatives of the user's `makimaSorcererIdleStanding.glb` and
+  `makimaSorcererRunning.glb` Mixamo exports. The standing model supplies the wizard
+  mesh and idle clip; the compact animation-only file supplies idle/run clips on the
+  same rig. Blender 5.3 normalization removes the stray Icosphere and fixes the
+  Armature's 0.01 scale. **`makimaSorcerer_baseColor.png`** is extracted from the user's
+  `makimaTpose.glb` and reattached to the animated mesh, whose eight chunks share the
+  original material/UV layout. Same Mixamo usage terms as the Saber clips.
+- **`blood_decals_psx.glb`** — “Blood Decals PSX” by raydevv, sourced from
+  [Sketchfab](https://sketchfab.com/3d-models/blood-decals-psx-d036a3b7b3d24e2d84b06905f3d301fe),
+  licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Used for
+  Summoner and Saber death decals; enemy hit bursts remain procedural.
 - **`pfp.png`** — HUD character portrait, an anime illustration supplied by the user
   (license unspecified by the source; used here at the owner's direction).
 

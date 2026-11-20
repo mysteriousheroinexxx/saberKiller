@@ -227,3 +227,18 @@
 - 2026-11-20: input accessibility — Left Alt toggles free cursor mode without opening
   the pause screen; Left Alt again restores pointer lock. Dialogue choices support
   Up/Down focus navigation and Enter/Space activation.
+- 2026-11-20: Summoner asset integration — normalized the user's standing Makima Mixamo
+  GLB with the existing Blender cleanup pipeline; extracted the running export's clips
+  into a compact animation-only GLB. The Level 0 NPC now swaps its procedural fallback
+  for a SkeletonUtils clone, grounded with the skinned-world-bounds method and animated
+  with idle/run clips on the matching rig. (The original T-pose texture was added later.)
+- 2026-11-20: Sorcerer texture reattachment — extracted the original Makima base-color
+  image from `makimaTpose.glb`, which uses one material across all eight mesh chunks, and
+  applied it to the normalized animated model's matching UV0 layout.
+- 2026-11-20: Sorcerer death decal — copied the supplied two-splat `blood_decals_psx.glb`
+  into the game assets and now instantiate it under the Summoner when her defense HP reaches
+  zero. The imported decal shares the existing 18s fade/22s disposal lifecycle. Added the
+  Sketchfab CC BY 4.0 attribution.
+- 2026-11-20: shared death decals + encounter fail state — Saber kills now use the same
+  imported decal instead of the generated floor splat. If the Summoner dies, the Level 0
+  defense ends in the game-over screen rather than allowing a ritual retry.
