@@ -206,3 +206,45 @@ All combat tuning and gameplay mechanics are strictly preserved:
   - Sector 1 (Bottom-Right: $-30^\circ$ to $+90^\circ$): Shotgun (Stagecoach).
   - Sector 2 (Bottom-Left: $+90^\circ$ to $+210^\circ$): Torch (Tactical Flashlight).
 - **Presentation**: SVG circular arcs with dynamic hover/active amber glow, status labels, and center hub equipment readout.
+
+---
+
+## 6. Temporary Wall Bullet-Impact Decal System
+
+### 6.1 Asset Analysis: `wallDecal.png`
+- **Location**: `assets/wallDecal.png` (copied from project root).
+- **Format & Resolution**: 1304x1206 RGBA, 1.25 MB.
+- **Visual Characteristics**: Stylized organic floral/ink splatter motif with fully transparent background (`#00000000`, 0 alpha) and smooth anti-aliased edge falloff.
+- **Texture Sampling**: Configured with `sRGBEncoding`, `LinearMipmapLinearFilter`, and mipmap generation for clean rendering at acute viewing angles across Backrooms corridors.
+
+### 6.2 Normal Alignment & Z-Fighting Mitigation
+- **Planar Quad Orientation**:
+  Rather than heavy CPU-based CSG mesh slicing or unavailable Three.js `DecalGeometry` helpers on `InstancedMesh` chunks, decals utilize oriented planar quads aligned using quaternion rotations:
+  ```javascript
+  decal.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), validNormal);
+  decal.mesh.rotateZ(Math.random() * Math.PI * 2); // randomized roll angle
+  ```
+- **Physical Offset**: Positioned $2\text{mm}$ ($0.002\text{m}$) outward along the wall surface normal:
+  $$\mathbf{P}_{\text{decal}} = \mathbf{P}_{\text{impact}} + \mathbf{N}_{\text{surface}} \times 0.002$$
+- **GPU Depth Configuration**:
+  - `depthTest: true` (ensures occlusion behind foreground geometry and player viewmodels).
+  - `depthWrite: false` (prevents depth buffer conflicts).
+  - `polygonOffset: true`, `polygonOffsetFactor: -1`, `polygonOffsetUnits: -1` (hardware slope-scaled depth offset).
+  - `renderOrder: 20` (guarantees rasterization after opaque and instanced wall passes).
+
+### 6.3 Weapon-Differentiated Sizing
+- **Pistol (Beretta Px4)**: Single focused impact hole with diameter $0.22\text{m} \pm 0.02\text{m}$.
+- **Shotgun (Stagecoach)**: 7 independent raycast pellet impacts creating an authentic shotgun spread cluster, each sized at $0.13\text{m} \pm 0.015\text{m}$.
+
+### 6.4 Lifetime & Smooth Opacity Fade Mechanics
+- Managed centrally in `js/systems/wall_decals.js` via `updateWallDecals(dt)`:
+  - $0.0\text{s} \le t < 5.0\text{s}$: Full visibility ($\text{opacity} = 0.95$).
+  - $5.0\text{s} \le t < 7.0\text{s}$: Smooth linear fade:
+    $$\text{opacity}(t) = 0.95 \times \left(1.0 - \frac{t - 5.0}{2.0}\right)$$
+  - $t \ge 7.0\text{s}$: Mesh visibility disabled, recycled into inactive pool.
+- **Object Pooling**: Pre-allocates a 64-quad mesh pool sharing a single `PlaneGeometry(1, 1)` and single texture, with zero dynamic GC memory allocations during gameplay.
+
+### 6.5 Impact Discrimination
+- Decals spawn exclusively on environmental wall hits in `shoot()` (`h.face.normal` resolved across both standard meshes and `InstancedMesh` matrix instances).
+- Saber damage hits route exclusively to `damageZombie()`, spawning `bulletHit_sheet.webp` blood VFX and triggering red damage feedback with zero wall decal instantiation.
+- Missed shots into open air or doorways spawn zero decals.

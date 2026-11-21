@@ -54,7 +54,7 @@
     console.log(`[AUTOTEST] Saved shot: ${label}`);
   }
 
-  // --- TEST: Miss / Wall Hit Test (Must NOT trigger blood) ---
+  // --- TEST: Miss / Wall Hit Test & Wall Decal Spawning ---
   P.pos.set(48.69, 0, -187.65);
   P.yaw = Math.PI / 2; // Look at solid wall behind player
   P.pitch = 0;
@@ -63,17 +63,49 @@
   camera.rotation.x = P.pitch;
   await wait(200);
 
+  const initialDecalCount = window.getActiveWallDecalsCount ? window.getActiveWallDecalsCount() : 0;
   const beforeMissCount = BloodVFX ? BloodVFX.getActiveCount() : 0;
+
+  // Shot 1: Handgun shot into wall
+  P.weapon = 0; P.bullets = 50; P.mag.bullets = 12; P.cool = 0; P.reloadT = 0;
   if (typeof window.shoot === 'function') {
-    // Ensure player has ammo
-    P.bullets = 50; P.mag.bullets = 12; P.cool = 0; P.reloadT = 0;
     window.shoot();
   }
   await wait(150);
+
+  const pistolDecalCount = window.getActiveWallDecalsCount ? window.getActiveWallDecalsCount() : 0;
+  const pistolDecalCreated = (pistolDecalCount === initialDecalCount + 1);
+
+  // Shot 2: Fire Shotgun at wall to test pellet cluster
+  if (typeof window.switchEquipment === 'function') window.switchEquipment(1);
+  P.shells = 20; P.mag.shells = 2; P.cool = 0; P.reloadT = 0;
+  if (typeof window.shoot === 'function') {
+    window.shoot();
+  }
+  await wait(200);
+
+  const shotgunDecalCount = window.getActiveWallDecalsCount ? window.getActiveWallDecalsCount() : 0;
+  const shotgunDecalsCreated = (shotgunDecalCount > pistolDecalCount);
+
+  // Capture wall impact decals (both single pistol bullet hole and shotgun cluster)
+  await captureShot('wall_impact_decals');
+
   const afterMissCount = BloodVFX ? BloodVFX.getActiveCount() : 0;
   const wallHitDidNotTriggerBlood = (beforeMissCount === 0 && afterMissCount === 0);
   const wallSparksGenerated = window.particles && window.particles.length > 0;
-  console.log('[AUTOTEST] Wall hit test:', { beforeMissCount, afterMissCount, wallHitDidNotTriggerBlood, wallSparksGenerated });
+  console.log('[AUTOTEST] Wall hit & decal test:', {
+    initialDecalCount,
+    pistolDecalCount,
+    pistolDecalCreated,
+    shotgunDecalCount,
+    shotgunDecalsCreated,
+    wallHitDidNotTriggerBlood,
+    wallSparksGenerated
+  });
+
+  // Switch back to Handgun
+  if (typeof window.switchEquipment === 'function') window.switchEquipment(0);
+  await wait(100);
 
   // Clear spark particles before Saber test
   if (window.particles) {
@@ -154,6 +186,7 @@
   if (saber) aimAt(saber, 1.20); // Aim at chest
 
   // Shoot Saber body shot
+  const decalsBeforeSaber = window.getActiveWallDecalsCount ? window.getActiveWallDecalsCount() : 0;
   P.bullets = 50; P.mag.bullets = 12; P.cool = 0; P.reloadT = 0;
   if (typeof window.shoot === 'function') {
     window.shoot();
@@ -161,6 +194,8 @@
 
   // Wait 120ms for blood splash to bloom
   await wait(120);
+  const decalsAfterSaber = window.getActiveWallDecalsCount ? window.getActiveWallDecalsCount() : 0;
+  const noWallDecalOnSaberHit = (decalsBeforeSaber === decalsAfterSaber);
   const hitActiveCount = BloodVFX ? BloodVFX.getActiveCount() : 0;
   const bloodTriggeredOnSaberHit = hitActiveCount > 0;
   const legacyParticleCountOnSaberHit = window.particles ? window.particles.length : 0;
@@ -169,7 +204,8 @@
     hitActiveCount,
     bloodTriggeredOnSaberHit,
     legacyParticleCountOnSaberHit,
-    noLegacyBloodParticles
+    noLegacyBloodParticles,
+    noWallDecalOnSaberHit
   });
 
   // Capture screenshot of blood impact on Saber body surface
@@ -214,6 +250,24 @@
   const cleanedUpProperly = afterCompletionCount === 0;
   console.log('[AUTOTEST] Cleanup test:', { afterCompletionCount, cleanedUpProperly });
 
+  // --- TEST: Wall Decal Fading and Cleanup ---
+  const activeDecalsList = window.getActiveWallDecals ? window.getActiveWallDecals() : [];
+  let decalFading = false;
+  if (activeDecalsList.length > 0) {
+    const testDecal = activeDecalsList[0];
+    testDecal.elapsed = 5.5; // inside the ~2-second fade window (5.0s to 7.0s)
+    if (typeof window.updateWallDecals === 'function') window.updateWallDecals(0.01);
+    decalFading = testDecal.mat.opacity < testDecal.baseOpacity;
+  }
+  // Advance time past 7.0s to verify complete removal
+  if (activeDecalsList.length > 0) {
+    for (const d of activeDecalsList) d.elapsed = 7.5;
+    if (typeof window.updateWallDecals === 'function') window.updateWallDecals(0.01);
+  }
+  const finalDecalCount = window.getActiveWallDecalsCount ? window.getActiveWallDecalsCount() : 0;
+  const decalsCleanedUp = (finalDecalCount === 0);
+  console.log('[AUTOTEST] Wall decal fade & cleanup test:', { decalFading, finalDecalCount, decalsCleanedUp });
+
   // Benchmark 60 frames with blood VFX loaded
   let frameTimes = [];
   let lastTime = performance.now();
@@ -239,6 +293,11 @@
     customCollisionActive: customColl,
     wallHitDidNotTriggerBlood,
     wallSparksGenerated,
+    pistolDecalCreated,
+    shotgunDecalsCreated,
+    noWallDecalOnSaberHit,
+    decalFading,
+    decalsCleanedUp,
     bloodTriggeredOnSaberHit,
     noLegacyBloodParticles,
     multiHitSupported,

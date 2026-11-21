@@ -1,6 +1,7 @@
 "use strict";
 import { WEAPONS, startReload as startWeaponReload, updateReload } from './systems/weapons.js';
 import { initBloodVFX, spawnBloodImpact, updateBloodVFX, cleanupBloodVFX } from './systems/blood_vfx.js';
+import { initWallDecals, spawnWallDecal, updateWallDecals, cleanupWallDecals, getActiveWallDecalsCount, getActiveWallDecals } from './systems/wall_decals.js';
 window.__errors = [];
 window.addEventListener('error', e => { window.__errors.push(String(e.message)); });
 
@@ -1180,6 +1181,7 @@ function initScene(){
 
   initPostProcessing();
   initBloodVFX(scene, camera);
+  initWallDecals(scene);
 
   ambientLight=new THREE.AmbientLight(0x606070,.5);scene.add(ambientLight);
   playerLight=new THREE.PointLight(0xffd8a0,.85,16,2);
@@ -2274,6 +2276,23 @@ function shoot(){
         damageZombie(zb,w.dmg*(headshot?2:1),h.point,headshot,hitNormal,hitBone);
       } else {
         sparkBurst(h.point,4);
+        let wallNormal=null;
+        if(h.face&&h.face.normal){
+          if(h.object.isInstancedMesh&&typeof h.instanceId==='number'){
+            const instM=new THREE.Matrix4();
+            h.object.getMatrixAt(h.instanceId,instM);
+            const normalM=new THREE.Matrix3().getNormalMatrix(new THREE.Matrix4().multiplyMatrices(h.object.matrixWorld,instM));
+            wallNormal=h.face.normal.clone().applyMatrix3(normalM).normalize();
+          }else{
+            wallNormal=h.face.normal.clone().applyMatrix3(new THREE.Matrix3().getNormalMatrix(h.object.matrixWorld)).normalize();
+          }
+          if(wallNormal.dot(_dir)>0){
+            wallNormal.negate();
+          }
+        }else{
+          wallNormal=_dir.clone().negate().normalize();
+        }
+        spawnWallDecal(h.point,wallNormal,w.pellets>1?'shotgun':'pistol');
       }
     }
     // tracer from muzzle world pos
@@ -3008,6 +3027,7 @@ function startGame(withLock){
 }
 function resetGame(){
   cleanupBloodVFX();
+  cleanupWallDecals();
   for(const zb of [...zombies])removeZombie(zb);
   for(const p of pickups)scene.remove(p.mesh);pickups=[];
   for(const p of particles)scene.remove(p.s);particles=[];
@@ -3042,6 +3062,7 @@ window.G={
     for(let i=0;i<n;i++){
       updatePlayer(dt);updateZombies(dt);updateSaberSpawns(dt);
       updatePickups(dt);updateParticles(dt);updateTracers(dt);updateDecals(dt);
+      updateWallDecals(dt);
     }
     updateHUD();renderScene();
   },
@@ -3091,6 +3112,7 @@ function loop(t){
   }
   updateParticles(dt);updateTracers(dt);updateDecals(dt);
   updateBloodVFX(dt);
+  updateWallDecals(dt);
   muzzleLight.intensity*=Math.pow(.0001,dt);
   if(WS.started)updateHUD();
   renderScene();
@@ -3126,7 +3148,8 @@ export { P, WS, Progress, SETTINGS, Dialogue, ZMODEL, LEVELS, TEX, SND, KTG, rng
   installSorcererModel, setNPCAnimation,
   npcs, floorCells, zombies, pickups, scene, camera, currentLevel, startGame, resetGame, updateHUD,
   wallMeshes, floorMesh, ceilMesh, fluorescentGroup, outletGroup, propGroup, trimMeshes, WALLH, setCustomCollision,
-  switchEquipment, openRadialMenu, closeRadialMenu, gunTorch };
+  switchEquipment, openRadialMenu, closeRadialMenu, gunTorch,
+  spawnWallDecal, updateWallDecals, cleanupWallDecals, getActiveWallDecalsCount, getActiveWallDecals };
 
 /* debug bridge: expose module state to window for console/test access (live getters for
    reassignable bindings). The supported public API remains window.G + registerLevel. */
@@ -3134,7 +3157,8 @@ Object.assign(window,{P,WS,Progress,SETTINGS,Dialogue,ZMODEL,LEVELS,TEX,SND,KTG,
   CELL,WALLH,floorCells,isWall,cellOf,cellCenter,circleHitsWall,spawnZombie,removeZombie,addPickup,
   enemyHp,makeNPCFigure,createNPCs,applyLevelTheme,goNextLevel,levelTransition,banner,showMsg,
   hurtPlayer,updateHUD,resetGame,startGame,BALANCE,mission,registerLevel,runLevelHook,
-  renderScene,spawnBloodImpact,shoot,setWeaponMuzzle,switchEquipment,openRadialMenu,closeRadialMenu});
+  renderScene,spawnBloodImpact,shoot,setWeaponMuzzle,switchEquipment,openRadialMenu,closeRadialMenu,
+  spawnWallDecal,updateWallDecals,cleanupWallDecals,getActiveWallDecalsCount,getActiveWallDecals});
 for(const [k,f] of Object.entries({npcs:()=>npcs,pickups:()=>pickups,zombies:()=>zombies,
   scene:()=>scene,camera:()=>camera,renderer:()=>renderer,currentLevel:()=>currentLevel,
   gunGroup:()=>gunGroup,gunPistol:()=>gunPistol,gunShotgun:()=>gunShotgun,gunTorch:()=>gunTorch,

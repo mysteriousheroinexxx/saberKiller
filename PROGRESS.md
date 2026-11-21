@@ -320,4 +320,12 @@
   3. Verified that Saber hits trigger exclusively the new `bulletHit` flipbook animation with 0 legacy particles.
   4. Preserved environmental spark bursts (`sparkBurst`) on bullet wall impacts and death splat decals on the floor.
   5. Verified normal hits, headshots, and rapid consecutive multi-hits via automated browser test with telemetry.
+- 2026-11-21: Temporary wall bullet-impact decals (`wallDecal.png`) —
+  1. Asset inspection: Identified and copied `assets/wallDecal.png` (1304x1206 RGBA texture with clean alpha transparency and dark floral/ink splatter shape).
+  2. Subsystem architecture: Implemented `js/systems/wall_decals.js` with a 64-quad pre-allocated object pool, shared `PlaneGeometry(1, 1)`, and single shared sRGB texture.
+  3. Physical positioning & orientation: Decals align to surface normal via `quaternion.setFromUnitVectors((0,0,1), normal)` with randomized roll rotation and a 2mm ($0.002\text{m}$) outward normal offset plus `polygonOffset` to eliminate Z-fighting.
+  4. Weapon-scaled sizing: Single pistol impact scales to $0.22 \pm 0.02\text{m}$; shotgun blasts spawn a spread cluster of 7 smaller decals scaled to $0.13 \pm 0.015\text{m}$ along each pellet raycast.
+  5. Smooth fade lifecycle: Decal remains at full opacity for 5.0 seconds, smoothly fades linearly to 0 over 2.0 seconds, and is fully deactivated and recycled at 7.0 seconds.
+  6. Raycast discrimination & verification: Decals only spawn on environment wall impacts (`wallMeshes` and `InstancedMesh`), strictly never on Saber damage hits or misses. Verified via headless browser automated test suite (`wall_impact_decals.png`, `decalFading: true`, `decalsCleanedUp: true`, 0 JS errors).
+
 
