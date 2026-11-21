@@ -2,11 +2,13 @@
 // Hit detection, effects, and player-owned ammo remain in the engine.
 export const WEAPONS = [
   {name:'PISTOL',dmg:26,rate:.21,spread:.012,pellets:1,ammo:'bullets',capacity:12,reload:1.15,kick:.05},
-  {name:'SHOTGUN',dmg:13,rate:.95,spread:.055,pellets:7,ammo:'shells',capacity:6,reload:1.6,kick:.16}
+  {name:'SHOTGUN',dmg:13,rate:.95,spread:.055,pellets:7,ammo:'shells',capacity:6,reload:1.6,kick:.16},
+  {name:'TORCH',dmg:0,rate:.5,spread:0,pellets:0,ammo:null,capacity:0,reload:0,kick:0}
 ];
 
 export function startReload(player, weaponIndex, onStart){
   const weapon=WEAPONS[weaponIndex];
+  if(!weapon||!weapon.ammo)return false;
   if(player.reloadT>0||player.mag[weapon.ammo]>=weapon.capacity||player[weapon.ammo]<=0)return false;
   player.reloadT=weapon.reload;
   player.reloadWeapon=weaponIndex;

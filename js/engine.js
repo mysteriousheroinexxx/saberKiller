@@ -507,7 +507,7 @@ setLayout('arena');
 /* ---------------- globals ---------------- */
 let scene,camera,renderer,raycaster;
 let wallMeshes=[],trimMeshes=[],zombies=[],hitMeshes=[],pickups=[],particles=[],tracers=[],decals=[];
-let muzzleLight,muzzleSprite,gunGroup,gunPistol,gunShotgun,playerLight,playerFlashlight=null;
+let muzzleLight,muzzleSprite,gunGroup,gunPistol,gunShotgun,gunTorch,playerLight,playerFlashlight=null;
 let TEX={};
 let ambientLight=null,roomLights=[],floorMesh=null,ceilMesh=null,fluorescentGroup=null,fixtures=[],outletGroup=null,propGroup=null,whisperTimer=8;
 let BARREL_TEMPLATE=null,pipeGroup=null,steamGroup=null,steamPuffs=[],torchGroup=null,torchFlames=[],torchLights=[],trapGroup=null,trapCells=[],trapTimer=0;
@@ -580,9 +580,9 @@ const LEVELS={
   },
   backrooms:{
     name:'LEVEL 0 — THE LOBBY', sub:'the madness of mono-yellow', ambientSound:'fluorescent',
-    bg:0x181404, fog:0x282006, fogDensity:0.022,
-    ambient:{color:0x362c0a,intensity:0.35},
-    playerLight:{color:0xfffae0,intensity:0.0},
+    bg:0x2e2508, fog:0x56470f, fogDensity:0.022,
+    ambient:{color:0x695811,intensity:0.35},
+    playerLight:{color:0xf2ec8a,intensity:0.0},
     roomLight:{color:0x000000,intensity:0.0},
     wallTex:{1:'wall_yellow',2:'wall_yellow',3:'wall_yellow'}, floorTex:'carpet_damp', ceilTex:'ceil_tile',
     layout:'backrooms', enemies:'saber'
@@ -629,7 +629,7 @@ function applyLevelTheme(id){
   if(playerLight){playerLight.color.setHex(L.playerLight.color);playerLight.intensity=L.playerLight.intensity;}
   for(const l of roomLights){l.color.setHex(L.roomLight.color);l.intensity=L.roomLight.intensity;}
   if(typeof SND!=='undefined'&&L.ambientSound)SND.ambient(L.ambientSound);
-  if(playerFlashlight)playerFlashlight.visible=(id==='backrooms');
+  if(playerFlashlight)playerFlashlight.visible=(id==='backrooms'&&P.weapon===2);
   if(fluorescentGroup)fluorescentGroup.visible=false;
   if(outletGroup)outletGroup.visible=(id==='backrooms');
   if(id==='backrooms'){
@@ -1069,7 +1069,7 @@ function initPostProcessing() {
     uniforms: {
       tDiffuse: { value: null },
       uResolution: { value: new THREE.Vector2(w, h) },
-      uSaturation: { value: 1.85 },
+      uSaturation: { value: 1.25 },
       uVignette: { value: 0.95 },
       uGrain: { value: 0.085 },
       uFringe: { value: 0.0035 }
@@ -1106,12 +1106,20 @@ function initPostProcessing() {
         float b = texture2D(tDiffuse, uv + offset).b;
         vec3 col = vec3(r, g, b);
 
-        // White Balance Cool Shift (15000K in UE4) & SceneColorTint (1.0, 0.99, 0.87)
-        col *= vec3(0.98, 0.99, 0.92);
+        // Backrooms 6-color sampled grading
+        // Shadows: #56470f (0.337, 0.278, 0.059) / #695811 (0.412, 0.345, 0.067)
+        // Midtones: #908237 (0.565, 0.510, 0.216) / #918339 / #786716
+        // Highlights: #8c7e1f (0.549, 0.494, 0.122) / #f2ec8a
+        float luma = dot(col, vec3(0.299, 0.587, 0.114));
+        vec3 shadowGrad = vec3(0.88, 0.82, 0.52);
+        vec3 midGrad    = vec3(0.96, 0.94, 0.72);
+        vec3 highGrad   = vec3(1.02, 1.01, 0.88);
+        vec3 tint = mix(shadowGrad, midGrad, smoothstep(0.05, 0.45, luma));
+        tint = mix(tint, highGrad, smoothstep(0.45, 0.85, luma));
+        col *= tint;
 
-        // 200% Color Saturation
-        float lum = dot(col, vec3(0.299, 0.587, 0.114));
-        col = mix(vec3(lum), col, uSaturation);
+        // Color Saturation (calibrated to muted, weathered aesthetic)
+        col = mix(vec3(luma), col, uSaturation);
 
         // Film Slope / Toe curve (ACES adjustment)
         col = pow(col, vec3(0.95));
@@ -1176,9 +1184,9 @@ function initScene(){
   ambientLight=new THREE.AmbientLight(0x606070,.5);scene.add(ambientLight);
   playerLight=new THREE.PointLight(0xffd8a0,.85,16,2);
   camera.add(playerLight);
-  playerFlashlight=new THREE.SpotLight(0xfffae0,22.0,35.0,Math.PI/7.0,0.5,1.8);
-  playerFlashlight.position.set(0.18,-0.15,-0.05);
-  playerFlashlight.target.position.set(0.18,-0.15,-10);
+  playerFlashlight=new THREE.SpotLight(0xfffae0,24.0,38.0,Math.PI/6.5,0.45,1.8);
+  playerFlashlight.position.set(0.24,-0.22,-0.45);
+  playerFlashlight.target.position.set(0.24,-0.22,-10);
   camera.add(playerFlashlight);
   camera.add(playerFlashlight.target);
   playerFlashlight.visible=false;
@@ -1256,6 +1264,11 @@ function buildGuns(){
   b=new THREE.Mesh(new THREE.BoxGeometry(.09,.07,.14),wood);b.position.set(0,-.045,-.18);gunShotgun.add(b);
   gunShotgun.visible=false;gunGroup.add(gunShotgun);
 
+  gunTorch=new THREE.Group();
+  b=new THREE.Mesh(new THREE.CylinderGeometry(.035,.025,.34,12),dark);
+  b.rotation.x=Math.PI/2;b.position.set(0,-.02,-.14);gunTorch.add(b);
+  gunTorch.visible=false;gunGroup.add(gunTorch);
+
   muzzleSprite.position.set(0,.08,-.36);gunGroup.add(muzzleSprite);
   setWeaponMuzzle(0);
   loadWeaponModels();
@@ -1265,10 +1278,26 @@ function setWeaponMuzzle(idx){
   if(idx===0){
     muzzleSprite.position.set(0,.08,-.36);
     if(muzzleLight)muzzleLight.position.set(.25,-.18,-.92);
-  }else{
+  }else if(idx===1){
     muzzleSprite.position.set(0,.02,-.44);
     if(muzzleLight)muzzleLight.position.set(.25,-.24,-1.02);
+  }else{
+    muzzleSprite.visible=false;
+    if(muzzleLight)muzzleLight.intensity=0;
   }
+}
+function switchEquipment(idx){
+  if(idx<0||idx>=WEAPONS.length)return;
+  P.weapon=idx;
+  P.switchT=.22;
+  gunPistol.visible=(idx===0);
+  gunShotgun.visible=(idx===1);
+  if(gunTorch)gunTorch.visible=(idx===2);
+  if(playerFlashlight){
+    playerFlashlight.visible=(idx===2 && currentLevel==='backrooms');
+  }
+  setWeaponMuzzle(idx);
+  updateHUD();
 }
 /* ---- real weapon viewmodels (beretta_px4_storm_compact.glb / stagecoach_shotgun.glb) ---- */
 function loadBarrel(){
@@ -1357,6 +1386,39 @@ function loadWeaponModels(){
     console.log('[WEAPON] Stagecoach Shotgun loaded successfully.');
   }, undefined, ()=>{
     L.load('assets/shotgun.glb',g=>fitWeapon(g.scene,gunShotgun,.8,null),undefined,()=>{});
+  });
+
+  // 3. Equipment: Torch (Heavy Tactical Flashlight)
+  L.load('assets/torch.glb', g=>{
+    while(gunTorch.children.length)gunTorch.remove(gunTorch.children[0]);
+    const model=g.scene;
+    model.updateMatrixWorld(true);
+    const box=new THREE.Box3().setFromObject(model);
+    const center=box.getCenter(new THREE.Vector3());
+    const size=box.getSize(new THREE.Vector3());
+    model.position.set(-center.x, -center.y, -center.z);
+    model.traverse(o=>{
+      if(o.isMesh){
+        o.frustumCulled=false;
+        if(o.material){
+          o.material.roughness=0.42;
+          o.material.metalness=0.68;
+          o.material.needsUpdate=true;
+        }
+      }
+    });
+    const wrap=new THREE.Group();
+    wrap.add(model);
+    // Orient torch so front lens points forward along -Z: rotate around Y by -PI/2
+    wrap.rotation.set(0.08, -Math.PI / 2, 0.04);
+    const maxDim=Math.max(size.x,size.y,size.z)||1;
+    wrap.scale.setScalar(0.32/maxDim);
+    wrap.position.set(0.04, -.05, -.16);
+    gunTorch.add(wrap);
+    gunTorch.userData.weaponWrap=wrap;
+    console.log('[WEAPON] Torch model loaded successfully.');
+  }, undefined, ()=>{
+    console.warn('[WEAPON] Failed to load assets/torch.glb');
   });
 }
 function fitWeapon(model,holder,targetLen,fixedRot){
@@ -2159,6 +2221,7 @@ function startReload(){
 function shoot(){
   if(P.dead||WS.paused||!WS.playing)return;
   const w=WEAPONS[P.weapon];
+  if(!w||!w.ammo)return;
   if(P.cool>0||P.reloadT>0)return;
   if(P.mag[w.ammo]<=0){
     if(P[w.ammo]>0){startReload();}
@@ -2540,15 +2603,22 @@ function drawMinimap(){
 function updateHUD(){
   $('hpVal').textContent=Math.ceil(P.hp);
   const w=WEAPONS[P.weapon];
-  $('ammoVal').textContent=`${P.mag[w.ammo]} / ${P[w.ammo]}`;
+  if(w&&w.ammo){
+    $('ammoVal').textContent=`${P.mag[w.ammo]} / ${P[w.ammo]}`;
+    const ammoCap=w.capacity;
+    $('ammoBar').style.width=Math.max(0,Math.min(1,P.mag[w.ammo]/w.capacity))*100+'%';
+    $('ammoVal').classList.toggle('low',P.mag[w.ammo]<=ammoCap*0.2);
+    $('reloadVal').textContent=P.reloadT>0?`RELOAD ${(P.reloadT).toFixed(1)}s`:'';
+  }else{
+    $('ammoVal').textContent='BATTERY OK';
+    $('ammoBar').style.width='100%';
+    $('ammoVal').classList.remove('low');
+    $('reloadVal').textContent='';
+  }
   $('scrapVal').textContent=Progress.get().items.scrap||0;
-  $('weaponName').textContent=`[${P.weapon+1}] ${w.name}`;
-  const ammoCap=w.capacity;
+  $('weaponName').textContent=`[${P.weapon+1}] ${w?w.name:'EQUIPMENT'}`;
   $('hpBar').style.width=Math.max(0,Math.min(1,P.hp/100))*100+'%';
-  $('ammoBar').style.width=Math.max(0,Math.min(1,P.mag[w.ammo]/w.capacity))*100+'%';
   $('hpVal').classList.toggle('low',P.hp<30);
-  $('ammoVal').classList.toggle('low',P.mag[w.ammo]<=ammoCap*0.2);
-  $('reloadVal').textContent=P.reloadT>0?`RELOAD ${(P.reloadT).toFixed(1)}s`:'';
   $('damage').style.opacity=P.dmgFlash*.9;
   $('lowhp').style.opacity=P.hp<30?(.35+Math.sin(performance.now()/180)*.15):0;
   drawFace();drawMinimap();
@@ -2744,6 +2814,59 @@ function buildDelverWarnChoices(){
   ];
 }
 
+/* ---------------- radial equipment selection wheel ---------------- */
+let radialOpen=false;
+let radialSelected=0;
+let radialVirtualX=0, radialVirtualY=0;
+
+function openRadialMenu(){
+  if(P.dead||WS.paused||!WS.playing||Dialogue.isActive())return;
+  radialOpen=true;
+  radialVirtualX=0; radialVirtualY=0;
+  radialSelected=P.weapon;
+  updateRadialUI();
+  const el=$('radialMenu');
+  if(el)el.classList.remove('hidden');
+}
+
+function closeRadialMenu(commit=true){
+  if(!radialOpen)return;
+  radialOpen=false;
+  const el=$('radialMenu');
+  if(el)el.classList.add('hidden');
+  if(commit && radialSelected>=0 && radialSelected<WEAPONS.length){
+    if(radialSelected!==P.weapon){
+      switchEquipment(radialSelected);
+    }
+  }
+}
+
+function updateRadialUI(){
+  const titles=['PISTOL', 'SHOTGUN', 'TORCH'];
+  const w0=WEAPONS[0], w1=WEAPONS[1];
+  const sub0=`BERETTA PX4 &middot; ${P.mag[w0.ammo]}/${P[w0.ammo]}`;
+  const sub1=`STAGECOACH &middot; ${P.mag[w1.ammo]}/${P[w1.ammo]}`;
+  const sub2=`TACTICAL &middot; 100% ILLUM`;
+  const subs=[sub0, sub1, sub2];
+
+  const nameEl=$('radialEquipName');
+  const statusEl=$('radialEquipStatus');
+  if(nameEl)nameEl.textContent=titles[radialSelected]||'EQUIPMENT';
+  if(statusEl)statusEl.innerHTML=subs[radialSelected]||'';
+
+  const s0=$('radialSub0'), s1=$('radialSub1'), s2=$('radialSub2');
+  if(s0)s0.innerHTML=sub0;
+  if(s1)s1.innerHTML=sub1;
+  if(s2)s2.innerHTML=sub2;
+
+  for(let i=0;i<3;i++){
+    const slot=document.querySelector(`.radialSlot.slot-${i}`);
+    if(slot)slot.classList.toggle('active', i===radialSelected);
+    const arc=$(`radialArc${i}`);
+    if(arc)arc.classList.toggle('active', i===radialSelected);
+  }
+}
+
 /* ---------------- input ---------------- */
 let mouseDown=false;
 let cursorMode=false;
@@ -2764,6 +2887,11 @@ function bindInput(){
       if(e.code==='Space'||e.code==='Enter'){Dialogue.choose();e.preventDefault();}
       return;
     }
+    if(e.code==='KeyQ'&&WS.playing&&!WS.paused&&!Dialogue.isActive()){
+      openRadialMenu();
+      e.preventDefault();
+      return;
+    }
     if(e.code==='KeyE'&&WS.playing&&!WS.paused){
       if(runLevelHook('interact')!==true&&nearNPC){runLevelHook('npcInteract',nearNPC);Dialogue.open(nearNPC.tree,'start');}
       e.preventDefault();return;
@@ -2771,12 +2899,26 @@ function bindInput(){
     if(e.code==='KeyI'&&WS.playing&&!Dialogue.isActive()){toggleInventory();e.preventDefault();return;}
     if(e.code==='KeyR'&&WS.playing&&!WS.paused&&!Dialogue.isActive()){startReload();e.preventDefault();return;}
     keys[e.code]=true;
-    if(e.code==='Digit1'&&P.weapon!==0){P.weapon=0;P.switchT=.22;gunPistol.visible=true;gunShotgun.visible=false;setWeaponMuzzle(0);}
-    if(e.code==='Digit2'&&P.weapon!==1){P.weapon=1;P.switchT=.22;gunPistol.visible=false;gunShotgun.visible=true;setWeaponMuzzle(1);}
+    if(e.code==='Digit1'){switchEquipment(0);e.preventDefault();return;}
+    if(e.code==='Digit2'){switchEquipment(1);e.preventDefault();return;}
+    if(e.code==='Digit3'){switchEquipment(2);e.preventDefault();return;}
     if(['Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();
   });
-  addEventListener('keyup',e=>{keys[e.code]=false;if(e.code==='AltLeft')e.preventDefault();});
+  addEventListener('keyup',e=>{
+    keys[e.code]=false;
+    if(e.code==='AltLeft')e.preventDefault();
+    if(e.code==='KeyQ'){
+      closeRadialMenu(true);
+      e.preventDefault();
+      return;
+    }
+  });
   addEventListener('mousedown',e=>{
+    if(radialOpen){
+      closeRadialMenu(true);
+      e.preventDefault();
+      return;
+    }
     if(e.button===0){mouseDown=true;if(WS.playing&&!WS.paused)shoot();}
   });
   addEventListener('mouseup',e=>{if(e.button===0)mouseDown=false;});
@@ -2786,6 +2928,25 @@ function bindInput(){
     if(locked){dx=e.movementX;dy=e.movementY;}
     else if(dragLook&&mouseDown){dx=e.clientX-lastMX;dy=e.clientY-lastMY;}
     lastMX=e.clientX;lastMY=e.clientY;
+
+    if(radialOpen){
+      radialVirtualX+=dx;
+      radialVirtualY+=dy;
+      const dist=Math.hypot(radialVirtualX,radialVirtualY);
+      if(dist>16){
+        const angle=Math.atan2(radialVirtualY,radialVirtualX);
+        let idx=0;
+        if(angle>=-Math.PI*5/6&&angle<-Math.PI/6)idx=0;
+        else if(angle>=-Math.PI/6&&angle<Math.PI/2)idx=1;
+        else idx=2;
+        if(radialSelected!==idx){
+          radialSelected=idx;
+          updateRadialUI();
+        }
+      }
+      return;
+    }
+
     P.yaw-=dx*.0023*SETTINGS.get().sens;
     P.pitch-=dy*.0023*SETTINGS.get().sens;
     P.pitch=Math.max(-1.45,Math.min(1.45,P.pitch));
@@ -2793,6 +2954,7 @@ function bindInput(){
   document.addEventListener('pointerlockchange',()=>{
     locked=document.pointerLockElement===renderer.domElement;
     if(!locked&&WS.playing&&!P.dead&&!cursorMode&&!Dialogue.isActive()){
+      if(radialOpen)closeRadialMenu(false);
       WS.paused=true;$('pauseScreen').classList.remove('hidden');
     }
   });
@@ -2859,7 +3021,7 @@ function resetGame(){
   P.yaw=0;P.pitch=0;
   P.hp=100;P.bullets=36;P.shells=2;P.mag.bullets=12;P.mag.shells=6;P.weapon=0;P.kills=0;
   P.cool=0;P.reloadT=0;P.reloadWeapon=-1;P.dead=false;P.dmgFlash=0;P.grinT=0;
-  gunPistol.visible=true;gunShotgun.visible=false;setWeaponMuzzle(0);
+  switchEquipment(0);
   WS.spawnTimer=4;WS.massSpawnTimer=60;WS.massSpawnQueue=0;WS.massSpawnBeat=0;
   applyLevelTheme(currentLevel);
 }
@@ -2963,7 +3125,8 @@ export { P, WS, Progress, SETTINGS, Dialogue, ZMODEL, LEVELS, TEX, SND, KTG, rng
   levelTransition, hurtPlayer, cellCenter, cellOf, isWall, makeNPCFigure, createNPCs,
   installSorcererModel, setNPCAnimation,
   npcs, floorCells, zombies, pickups, scene, camera, currentLevel, startGame, resetGame, updateHUD,
-  wallMeshes, floorMesh, ceilMesh, fluorescentGroup, outletGroup, propGroup, trimMeshes, WALLH, setCustomCollision };
+  wallMeshes, floorMesh, ceilMesh, fluorescentGroup, outletGroup, propGroup, trimMeshes, WALLH, setCustomCollision,
+  switchEquipment, openRadialMenu, closeRadialMenu, gunTorch };
 
 /* debug bridge: expose module state to window for console/test access (live getters for
    reassignable bindings). The supported public API remains window.G + registerLevel. */
@@ -2971,10 +3134,10 @@ Object.assign(window,{P,WS,Progress,SETTINGS,Dialogue,ZMODEL,LEVELS,TEX,SND,KTG,
   CELL,WALLH,floorCells,isWall,cellOf,cellCenter,circleHitsWall,spawnZombie,removeZombie,addPickup,
   enemyHp,makeNPCFigure,createNPCs,applyLevelTheme,goNextLevel,levelTransition,banner,showMsg,
   hurtPlayer,updateHUD,resetGame,startGame,BALANCE,mission,registerLevel,runLevelHook,
-  renderScene,spawnBloodImpact,shoot,setWeaponMuzzle});
+  renderScene,spawnBloodImpact,shoot,setWeaponMuzzle,switchEquipment,openRadialMenu,closeRadialMenu});
 for(const [k,f] of Object.entries({npcs:()=>npcs,pickups:()=>pickups,zombies:()=>zombies,
   scene:()=>scene,camera:()=>camera,renderer:()=>renderer,currentLevel:()=>currentLevel,
-  gunGroup:()=>gunGroup,gunPistol:()=>gunPistol,gunShotgun:()=>gunShotgun,
+  gunGroup:()=>gunGroup,gunPistol:()=>gunPistol,gunShotgun:()=>gunShotgun,gunTorch:()=>gunTorch,
   decals:()=>decals,tracers:()=>tracers,particles:()=>particles,trapCells:()=>trapCells})){
   Object.defineProperty(window,k,{get:f,configurable:true});
 }

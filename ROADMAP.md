@@ -99,3 +99,19 @@ scattered wall outlets, occasional pitch-black rooms / blood-red rooms.
 - [x] 12.3 Integration of Stagecoach Double-Barrel Shotgun PBR viewmodel (walnut stock, blued steel, twin hammers)
 - [x] 12.4 Dynamic muzzle flash and point light alignment per weapon slot via `setWeaponMuzzle(idx)`
 - [x] 12.5 Full preservation of weapon stats, ammo, recoil, and reload mechanics
+
+## Milestone 13 — Complete UI / HUD Horror FPS Redesign (Budget-Backrooms Style)
+- [x] 13.1 Purge legacy Osu!-inspired arcade aesthetic (pink/purple candy gradients, bouncy parallelogram buttons)
+- [x] 13.2 Authentic Budget-Backrooms design system: dark slate glass panels (`rgba(14, 15, 18, 0.84)` with `backdrop-filter: blur(12px)`), mono-yellow sodium amber (`#d4af37`), bone-white typography (`#edece6`)
+- [x] 13.3 Integration of extracted Google Rubik typography and Material TwoTone icons from UE4 `.uasset` binaries
+- [x] 13.4 Overhaul of all modal overlays: Start Menu, Settings Menu with custom sliders, Tactical Inventory (`[I]`), Pause Screen (`[ESC]`), Death Screen, and VN Dialogue Transceiver box
+- [x] 13.5 Responsive layout verification across desktop (1920x1080) and compact viewports (1024x768)
+
+## Milestone 14 — Radial Equipment Selection, Minimalist HUD Refinement, Torch & Lighting Stability
+- [x] 14.1 Circular equipment selection wheel (Key Q / mouse direction / 1-3 keys) with SVG arc sectors and center telemetry readout
+- [x] 14.2 Tactical Torch 3D viewmodel (`assets/torch.glb`) + exclusive flashlight beam coupling (lights turn off when firearms equipped)
+- [x] 14.3 Minimalist floating HUD refinement (removed rectangular card backgrounds, 2px slim gauge tracks, high-contrast drop shadows)
+- [x] 14.4 Ground Level 0 environmental palette directly in user's 6-color sampled reference matrix (#8c7e1f, #908237, #56470f, #695811, #918339, #786716)
+- [x] 14.5 24-point-light dynamic radial pool (2 shadow casters, 22 fill lights) eliminating angular popping and deliberate random flickering
+- [x] 14.6 Field of view (FOV) experimentation (72° baseline vs 76° subtle liminal vs 78° expansive)
+- [x] 14.7 Automated headless verification and artifact capture; zero git commits maintained for user review

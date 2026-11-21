@@ -193,3 +193,5 @@ function leave() {
 }
 
 registerLevel('backrooms', { enter, update, exit, leave, prompt: notePrompt, interact, npcInteract });
+window.updateLevel0Env = updateLevel0Env;
+window.enterLevel0Env = enterLevel0Env;

@@ -1,5 +1,42 @@
 # Progress Log
 
+- 2026-11-21: Radial Equipment Selection Wheel, Minimalist HUD Refinement, Torch & Flashlight Coupling, 24-Light Pool & Sampled Palette:
+  1. **Circular Equipment Selection Wheel (`Key Q` & `1`/`2`/`3`)**:
+     - Introduced radial equipment selection menu opened via `KeyQ` (hold or tap) or direct quick-swap keys (`1` Pistol, `2` Shotgun, `3` Torch).
+     - Seamless mouse angle tracking in pointer-lock mode with virtual displacement accumulator (`radialVirtualX`, `radialVirtualY`) and an 18px deadzone dividing the wheel into 3 equal $120^\circ$ circular sectors.
+     - Styled in authentic Backrooms slate glass with SVG circular arcs (`#radialArc0`, `#radialArc1`, `#radialArc2`), active amber outline glow, and center readout displaying weapon name, model subline, and ammo/battery telemetry.
+  2. **Torch Model Integration & Exclusive Viewmodel Visibility (`assets/torch.glb`)**:
+     - Integrated authentic tactical flashlight GLB model (`assets/torch.glb`) into first-person viewmodel group `gunTorch`.
+     - Strict mutual exclusivity: only the currently equipped item is rendered in the player's hands. Switching to Torch hides firearms and activates the focused flashlight beam; switching to Pistol or Shotgun hides the torch and turns off the flashlight beam.
+     - Torch cannot expend ammo or fire bullets; HUD displays `BATTERY OK` / `100%` status. Weapon ammunition pools, magazine states, and reloads are preserved across swaps.
+  3. **HUD Minimalist Refinement**:
+     - Stripped the heavy rectangular card background, border, and backdrop blur behind `#statusbar`.
+     - Health and ammo gauges now float directly over the viewport with slim 2px precision tracks, dark tabular numerals, and drop shadows (`0 1px 2px #000, 0 0 8px rgba(0,0,0,0.95)`) for legibility against both high-key yellow wallpaper and deep shadows.
+     - Floating `#hudQuick` badges docked cleanly below radar minimap.
+  4. **Grounding in User's Sampled Color Palette**:
+     - Wall PBR base color tuned to `0xd6ce88` (matching Color 5 `#918339` and Color 2 `#908237` drab yellow-green).
+     - Floor carpet tuned to `0xbfae6d` (matching Color 6 `#786716` stained olive-yellow).
+     - Ambient lighting tuned to `0x695811` (Color 4 dark olive shadow).
+     - Distance fog tuned to `0x56470f` (Color 3 murky greenish-ochre dark void).
+     - Post-processing shader calibrated with 6-color sampled tone-mapping and adjusted saturation (`uSaturation = 1.25`).
+  5. **Continuous Fluorescent Lighting — Zero Popping / Flickering**:
+     - Expanded dynamic light pool from 8 to **24 PointLights** (2 shadow casters for player and nearest Artoria Lily, 22 soft quadratic fill lights).
+     - Sorted strictly by 2D horizontal radial distance $d^2 = \Delta x^2 + \Delta z^2$ from the player, completely removing the camera forward-vector dot product weighting. Turning the camera $360^\circ$ causes zero lighting popping or fixture displacement.
+     - Eliminated artificial random micro-flicker (`microFlicker = 0`), establishing continuous, stable illumination across all corridors.
+  6. **Field of View (FOV) Experimentation**:
+     - Captured baseline 72° vs +4° (76°) vs +6° (78°) corridor views. Identified 76° as providing an optimal balance of liminal expansiveness without distorting first-person weapon viewmodels.
+  7. **Full Verification Suite & Zero Commits**:
+     - Verified clean boot, zero console errors (`jsErrorCount: 0`), 60+ FPS performance, and captured 10 full-resolution verification artifacts. All working tree changes kept uncommitted for user review.
+
+- 2026-11-21: Complete UI / HUD Horror FPS Redesign (Budget-Backrooms Style):
+  1. Purged legacy Osu!-inspired arcade aesthetic (pink/purple candy gradients, bouncy parallelogram buttons, tilted containers).
+  2. Implemented authentic Budget-Backrooms (Unreal Engine 4.27) design system: dark slate glass panels (`rgba(14, 15, 18, 0.84)` with `backdrop-filter: blur(12px)`), mono-yellow fluorescent sodium amber (`#d4af37`), bone-white typography (`#edece6`), and precision status gauges.
+  3. Extracted authentic Google Rubik typography (Light, Regular, Medium, Bold) and Material TwoTone icons directly from `Budget-Backrooms` `.uasset` binaries into `assets/ui/fonts/` and `assets/ui/icons/`.
+  4. Redesigned HUD elements: compact Vitality & Ammo telemetry card with bodycam portrait frame, precision 2px reticle dot with subtle tick marks and dark drop shadow for high contrast across bright wallpaper and dark rooms, 140x140 radar minimap with corner survey brackets, and tactical weapon & scrap badges docked cleanly below radar.
+  5. Overhauled all modal overlays: Start Menu, Settings Menu with custom styled range sliders, Tactical Inventory Screen (`[I]`), Frosted Glass Pause Screen (`[ESC]`), Critical Failure Death Screen, and Visual Novel Dialogue Transceiver box (`#dialogueBox`).
+  6. Verified responsive behavior across desktop (1920x1080) and compact viewports (1024x768) with no clipping or layout deformation.
+  7. Preserved 100% of underlying game logic, player stats, DOM element IDs, weapon balance, and interaction handlers. Captured all 9 high-resolution verification screenshots via automated headless synchronization.
+
 - 2026-11-21: Blood Impact Surface Attachment & Bone Hitbox Precision:
   1. Addressed blood effect positioning embedding inside Artoria Lily's body. Applied true 3D surface normal extraction and a 2mm ($0.002\text{m}$) outward normal offset (`hitPoint + norm * 0.002`).
   2. Implemented hierarchical dynamic attachment parenting the blood quad directly to the character group (`zb.group`), with parent scale compensation ($s_{\text{local}} = s_{\text{base}} / \text{parentScale}$) and camera billboarding in local space ($Q_{\text{local}} = Q_{\text{parent}}^{-1} \times Q_{\text{cam}}$) while preserving randomized roll angle. The splash now moves synchronously with Artoria Lily across walking and chasing animations.

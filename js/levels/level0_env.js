@@ -81,9 +81,12 @@ export function initLevel0Env(scene, onReady) {
   pessiColor.encoding = THREE.sRGBEncoding;
   const pessiNormal = texLoader.load('assets/level0/pessi_normal.png');
 
-  // 2. Authentic PBR Materials
+  // 2. Authentic PBR Materials with Sampled Backrooms Sickly Yellow-Green Palette
+  // Colors: #8c7e1f (highlights), #908237 (drab yellow-green), #56470f (murky shadow),
+  //         #695811 (dark olive), #918339 (sickly wallpaper), #786716 (olive carpet)
   floorMaterial = new THREE.MeshStandardMaterial({
     map: carpetBaseColor,
+    color: new THREE.Color(0xbfae6d), // damp stained greenish-yellowish carpet (#786716 influence)
     normalMap: carpetNormal,
     normalScale: new THREE.Vector2(1.2, 1.2),
     roughnessMap: carpetRoughness,
@@ -95,6 +98,7 @@ export function initLevel0Env(scene, onReady) {
 
   wallMaterial = new THREE.MeshStandardMaterial({
     map: wallBaseColor,
+    color: new THREE.Color(0xd6ce88), // sickly muted olive yellow (#918339 / #908237 / #8c7e1f)
     normalMap: wallNormal,
     normalScale: new THREE.Vector2(1.0, 1.0),
     roughnessMap: wallRoughness,
@@ -105,6 +109,7 @@ export function initLevel0Env(scene, onReady) {
 
   ceilMaterial = new THREE.MeshStandardMaterial({
     map: ceilBaseColor,
+    color: new THREE.Color(0xebe9d6), // aged mineral fiber tiles with subtle sodium tint
     normalMap: ceilNormal,
     normalScale: new THREE.Vector2(0.8, 0.8),
     roughnessMap: ceilRoughness,
@@ -502,11 +507,15 @@ function buildEnvironmentGeometry(map, gltfScene) {
   envRoot.add(propsGroup);
 }
 
+const NUM_DYNAMIC_LIGHTS = 24;
+
 function setupDynamicLighting(scene) {
-  // 8 PointLights: 4 shadow casters + 4 fill lights placed at Y = 2.2m (1.8m below ceiling)
-  for (let i = 0; i < 8; i++) {
-    const isShadow = (i < 4);
-    const pl = new THREE.PointLight(0xfff6cf, 32.0, 22.0, 2.0);
+  // 24 PointLights: 2 shadow casters (player + enemy) + 22 fill lights
+  // Placed at Y = 2.2m (1.8m below ceiling, matching UE4 Lights.uasset RelativeLocation)
+  // Color 0xf2ec8a matches authentic fluorescent sodium greenish-yellow
+  for (let i = 0; i < NUM_DYNAMIC_LIGHTS; i++) {
+    const isShadow = (i < 2);
+    const pl = new THREE.PointLight(0xf2ec8a, 26.0, 26.0, 2.0);
     pl.castShadow = isShadow;
     if (isShadow) {
       pl.shadow.bias = -0.0015;
@@ -514,7 +523,7 @@ function setupDynamicLighting(scene) {
       pl.shadow.mapSize.width = 512;
       pl.shadow.mapSize.height = 512;
       pl.shadow.camera.near = 0.2;
-      pl.shadow.camera.far = 24.0;
+      pl.shadow.camera.far = 26.0;
     }
     scene.add(pl);
     dynamicPointLights.push(pl);
@@ -576,7 +585,7 @@ export function updateLevel0Env(dt, playerPos, activeEnemies, playerYaw) {
     for (const zb of activeEnemies) {
       if (!zb?.group || zb.state === 'dying') continue;
       const d = (zb.group.position.x - px) ** 2 + (zb.group.position.z - pz) ** 2;
-      if (d < nearestDist) {
+      if (d < nearestDist && d < 1600) { // within 40m
         nearestDist = d;
         ex = zb.group.position.x;
         ez = zb.group.position.z;
@@ -584,21 +593,13 @@ export function updateLevel0Env(dt, playerPos, activeEnemies, playerYaw) {
     }
   }
 
-  // Directional weighting: prioritize lights in the direction the player is looking
-  const fwdX = playerYaw !== undefined ? -Math.sin(playerYaw) : 0;
-  const fwdZ = playerYaw !== undefined ? -Math.cos(playerYaw) : -1;
-
+  // Pure radial distance sorting without angular bias.
+  // This guarantees lights remain continuously active and stable when player turns around.
   const sortedByPlayer = lights.map(l => {
     const dx = l[0] - px, dz = l[2] - pz;
-    const d = Math.hypot(dx, dz);
-    let dot = 0;
-    if (d > 0.2) dot = (dx * fwdX + dz * fwdZ) / d;
-    // Lights ahead receive higher priority (lower effective sorting distance)
-    const weight = dot > 0.2 ? 0.65 : (dot < -0.2 ? 1.4 : 1.0);
-    return { pos: l, priority: d * weight };
-  }).sort((a, b) => a.priority - b.priority);
+    return { pos: l, d2: dx * dx + dz * dz };
+  }).sort((a, b) => a.d2 - b.d2);
 
-  // If Artoria Lily is nearby, assign light slot 1 to the fixture closest to her
   let assignedLights = [];
   if (ex !== null && ez !== null) {
     const sortedByEnemy = lights.map(l => ({
@@ -609,35 +610,30 @@ export function updateLevel0Env(dt, playerPos, activeEnemies, playerYaw) {
     assignedLights.push(sortedByPlayer[0].pos); // light 0: closest to player (shadow-caster)
     assignedLights.push(sortedByEnemy[0].pos);  // light 1: closest to Artoria Lily (shadow-caster)
     for (const item of sortedByPlayer) {
-      if (assignedLights.length >= 8) break;
+      if (assignedLights.length >= NUM_DYNAMIC_LIGHTS) break;
       if (!assignedLights.includes(item.pos)) assignedLights.push(item.pos);
     }
   } else {
-    assignedLights = sortedByPlayer.slice(0, 8).map(item => item.pos);
+    assignedLights = sortedByPlayer.slice(0, NUM_DYNAMIC_LIGHTS).map(item => item.pos);
   }
 
-  flickerTimer += dt;
-  const microFlicker = Math.random() < 0.06 ? 6.0 : 0;
-
+  // Stable continuous illumination: no random flicker
   for (let i = 0; i < dynamicPointLights.length; i++) {
     const pl = dynamicPointLights[i];
     if (i < assignedLights.length) {
       const targetPos = assignedLights[i];
       // Y = 2.2m (suspended 1.8m below ceiling, exactly matching Lights.uasset RelativeLocation)
       pl.position.set(targetPos[0], 2.2, targetPos[2]);
-      pl.intensity = 32.0 - (i === 0 ? microFlicker : 0);
+      pl.intensity = 26.0;
       pl.visible = true;
     } else {
       pl.visible = false;
     }
   }
 
-  // Micro-variation on ceiling fixture panels to simulate authentic fluorescent ballast buzz
-  if (flickerTimer > 0.1) {
-    flickerTimer = 0;
-    if (lightPanelMaterial && Math.random() < 0.1) {
-      lightPanelMaterial.color.setHex(Math.random() < 0.5 ? 0xfffcf0 : 0xffffff);
-    }
+  // Ceiling fixture panels remain continuously illuminated
+  if (lightPanelMaterial && lightPanelMaterial.color.getHex() !== 0xffffff) {
+    lightPanelMaterial.color.setHex(0xffffff);
   }
 }
 

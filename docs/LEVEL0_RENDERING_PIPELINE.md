@@ -57,27 +57,33 @@ All extracted PBR texture channels are loaded and applied using `THREE.MeshStand
    - Color textures (`map`): `encoding = THREE.sRGBEncoding`.
    - Data textures (`normalMap`, `roughnessMap`, `aoMap`): `encoding = THREE.LinearEncoding`.
 
-### 2.2 Physical Dynamic Lighting & Shadow Budget
+### 2.2 Physical Dynamic Lighting & Continuous Pool Allocation
 In UE4, the level contains 344 static point lights baked via Lightmass into static lightmaps. In real-time WebGL, rendering 344 simultaneous dynamic shadow-casting lights is impossible without severe performance degradation.
 
-**The Solution — Dynamic Priority Allocation**:
-- **Total Budget**: 8 active `THREE.PointLight`s.
-  - **4 Shadow-Casting Lights**: $512 \times 512$ PCF soft shadows (`type: THREE.PCFSoftShadowMap`, `bias: -0.0015`, `normalBias: 0.04`).
-  - **4 Ambient Fill Lights**: Soft quadratic falloff for ambient hallway bounce.
+**The Solution — 24-Light Continuous Dynamic Pool**:
+- **Total Budget**: 24 active `THREE.PointLight`s.
+  - **2 Shadow-Casting Lights**: $512 \times 512$ PCF soft shadows (`type: THREE.PCFSoftShadowMap`, `bias: -0.0015`, `normalBias: 0.04`). Dedicated to slot 0 (nearest fixture to player) and slot 1 (nearest fixture to Artoria Lily).
+  - **22 Quadratic Ambient Fill Lights**: Provide seamless hallway bounce and fill across surrounding corridors within a 40m radius.
 - **Physical Suspension**: Lights are placed at $Y = 2.2\text{m}$ (suspended 1.8m below the 4.0m ceiling, matching UE4 `Lights.uasset` `RelativeLocation`).
-- **Physical Decay**: Quadratic decay ($2.0$), intensity $32.0$, distance $24.0\text{m}$.
-- **Directional Forward Weighting**: Light sorting calculates Euclidean distance weighted by the player's view vector:
-  $$\text{EffectiveDistance} = d \times (\text{dot}(\vec{dir}_{\text{light}}, \vec{fwd}_{\text{player}}) > 0.2 \,?\, 0.65 : 1.4)$$
-  Fixtures down the corridor in front of the player are prioritized over lights behind solid walls.
-- **Enemy Dynamic Slot**: When Artoria Lily is nearby, light slot 1 is dedicated to the fixture closest to her, ensuring she casts crisp silhouettes down hallways.
+- **Physical Color & Decay**: Color `0xf2ec8a` (sodium greenish-yellow matching sampled highlights `#8c7e1f`), quadratic decay ($2.0$), intensity $26.0$, distance $26.0\text{m}$.
+- **Pure 2D Radial Sorting (Zero Angular Pop)**:
+  Light allocation sorts all 344 fixtures strictly by horizontal Euclidean distance $d^2 = \Delta x^2 + \Delta z^2$ from the player. **Angular forward-vector dot product weighting is completely eliminated**. Turning the camera 360° leaves all active fixtures completely static, resolving previous lighting popping issues.
+- **Steady Continuous Illumination**: Random micro-flickering has been removed (`microFlicker = 0`). Fluorescent ceiling panels maintain steady ivory-white emission.
 
-### 2.3 Post-Processing & Color Grading Pipeline
-Implemented in `js/engine.js` via a fullscreen shader pass (`renderScene()`):
-1. **15,000K White Balance Cool Shift**: Compensates for warm point lights, reproducing the clinical fluorescent ambiance.
-2. **SceneColorTint**: Multiplied by $(1.0, 0.99, 0.87)$ to yield the sickly green-yellow Backrooms cast.
-3. **Chroma Saturation (200%)**: Boosts the wallpaper color vibrancy without blowing out highlights (`uSaturation: 1.85`).
-4. **ACES Filmic Tone Mapping**: Provides realistic shoulder roll-off and dark toe contrast (`THREE.ACESFilmicToneMapping`, exposure $1.05$).
-5. **Analog Film Grain & Vignette**: Subtle film grain (`uGrain: 0.085`), edge vignette (`uVignette: 0.95`), and chromatic aberration fringe (`uFringe: 0.0035`).
+### 2.3 Post-Processing & Sampled Color Palette Grading
+Implemented in `js/engine.js` via a fullscreen shader pass (`renderScene()`), grounded directly in the user's 6-color sampled reference palette:
+- **Sampled Palette Grounding**:
+  - Color 1 (`#8c7e1f`): Sodium specular highlights and fixture glow.
+  - Color 2 (`#908237`): Sickly drab greenish-yellow midtone response.
+  - Color 3 (`#56470f`): Murky greenish-ochre dark void / distance fog (`fog: 0x56470f`).
+  - Color 4 (`#695811`): Dark olive shadow ambient bounce (`ambient: 0x695811`, intensity $0.35$).
+  - Color 5 (`#918339`): Sickly wallpaper base tint (`wallMaterial.color: 0xd6ce88`).
+  - Color 6 (`#786716`): Damp stained olive carpet tint (`floorMaterial.color: 0xbfae6d`).
+- **6-Color Piecewise Tone-Mapping Matrix**:
+  Interpolates between shadow gradient $(0.88, 0.82, 0.52)$, midtone gradient $(0.96, 0.94, 0.72)$, and highlight gradient $(1.02, 1.01, 0.88)$ according to pixel luminance.
+- **Calibrated Saturation**: Controlled chroma saturation (`uSaturation: 1.25`) to preserve drab, weathered walls without artificial neon tinting.
+- **ACES Filmic Tone Mapping**: Provides realistic shoulder roll-off and dark toe contrast (`THREE.ACESFilmicToneMapping`, exposure $1.05$).
+- **Analog Film Grain & Vignette**: Subtle film grain (`uGrain: 0.085`), edge vignette (`uVignette: 0.95`), and chromatic aberration fringe (`uFringe: 0.0035`).
 
 ---
 
@@ -178,4 +184,25 @@ In earlier builds, the first-person handgun view exhibited two bright orange mag
 All combat tuning and gameplay mechanics are strictly preserved:
 - Handgun: 12-round magazine, 36 reserve, 22 damage per hit, semi-automatic fire rate.
 - Shotgun: 2 shells per load, 16 reserve, 7 pellets with 16 damage each (112 damage max per blast), double-barrel sound and recoil kick.
-- Weapon switching via keys `1` and `2` seamlessly swaps models and updates muzzle coordinates via `setWeaponMuzzle(idx)`.
+- Direct quick-switching via keys `1` (Pistol), `2` (Shotgun), `3` (Torch), or via the circular selection wheel (`Key Q`).
+
+### 5.5 Tactical Torch Viewmodel & Flashlight Illumination Coupling
+- **Asset**: `assets/torch.glb` (2.2 MB).
+- **Structure**: Single detailed PBR mesh `body_low_02 - Default_0` with authentic base color, normal, and metallic-roughness textures.
+- **Viewmodel Transform**:
+  - Scale: $0.0043$ ($0.32 / \text{maxDim}$).
+  - Rotation: $[0.08, -\pi/2, 0.04]$ (aligns flared front lens forward along $-Z$).
+  - Translation: $[0.04, -0.05, -0.16]$.
+- **Coupled Illumination**:
+  - Mutual exclusivity: Only the equipped item is visible in the player's hands (`gunTorch.visible = (P.weapon === 2)`).
+  - The tactical spotlight beam (`playerFlashlight`) only illuminates the scene when the Torch is active (`P.weapon === 2 && currentLevel === 'backrooms'`). When switching to Pistol or Shotgun, the flashlight beam immediately powers off.
+  - The torch cannot fire bullets or consume ammunition; HUD indicates `BATTERY OK` / `100%`.
+
+### 5.6 Circular Inventory Selection Wheel
+- **Input Tracking**: Bound to `Key Q` (hold to open, release to select) and mouse movement in pointer-lock mode.
+- **Angle Sector Mapping**:
+  Accumulates virtual delta movements $(\Delta x, \Delta y)$ with an 18px center deadzone. The wheel is partitioned into three $120^\circ$ radial sectors:
+  - Sector 0 (Top: $-150^\circ$ to $-30^\circ$): Handgun (Beretta Px4).
+  - Sector 1 (Bottom-Right: $-30^\circ$ to $+90^\circ$): Shotgun (Stagecoach).
+  - Sector 2 (Bottom-Left: $+90^\circ$ to $+210^\circ$): Torch (Tactical Flashlight).
+- **Presentation**: SVG circular arcs with dynamic hover/active amber glow, status labels, and center hub equipment readout.
