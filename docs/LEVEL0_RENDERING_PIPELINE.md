@@ -122,15 +122,29 @@ While WebM video texture is supported via `videoPool`, the **Sprite Sheet Flipbo
 3. **Zero GPU Upload Stalls**: Static texture in GPU memory; each instance simply updates UV offsets (`u, v`) per frame.
 4. **Universal Compatibility**: Works across all desktop and mobile browsers without video autoplay policy restrictions.
 
-### 4.4 In-Engine Implementation (`js/systems/blood_vfx.js`)
-- **Impact Positioning**: Positioned at raycast `hitPoint` on Saber's surface, offset $0.06\text{m}$ towards the camera along the view vector to eliminate geometry clipping.
-- **Orientation**: Aligned to camera orientation (`quaternion.copy(camera.quaternion)`) with a randomized roll angle (`rotateZ(Math.random() * 2 * PI)`) for visual variety.
-- **Physical Scale**: $0.95\text{m}$ body hit, $1.25\text{m}$ critical headshot.
-- **Depth & Blending**: `transparent: true`, `alphaTest: 0.005`, `depthTest: true`, `depthWrite: false` (prevents depth buffer culling of subsequent transparent particles).
-- **Authoritative Hook**: Triggered inside `damageZombie(zb, dmg, point, headshot)` exclusively on successful hits on Saber. Wall and environmental impacts trigger `sparkBurst(h.point, 4)`.
-- **Resource Lifecycle**: 16 pre-allocated pooled quads. After 1.07s of animation, instances hide themselves and return to the pool with zero garbage collection allocations.
+### 4.4 In-Engine Implementation (`js/systems/blood_vfx.js`) & Surface Attachment
+- **Surface Normal Offset**: Hits calculate the true 3D surface normal from the hit geometry or raycast normal transformed by `matrixWorld`. An outward offset of $0.002\text{m}$ ($2\text{mm}$) is applied along the surface normal (`hitPoint + norm * 0.002`), ensuring the blood splash appears directly on the visual mesh surface without clipping or embedding inside Artoria Lily's body.
+- **Hierarchical Dynamic Attachment**:
+  - Rather than being placed in static world space (where an advancing enemy walking at $2.0\text{m/s}$ would immediately swallow the stationary billboard within 100ms), the impact quad is parented directly to the character entity's group (`zb.group`).
+  - World coordinates are transformed into local parent coordinates via `targetParent.worldToLocal(surfacePos)`.
+  - **Parent Scale Compensation**: The Mixamo skeleton root is scaled down by $s = 0.0105$ to convert centimeters to meters. To prevent the blood quad from being crushed into a $9.9\text{mm}$ speck, the local quad scale is dynamically adjusted:
+    $$s_{\text{local}} = \frac{s_{\text{base}}}{\text{parentScale}}$$
+- **Dynamic Camera Billboarding with Roll Retention**:
+  - As the character rotates or runs, the quad continuously faces the active player camera.
+  - In character local space, the billboard orientation is calculated each frame as:
+    $$Q_{\text{local}} = Q_{\text{parent}}^{-1} \times Q_{\text{camera}}$$
+  - The randomized roll angle ($Z$-rotation) is multiplied into the local quaternion, maintaining random blood orientation while tracking the camera angle.
+- **Bone-Aligned Precision Hitboxes**:
+  - Replaced the coarse monolithic bounding box with individual hitboxes aligned to Artoria Lily's animated Mixamo bones (`mixamorigHead`, `mixamorigSpine2`, `mixamorigHips`, `mixamorigLeftUpLeg`, `mixamorigRightUpLeg`, `mixamorigLeftLeg`, `mixamorigRightLeg`, `mixamorigLeftArm`, `mixamorigRightArm`).
+  - Provides pinpoint headshot detection and surface normal accuracy across walking, running, and attacking animation frames.
+- **Authoritative Hook & Lifecycle**:
+  - Triggered inside `damageZombie(zb, dmg, point, headshot, hitNormal)` on successful hits on Saber. Wall impacts trigger `sparkBurst()`.
+  - When an enemy is defeated or removed, `BloodVFX.detachFrom(zb.group)` safely reparents any active impacts back to the global VFX scene to finish playback without orphaned nodes.
 
 ### 4.5 Deprecation & Complete Removal of Legacy Procedural Blood Particles
 - The legacy particle-burst generator (`bloodBurst(point, n)` and `bloodMat`) previously spawned procedural red sprite squares into the scene on hit.
 - This legacy generator has been completely removed from `js/engine.js`. The `bulletHit_sheet.webp` flipbook implementation now operates as the sole, authoritative blood impact effect on Saber hits.
 - Environmental sparks on bullet wall impacts (`sparkBurst` and `sparkMat`) and floor splat decals upon death (`addBloodDecalAsset`) remain fully active and preserved.
+
+---
+

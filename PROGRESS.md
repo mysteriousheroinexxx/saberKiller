@@ -1,5 +1,10 @@
 # Progress Log
 
+- 2026-11-21: Blood Impact Surface Attachment & Bone Hitbox Precision:
+  1. Addressed blood effect positioning embedding inside Artoria Lily's body. Applied true 3D surface normal extraction and a 2mm ($0.002\text{m}$) outward normal offset (`hitPoint + norm * 0.002`).
+  2. Implemented hierarchical dynamic attachment parenting the blood quad directly to the character group (`zb.group`), with parent scale compensation ($s_{\text{local}} = s_{\text{base}} / \text{parentScale}$) and camera billboarding in local space ($Q_{\text{local}} = Q_{\text{parent}}^{-1} \times Q_{\text{cam}}$) while preserving randomized roll angle. The splash now moves synchronously with Artoria Lily across walking and chasing animations.
+  3. Replaced monolithic coarse bounding box with animated Mixamo bone hitboxes (`mixamorigHead`, `mixamorigSpine2`, `mixamorigHips`, limbs) for pinpoint headshot and surface normal accuracy.
+  4. Added `detachFrom(zb.group)` lifecycle hook on entity death/removal preventing orphaned scene nodes.
 - 2026-11-20: Baseline committed (db8e641). Playable DOOM-like FPS: Mixamo-animated
   Saber horde (walk/attack/fall), handgun/shotgun GLB viewmodels, pfp.png HUD
   portrait, wave survival, headshots, pickups, minimap, status-bar HUD. Verified

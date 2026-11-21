@@ -120,15 +120,21 @@ export function initBloodVFX(scene, camera) {
 
 /**
  * Spawns a physical 3D blood impact at the specified bullet hit location.
+ * Positions directly on the character surface with a small outward normal offset (~2mm),
+ * attaches to the character group so it moves synchronously with Saber,
+ * and maintains camera-facing billboarding with randomized roll variation.
+ *
  * @param {THREE.Vector3} hitPoint - World position of bullet impact on Saber
  * @param {boolean} isHeadshot - Whether this hit is a critical headshot
+ * @param {THREE.Vector3|null} [hitNormal=null] - Outward surface normal at hit location
+ * @param {THREE.Object3D|null} [targetParent=null] - Character group to attach to
  * @param {string} [mode='sprite'] - 'sprite' (60fps atlas) or 'video' (WebM VideoTexture)
  */
-export function spawnBloodImpact(hitPoint, isHeadshot = false, mode = 'sprite') {
+export function spawnBloodImpact(hitPoint, isHeadshot = false, hitNormal = null, targetParent = null, mode = 'sprite') {
   if (!vfxScene || !vfxCamera) return;
 
   if (mode === 'video') {
-    spawnVideoImpact(hitPoint, isHeadshot);
+    spawnVideoImpact(hitPoint, isHeadshot, hitNormal, targetParent);
     return;
   }
 
@@ -136,27 +142,60 @@ export function spawnBloodImpact(hitPoint, isHeadshot = false, mode = 'sprite') 
   let impact = impactPool.find(item => !item.active);
   if (!impact) {
     impact = activeImpacts.shift(); // recycle oldest
+    if (impact && impact.attachedTo) {
+      impact.attachedTo.remove(impact.mesh);
+      vfxScene.add(impact.mesh);
+      impact.attachedTo = null;
+    }
   }
   if (!impact) return;
 
   impact.active = true;
   impact.elapsed = 0;
   impact.duration = ANIM_DURATION;
+  impact.roll = Math.random() * Math.PI * 2;
 
-  // Direction from hit point towards camera
-  const toCam = new THREE.Vector3().subVectors(vfxCamera.position, hitPoint).normalize();
+  // Determine surface normal vector pointing outward from character surface
+  let norm = null;
+  if (hitNormal && hitNormal.lengthSq() > 0.0001) {
+    norm = hitNormal.clone().normalize();
+  } else {
+    norm = new THREE.Vector3().subVectors(vfxCamera.position, hitPoint).normalize();
+  }
 
-  // Position slightly in front of Saber's surface towards the camera to prevent clipping
-  impact.mesh.position.copy(hitPoint).addScaledVector(toCam, 0.06);
-
-  // Align quad to face camera with random Z roll
-  impact.mesh.quaternion.copy(vfxCamera.quaternion);
-  impact.mesh.rotateZ(Math.random() * Math.PI * 2);
+  // Position directly on the mesh surface with a small outward offset (2mm = 0.002m)
+  // along the surface normal to prevent Z-fighting and ensure it sits on top of the mesh
+  const surfacePos = hitPoint.clone().addScaledVector(norm, 0.002);
 
   // Scale: 0.85m to 1.15m for body shot, 1.1m to 1.35m for headshot
-  const baseScale = isHeadshot ? 1.25 : 0.95;
+  const baseScale = isHeadshot ? 1.2 : 0.95;
   const scaleVar = baseScale * (0.9 + Math.random() * 0.2);
-  impact.mesh.scale.set(scaleVar, scaleVar, 1);
+
+  if (targetParent) {
+    targetParent.add(impact.mesh);
+    impact.attachedTo = targetParent;
+    impact.mesh.position.copy(targetParent.worldToLocal(surfacePos.clone()));
+
+    // Compensate for targetParent's local transform scale (e.g. Mixamo model scale ~0.0105)
+    // so world size is always authentic ~0.95m - 1.25m across all parent coordinate spaces
+    const parentScale = new THREE.Vector3();
+    targetParent.getWorldScale(parentScale);
+    const sx = scaleVar / (parentScale.x || 1);
+    const sy = scaleVar / (parentScale.y || 1);
+    const sz = scaleVar / (parentScale.z || 1);
+    impact.mesh.scale.set(sx, sy, sz);
+
+    const localQuat = targetParent.quaternion.clone().invert().multiply(vfxCamera.quaternion);
+    impact.mesh.quaternion.copy(localQuat);
+    impact.mesh.rotateZ(impact.roll);
+  } else {
+    vfxScene.add(impact.mesh);
+    impact.attachedTo = null;
+    impact.mesh.position.copy(surfacePos);
+    impact.mesh.quaternion.copy(vfxCamera.quaternion);
+    impact.mesh.rotateZ(impact.roll);
+    impact.mesh.scale.set(scaleVar, scaleVar, 1);
+  }
 
   // Reset UV offset to frame 0
   impact.tex.offset.set(0, (GRID_SIZE - 1) / GRID_SIZE);
@@ -167,27 +206,65 @@ export function spawnBloodImpact(hitPoint, isHeadshot = false, mode = 'sprite') 
   }
 }
 
-function spawnVideoImpact(hitPoint, isHeadshot) {
+function spawnVideoImpact(hitPoint, isHeadshot, hitNormal, targetParent) {
   let vItem = videoPool.find(v => !v.active);
   if (!vItem) {
     vItem = videoPool[0]; // reuse first
+    if (vItem && vItem.attachedTo) {
+      vItem.attachedTo.remove(vItem.mesh);
+      vfxScene.add(vItem.mesh);
+      vItem.attachedTo = null;
+    }
   }
   if (!vItem) return;
 
   vItem.active = true;
-  const toCam = new THREE.Vector3().subVectors(vfxCamera.position, hitPoint).normalize();
-  vItem.mesh.position.copy(hitPoint).addScaledVector(toCam, 0.06);
-  vItem.mesh.quaternion.copy(vfxCamera.quaternion);
-  vItem.mesh.rotateZ(Math.random() * Math.PI * 2);
+  vItem.roll = Math.random() * Math.PI * 2;
+  let norm = null;
+  if (hitNormal && hitNormal.lengthSq() > 0.0001) {
+    norm = hitNormal.clone().normalize();
+  } else {
+    norm = new THREE.Vector3().subVectors(vfxCamera.position, hitPoint).normalize();
+  }
 
-  const baseScale = isHeadshot ? 1.25 : 0.95;
-  vItem.mesh.scale.set(baseScale, baseScale, 1);
+  const surfacePos = hitPoint.clone().addScaledVector(norm, 0.002);
+  const baseScale = isHeadshot ? 1.2 : 0.95;
+
+  if (targetParent) {
+    targetParent.add(vItem.mesh);
+    vItem.attachedTo = targetParent;
+    vItem.mesh.position.copy(targetParent.worldToLocal(surfacePos.clone()));
+
+    const parentScale = new THREE.Vector3();
+    targetParent.getWorldScale(parentScale);
+    const sx = baseScale / (parentScale.x || 1);
+    const sy = baseScale / (parentScale.y || 1);
+    const sz = baseScale / (parentScale.z || 1);
+    vItem.mesh.scale.set(sx, sy, sz);
+
+    const localQuat = targetParent.quaternion.clone().invert().multiply(vfxCamera.quaternion);
+    vItem.mesh.quaternion.copy(localQuat);
+    vItem.mesh.rotateZ(vItem.roll);
+  } else {
+    vfxScene.add(vItem.mesh);
+    vItem.attachedTo = null;
+    vItem.mesh.position.copy(surfacePos);
+    vItem.mesh.quaternion.copy(vfxCamera.quaternion);
+    vItem.mesh.rotateZ(vItem.roll);
+    vItem.mesh.scale.set(baseScale, baseScale, 1);
+  }
+
   vItem.mesh.visible = true;
 
   vItem.video.currentTime = 0;
   vItem.video.play().catch(() => {});
 
   vItem.video.onended = () => {
+    if (vItem.attachedTo) {
+      vItem.attachedTo.remove(vItem.mesh);
+      vfxScene.add(vItem.mesh);
+      vItem.attachedTo = null;
+    }
     vItem.mesh.visible = false;
     vItem.active = false;
     vItem.video.pause();
@@ -207,15 +284,27 @@ export function updateBloodVFX(dt) {
 
     const progress = impact.elapsed / impact.duration;
     if (progress >= 1.0) {
-      // Completed playback - return to pool
+      // Completed playback - detach and return to pool
+      if (impact.attachedTo) {
+        impact.attachedTo.remove(impact.mesh);
+        vfxScene.add(impact.mesh);
+        impact.attachedTo = null;
+      }
       impact.mesh.visible = false;
       impact.active = false;
       activeImpacts.splice(i, 1);
       continue;
     }
 
-    // Keep impact billboarded towards the camera as the player moves
-    impact.mesh.quaternion.copy(vfxCamera.quaternion);
+    // Billboarding: Keep quad facing camera while preserving character attachment and random roll
+    if (impact.attachedTo) {
+      const localQuat = impact.attachedTo.quaternion.clone().invert().multiply(vfxCamera.quaternion);
+      impact.mesh.quaternion.copy(localQuat);
+      impact.mesh.rotateZ(impact.roll);
+    } else {
+      impact.mesh.quaternion.copy(vfxCamera.quaternion);
+      impact.mesh.rotateZ(impact.roll);
+    }
 
     // Calculate current frame index in the 64-frame sequence
     const frameIndex = Math.min(TOTAL_FRAMES - 1, Math.floor(progress * TOTAL_FRAMES));
@@ -232,16 +321,58 @@ export function updateBloodVFX(dt) {
 }
 
 /**
+ * Detaches any impacts currently parented to a specific object or its descendants.
+ * Called when an enemy is defeated or removed.
+ * @param {THREE.Object3D} target
+ */
+export function detachFrom(target) {
+  if (!target || !vfxScene) return;
+  for (const impact of activeImpacts) {
+    if (impact.attachedTo === target || (impact.mesh.parent && isDescendant(impact.mesh.parent, target))) {
+      impact.mesh.parent.remove(impact.mesh);
+      vfxScene.add(impact.mesh);
+      impact.attachedTo = null;
+    }
+  }
+  for (const vItem of videoPool) {
+    if (vItem.attachedTo === target || (vItem.mesh.parent && isDescendant(vItem.mesh.parent, target))) {
+      vItem.mesh.parent.remove(vItem.mesh);
+      vfxScene.add(vItem.mesh);
+      vItem.attachedTo = null;
+    }
+  }
+}
+
+function isDescendant(node, ancestor) {
+  let cur = node;
+  while (cur) {
+    if (cur === ancestor) return true;
+    cur = cur.parent;
+  }
+  return false;
+}
+
+/**
  * Resets all active blood impacts (e.g. on level change or restart).
  */
 export function cleanupBloodVFX() {
   for (const impact of activeImpacts) {
+    if (impact.attachedTo) {
+      impact.attachedTo.remove(impact.mesh);
+      vfxScene.add(impact.mesh);
+      impact.attachedTo = null;
+    }
     impact.mesh.visible = false;
     impact.active = false;
   }
   activeImpacts.length = 0;
 
   for (const vItem of videoPool) {
+    if (vItem.attachedTo) {
+      vItem.attachedTo.remove(vItem.mesh);
+      vfxScene.add(vItem.mesh);
+      vItem.attachedTo = null;
+    }
     vItem.mesh.visible = false;
     vItem.active = false;
     vItem.video.pause();
@@ -262,6 +393,7 @@ if (typeof window !== 'undefined') {
     spawn: spawnBloodImpact,
     update: updateBloodVFX,
     cleanup: cleanupBloodVFX,
+    detachFrom: detachFrom,
     getActiveCount: getActiveImpactCount,
     getTotalPooled: getTotalPooled
   };

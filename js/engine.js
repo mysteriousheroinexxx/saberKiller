@@ -1466,10 +1466,40 @@ function spawnMixamoZombie(wx,wz){
   mixer.addEventListener('finished',e=>{
     if(zb.attacks.includes(e.action)&&zb.state==='chase'){zb.walk.reset().play();e.action.crossFadeTo(zb.walk,0.2);}
   });
-  g.traverse(o=>{if(o.isMesh){o.userData.zb=zb;hitMeshes.push(o);}});
-  const inv=1/ZMODEL.mixScale;
-  const hb=new THREE.Mesh(new THREE.BoxGeometry(.8,1.85,.55),new THREE.MeshBasicMaterial({visible:false}));
-  hb.scale.setScalar(inv);hb.position.y=.925*inv;hb.name='hitbox';hb.userData.zb=zb;g.add(hb);hitMeshes.push(hb);
+  g.traverse(o=>{if(o.isMesh){o.userData.zb=zb;}});
+
+  // Attach precision bone hitboxes to actual Mixamo animated bones.
+  // This guarantees true visual surface collision, authentic surface normals,
+  // and synchronous movement with Artoria Lily's animations.
+  const hbMat=new THREE.MeshBasicMaterial({visible:false});
+  function attachBoneHitbox(boneName, geom, offset, isHead, partName){
+    const bone=g.getObjectByName(boneName);
+    if(!bone)return null;
+    const mesh=new THREE.Mesh(geom, hbMat);
+    if(offset)mesh.position.copy(offset);
+    mesh.name=partName;
+    mesh.userData={zb, bone, headshot:isHead, partName};
+    bone.add(mesh);
+    hitMeshes.push(mesh);
+    return mesh;
+  }
+
+  // 1. Head hitbox: 14cm radius sphere centered on Artoria Lily's head and hair
+  attachBoneHitbox('mixamorigHead', new THREE.SphereGeometry(14, 8, 8), new THREE.Vector3(0, 10, -2), true, 'head');
+  // 2. Chest hitbox: 28x22x18cm box covering upper chest / torso
+  attachBoneHitbox('mixamorigSpine2', new THREE.BoxGeometry(28, 22, 18), new THREE.Vector3(0, 6, 0), false, 'chest');
+  // 3. Hips / skirt hitbox: 32x28x24cm box covering pelvis / skirt
+  attachBoneHitbox('mixamorigHips', new THREE.BoxGeometry(32, 28, 24), new THREE.Vector3(0, -4, 0), false, 'hips');
+  // 4. Thigh hitboxes: 14x38x14cm boxes
+  attachBoneHitbox('mixamorigLeftUpLeg', new THREE.BoxGeometry(14, 38, 14), new THREE.Vector3(0, -18, 0), false, 'leftThigh');
+  attachBoneHitbox('mixamorigRightUpLeg', new THREE.BoxGeometry(14, 38, 14), new THREE.Vector3(0, -18, 0), false, 'rightThigh');
+  // 5. Calf / boot hitboxes: 12x38x12cm boxes
+  attachBoneHitbox('mixamorigLeftLeg', new THREE.BoxGeometry(12, 38, 12), new THREE.Vector3(0, -18, 0), false, 'leftCalf');
+  attachBoneHitbox('mixamorigRightLeg', new THREE.BoxGeometry(12, 38, 12), new THREE.Vector3(0, -18, 0), false, 'rightCalf');
+  // 6. Arm hitboxes: 10x26x10cm boxes
+  attachBoneHitbox('mixamorigLeftArm', new THREE.BoxGeometry(10, 26, 10), new THREE.Vector3(0, -12, 0), false, 'leftArm');
+  attachBoneHitbox('mixamorigRightArm', new THREE.BoxGeometry(10, 26, 10), new THREE.Vector3(0, -12, 0), false, 'rightArm');
+
   zombies.push(zb);return zb;
 }
 function loadRigidModel(){
@@ -1754,6 +1784,9 @@ function spawnZombie(fx,fz){
   return zb;
 }
 function removeZombie(zb){
+  if(window.BloodVFX && typeof window.BloodVFX.detachFrom === 'function'){
+    window.BloodVFX.detachFrom(zb.group);
+  }
   scene.remove(zb.group);
   if(zb.mixer){zb.mixer.stopAllAction();zb.mixer.uncacheRoot(zb.group);}
   const mats=new Set();
@@ -1765,17 +1798,18 @@ function removeZombie(zb){
   hitMeshes=hitMeshes.filter(m=>m.userData.zb!==zb);
   zombies=zombies.filter(z=>z!==zb);
 }
-function damageZombie(zb,dmg,point,headshot){
+function damageZombie(zb,dmg,point,headshot,hitNormal,hitBone){
   if(zb.state==='dying'||zb.state==='dead')return;
   zb.hp-=dmg;zb.flashT=.12;
   for(const m of zb.mats)if(m.emissive)m.emissive.setRGB(.6,.05,.05);
-  spawnBloodImpact(point, headshot);
+  const targetParent=zb.group;
+  spawnBloodImpact(point, headshot, hitNormal, targetParent);
   if(zb.hp<=0){
     zb.state='dying';zb.dieT=0;
     P.kills++;P.grinT=1.2;
     if(rng()<0.35)Progress.addItem('scrap',1);
     SND.death();
-    spawnBloodImpact(point, true);
+    spawnBloodImpact(point, true, hitNormal, targetParent);
     addBloodDecalAsset(zb.group.position);
     // drops
     const roll=rng();
@@ -2077,12 +2111,22 @@ function shoot(){
       const h=hits[0];end=h.point;
       const zb=h.object.userData.zb;
       if(zb){
-        // GLB model: hair is part of the body mesh and covers the head,
-        // so count any hit above shoulder height as a headshot
-        const headshot = zb.rigid
-          ? h.point.y > zb.group.position.y + 1.5*zb.scale
-          : (h.object===zb.parts.head||h.object.parent===zb.parts.head);
-        damageZombie(zb,w.dmg*(headshot?2:1),h.point,headshot);
+        let hitNormal=null;
+        if(h.face&&h.face.normal){
+          hitNormal=h.face.normal.clone()
+            .applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(h.object.matrixWorld))
+            .normalize();
+          if(hitNormal.dot(_dir)>0){
+            hitNormal.negate();
+          }
+        }
+        const hitBone=h.object.userData.bone||zb.group;
+        const headshot=(h.object.userData.headshot===true)||(
+          zb.rigid
+            ? h.point.y > zb.group.position.y + 1.45*zb.scale
+            : (h.object===zb.parts.head||h.object.parent===zb.parts.head)
+        );
+        damageZombie(zb,w.dmg*(headshot?2:1),h.point,headshot,hitNormal,hitBone);
       } else {
         sparkBurst(h.point,4);
       }

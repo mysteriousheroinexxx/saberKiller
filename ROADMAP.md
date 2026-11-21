@@ -90,3 +90,5 @@ scattered wall outlets, occasional pitch-black rooms / blood-red rooms.
 - [x] 11.5 Support concurrent overlapping hits (shotgun and automatic fire) with automatic lifecycle cleanup and zero garbage collection spikes
 - [x] 11.6 Document full Level 0 asset pipeline, PBR rendering, dynamic lighting, collision, and VFX architecture in `docs/LEVEL0_RENDERING_PIPELINE.md`
 - [x] 11.7 Purge legacy procedural blood particles (bloodBurst/bloodMat), leaving bulletHit_sheet.webp as the sole impact effect
+- [x] 11.8 Anchor blood impact quad directly to target mesh with 2mm surface normal offset and bone-tracking attachment
+- [x] 11.9 Mixamo bone-aligned precision hitboxes (head, spine, limbs) replacing monolithic box for accurate surface normal and headshot detection

@@ -81,15 +81,19 @@
     window.particles.length = 0;
   }
 
-  // --- TEST: Saber Hit & Blood Animation Playback ---
-  // Position player in corridor looking West at Saber
-  P.pos.set(53.63, 0, -173.14);
-  P.yaw = -Math.PI / 2;
-  P.pitch = -0.08;
-  camera.position.set(53.63, 1.62, -173.14);
-  camera.rotation.y = P.yaw;
-  camera.rotation.x = P.pitch;
-  camera.updateMatrixWorld(true);
+  // --- TEST: Saber Hit & Blood Animation Surface Positioning ---
+  function aimAt(zb, targetY = 1.25) {
+    const dx = zb.group.position.x - P.pos.x;
+    const dz = zb.group.position.z - P.pos.z;
+    const d = Math.hypot(dx, dz) || 1;
+    P.yaw = Math.atan2(-dx, -dz);
+    P.pitch = Math.atan2(targetY - 1.62, d);
+    camera.position.set(P.pos.x, 1.62, P.pos.z);
+    camera.rotation.order = 'YXZ';
+    camera.rotation.y = P.yaw;
+    camera.rotation.x = P.pitch;
+    camera.updateMatrixWorld(true);
+  }
 
   let saber = null;
   if (window.spawnZombie) {
@@ -97,7 +101,7 @@
     if (saber && saber.group) {
       saber.group.position.set(49.8, 0, -173.14);
       saber.group.rotation.y = Math.PI / 2; // Facing player
-      saber.hp = 500; // ensure survival for test shots
+      saber.hp = 800; // ensure survival for test shots
       saber.riseT = 1.0;
       saber.state = 'chase';
       saber.group.updateMatrixWorld(true);
@@ -106,16 +110,9 @@
 
   // Wait 600ms for animations and render loop to synchronize
   await wait(600);
-  if (window.G && typeof window.G.aimAtNearest === 'function') {
-    window.G.aimAtNearest();
-  }
-  camera.position.set(P.pos.x, 1.62, P.pos.z);
-  camera.rotation.order = 'YXZ';
-  camera.rotation.y = P.yaw;
-  camera.rotation.x = P.pitch;
-  camera.updateMatrixWorld(true);
+  if (saber) aimAt(saber, 1.20); // Aim at chest
 
-  // Shoot Saber directly
+  // Shoot Saber body shot
   P.bullets = 50; P.mag.bullets = 12; P.cool = 0; P.reloadT = 0;
   if (typeof window.shoot === 'function') {
     window.shoot();
@@ -127,24 +124,39 @@
   const bloodTriggeredOnSaberHit = hitActiveCount > 0;
   const legacyParticleCountOnSaberHit = window.particles ? window.particles.length : 0;
   const noLegacyBloodParticles = (legacyParticleCountOnSaberHit === 0);
-  console.log('[AUTOTEST] Saber hit test:', {
+  console.log('[AUTOTEST] Saber body hit test:', {
     hitActiveCount,
     bloodTriggeredOnSaberHit,
     legacyParticleCountOnSaberHit,
     noLegacyBloodParticles
   });
 
-  // Capture screenshot of single clean blood impact animation on Saber
-  await captureShot('saber_blood_impact_clean');
+  // Capture screenshot of blood impact on Saber body surface
+  await captureShot('saber_blood_impact_surface');
 
-  // --- TEST: Repeated Multi-Hit Test ---
+  // Let Saber advance while blood animation plays to verify it stays locked on surface
+  await wait(300);
+  await captureShot('saber_blood_moving_surface');
+
+  // --- TEST: Headshot Test ---
+  if (saber && saber.group) {
+    aimAt(saber, 1.55); // Aim directly at head
+  }
   P.cool = 0; P.reloadT = 0;
   if (typeof window.shoot === 'function') {
-    if (window.G && typeof window.G.aimAtNearest === 'function') window.G.aimAtNearest();
+    window.shoot();
+  }
+  await wait(120);
+  await captureShot('saber_headshot_impact');
+
+  // --- TEST: Repeated Multi-Hit Test ---
+  if (saber) aimAt(saber, 1.25);
+  P.cool = 0; P.reloadT = 0;
+  if (typeof window.shoot === 'function') {
     window.shoot(); // second hit
     await wait(80);
     P.cool = 0;
-    if (window.G && typeof window.G.aimAtNearest === 'function') window.G.aimAtNearest();
+    if (saber) aimAt(saber, 1.25);
     window.shoot(); // third hit
   }
   await wait(100);
@@ -160,16 +172,6 @@
   const afterCompletionCount = BloodVFX ? BloodVFX.getActiveCount() : 0;
   const cleanedUpProperly = afterCompletionCount === 0;
   console.log('[AUTOTEST] Cleanup test:', { afterCompletionCount, cleanedUpProperly });
-
-  // --- SHOT 2: Long Corridor Vista ---
-  P.pos.set(53.63, 0, -173.14);
-  P.yaw = 0; // Look North down the long corridor vista
-  P.pitch = -0.02;
-  camera.position.set(53.63, 1.62, -173.14);
-  camera.rotation.y = P.yaw;
-  camera.rotation.x = P.pitch;
-  await wait(400);
-  await captureShot('level0_integrated_corridor_vista');
 
   // Benchmark 60 frames with blood VFX loaded
   let frameTimes = [];
@@ -212,7 +214,7 @@
     body: JSON.stringify(telemetry)
   }).catch(() => {});
 
-  // Last capture: Corner decal to signal end
+  // Last capture: signal end
   P.pos.set(47.5, 0, -158.0);
   P.yaw = 0;
   P.pitch = 0.06;
