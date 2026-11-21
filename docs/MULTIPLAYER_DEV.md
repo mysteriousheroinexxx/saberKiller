@@ -242,3 +242,69 @@ Automated end-to-end testing was performed with two headless browser instances s
 - **Phase 2 (Combat & Synchronization)**: Weapon firing synchronization, projectile raycasting, player health & damage, hitboxes, and wall impact decals across network.
 - **Phase 3 (Game Modes & PvE)**: Multiplayer cooperative PvE against Saber with network-synchronized AI behavior, and PvP deathmatch mode.
 - **Phase 4 (Cloud Infrastructure)**: Matchmaking, host migration, voice/text chat, and deployment to Render / cloud WebSocket hosting.
+
+---
+
+## 10. Multiplayer Rendering Profiles & Server-Controlled Developer Panel
+
+Following visual fidelity investigations on the Backrooms Level 0 environment, **Configuration D — Combined Optimum** has been finalized as the permanent default rendering configuration for Multiplayer.
+
+### 1. Default Configuration (Configuration D)
+Multiplayer initializes directly with Configuration D on frame 0 with zero popping or transitional state:
+
+| Setting | Default Value | Purpose |
+| :--- | :--- | :--- |
+| **Film grain (`uGrain`)** | `0.0` (Disabled) | Eliminates high-frequency screen-space stipple noise. |
+| **Chromatic aberration (`uFringe`)** | `0.0` (Disabled) | Removes color separation blur along corridor perimeters. |
+| **Anisotropic Filtering** | Up to `16x` | Maximizes oblique texture clarity on floor and distant walls. |
+| **Wallpaper normalScale** | `0.4` | Smooths harsh micro-bump normal stippling on wallpaper. |
+| **Carpet normalScale** | `0.6` | Balances fabric normal depth without grainy grazing highlights. |
+
+### 2. Rendering Comparison Profiles (A, B, C, D)
+
+| Profile | Key | Film Grain | Fringe | Anisotropy | Wallpaper Normal | Carpet Normal |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **A — Original (Baseline)** | `1` / `A` | 0.085 | 0.0035 | 1x | 1.0 | 1.2 |
+| **B — Clean Post-Processing** | `2` / `B` | 0.0 | 0.0 | 1x | 1.0 | 1.2 |
+| **C — Texture Quality** | `3` / `C` | 0.085 | 0.0035 | Up to 16x | 0.4 | 0.6 |
+| **D — Combined Optimum (Default)** | `4` / `D` | 0.0 | 0.0 | Up to 16x | 0.4 | 0.6 |
+
+### 3. Server Startup Modes & Developer Flag
+
+Access to developer comparison tools is strictly governed by the Node.js server via an explicit startup flag:
+
+#### Normal Startup (Production / Players)
+```bash
+node server/index.js
+```
+- Configuration D is active immediately.
+- The server responds to `GET /__config` with `{"renderingDevTools":false}`.
+- `#dev-comparison-panel` and `#dev-panel-toggle` are completely removed from the DOM.
+- No developer keyboard shortcuts are bound.
+- No client-side bypass (query parameters, localStorage) can enable the panel.
+
+#### Developer Startup (Internal Testing)
+```bash
+node server/index.js --dev-rendering
+```
+- Configuration D remains the initial default.
+- The server responds to `GET /__config` with `{"renderingDevTools":true}`.
+- Developer panel is mounted and visible on startup.
+- Runtime profile switching: buttons or keys `1` (A), `2` (B), `3` (C), `4` (D).
+- Camera viewpoints: `N` (Normal / Hallway), `W` (Wallpaper Close-up), `C` (Carpet Oblique).
+- Panel visibility: close button or `H` / `F2` hides the panel and reveals the reopen toggle button; clicking reopen or pressing `H` / `F2` restores the panel.
+- Repeated switching does not degrade normal scale or uniforms.
+
+### 4. Hardware Anisotropy Clamping
+The client renderer dynamically queries hardware capabilities:
+```javascript
+const maxAniso = renderer.capabilities.getMaxAnisotropy();
+const effectiveAniso = Math.min(profile.anisotropy, maxAniso);
+```
+Requested anisotropy is clamped to hardware support (16x on modern GPUs/renderers) to ensure stability across mobile, integrated, and discrete graphics.
+
+### 5. Single-Player Story Mode Isolation
+- Single-player Story Mode files (`js/engine.js`, `js/levels/level0.js`, `js/levels/level0_env.js`, `index.html`) remain completely untouched.
+- Story Mode continues using its own independent post-processing pass and material defaults.
+- All multiplayer material adjustments occur purely at runtime on the multiplayer page instance.
+

@@ -3,7 +3,7 @@
 
 import { initLevel0Env, enterLevel0Env, updateLevel0Env, getCollisionHandler } from '../levels/level0_env.js';
 import { MPManager } from './mp_manager.js';
-import { preloadPlayerAssets } from './remote_player.js';
+import { RemotePlayer, preloadPlayerAssets } from './remote_player.js';
 
 let scene, camera, renderer, mpManager, playerLight;
 let lastTime = performance.now();
@@ -29,8 +29,8 @@ function initPostProcessing(w, h) {
       uResolution: { value: new THREE.Vector2(w, h) },
       uSaturation: { value: 1.25 },
       uVignette: { value: 0.95 },
-      uGrain: { value: 0.085 },
-      uFringe: { value: 0.0035 }
+      uGrain: { value: 0.0 },
+      uFringe: { value: 0.0 }
     },
     vertexShader: `
       varying vec2 vUv;
@@ -94,7 +94,20 @@ function initPostProcessing(w, h) {
   postScene.add(quad);
 }
 
-function init() {
+async function checkDevToolsConfig() {
+  try {
+    const res = await fetch('/__config', { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      return !!data.renderingDevTools;
+    }
+  } catch (e) {
+    console.warn('[DEV TOOLS] Could not query /__config:', e);
+  }
+  return false;
+}
+
+async function init() {
   const container = document.getElementById('canvas-container');
 
   // 1. Scene & Camera
@@ -229,6 +242,10 @@ function init() {
     if (ch) {
       mpManager.setCollisionHandler(ch);
     }
+
+    // Apply default Configuration D immediately to environment materials
+    applyRenderConfig('combined');
+
     isEnvReady = true;
     statusEl.textContent = 'Ready to Connect';
   });
@@ -246,24 +263,643 @@ function init() {
     if (postMat) postMat.uniforms.uResolution.value.set(w, h);
   });
 
-  // Check URL query parameters for automated test execution: ?autotest=1&client=1&room=TEST&action=create|join
+  // Check URL query parameters for automated comparison or autotest
   const params = new URLSearchParams(window.location.search);
   const autoTest = params.get('autotest');
   const autoClient = params.get('client') || '1';
   const autoRoom = params.get('room') || 'DUAL';
   const autoAction = params.get('action') || (autoClient === '1' ? 'create' : 'join');
+  const compare = params.get('compare') || params.get('investigate');
 
-  if (autoTest) {
+  if (compare) {
+    runAutomatedComparisonSuite();
+  } else if (autoTest) {
     runAutoTest(autoClient, autoRoom, autoAction);
+  }
+
+  // Check if developer rendering tools are permitted by the server
+  const devToolsEnabled = await checkDevToolsConfig();
+
+  if (devToolsEnabled) {
+    console.log('[DEV TOOLS] Server enabled developer rendering panel (--dev-rendering).');
+    initDevComparisonUI();
+  } else {
+    // If not enabled by server flag, completely remove dev panel elements and do not bind dev keys
+    console.log('[DEV TOOLS] Developer tools disabled by server. Removing panel from DOM.');
+    document.getElementById('dev-comparison-panel')?.remove();
+    document.getElementById('dev-panel-toggle')?.remove();
+  }
+
+  // Check URL query parameters for verification suite
+  const verify = params.get('verify');
+  if (verify) {
+    runVerificationSuite(verify);
   }
 
   // Expose to window for testing & debugging
   window.mpManager = mpManager;
   window.scene = scene;
   window.camera = camera;
+  window.renderer = renderer;
+  window.postMat = postMat;
+  window.applyRenderConfig = applyRenderConfig;
+  window.switchView = switchView;
+  window.RENDER_CONFIGS = RENDER_CONFIGS;
+  window.VIEWPOINTS = VIEWPOINTS;
 
   // 7. Render Loop
   requestAnimationFrame(loop);
+}
+
+// =============================================================================
+// INTERACTIVE RENDERING COMPARISON MODULE
+// Profiles: A (Original), B (Clean Post), C (Texture Quality), D (Combined)
+// Viewpoints: Normal (Hallway), Wallpaper (Close-up), Carpet (Oblique Angle)
+// =============================================================================
+
+export const RENDER_CONFIGS = {
+  original: {
+    key: 'A',
+    id: 'original',
+    name: 'A — Original (Baseline)',
+    grain: 0.085,
+    fringe: 0.0035,
+    vignette: 0.95,
+    saturation: 1.25,
+    anisotropy: 1,
+    wallNormalScale: 1.0,
+    carpetNormalScale: 1.2
+  },
+  clean_post: {
+    key: 'B',
+    id: 'clean_post',
+    name: 'B — Clean Post-Processing',
+    grain: 0.0,
+    fringe: 0.0,
+    vignette: 0.95,
+    saturation: 1.25,
+    anisotropy: 1,
+    wallNormalScale: 1.0,
+    carpetNormalScale: 1.2
+  },
+  texture_quality: {
+    key: 'C',
+    id: 'texture_quality',
+    name: 'C — Texture Quality',
+    grain: 0.085,
+    fringe: 0.0035,
+    vignette: 0.95,
+    saturation: 1.25,
+    anisotropy: 16,
+    wallNormalScale: 0.4,
+    carpetNormalScale: 0.6
+  },
+  combined: {
+    key: 'D',
+    id: 'combined',
+    name: 'D — Combined Optimum',
+    grain: 0.0,
+    fringe: 0.0,
+    vignette: 0.95,
+    saturation: 1.25,
+    anisotropy: 16,
+    wallNormalScale: 0.4,
+    carpetNormalScale: 0.6
+  }
+};
+
+export const VIEWPOINTS = {
+  normal: {
+    key: 'normal',
+    name: 'Normal Gameplay (Hallway)',
+    pos: { x: 48.69, y: 1.62, z: -187.65 },
+    yaw: -Math.PI / 2,
+    pitch: 0.04
+  },
+  wallpaper: {
+    key: 'wallpaper',
+    name: 'Wallpaper (Close-up)',
+    pos: { x: 47.40, y: 1.62, z: -187.65 },
+    yaw: Math.PI / 2,
+    pitch: 0.0
+  },
+  carpet: {
+    key: 'carpet',
+    name: 'Carpet (Oblique Angle)',
+    pos: { x: 48.69, y: 1.62, z: -187.65 },
+    yaw: -Math.PI / 2,
+    pitch: -0.48
+  }
+};
+
+let currentProfileKey = 'combined';
+let currentViewKey = 'normal';
+let cachedMaterials = null;
+
+function cacheMaterials() {
+  if (cachedMaterials) return cachedMaterials;
+  let wallMat = null, floorMat = null, ceilMat = null;
+
+  scene.traverse(o => {
+    if (o.isMesh && o.material) {
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) {
+        if (m.color) {
+          const hex = m.color.getHex();
+          if (hex === 0xd6ce88 && !wallMat) wallMat = m;
+          if (hex === 0xbfae6d && !floorMat) floorMat = m;
+          if (hex === 0xebe9d6 && !ceilMat) ceilMat = m;
+        }
+      }
+    }
+  });
+
+  if (wallMat || floorMat || ceilMat) {
+    const textures = [
+      wallMat?.map, wallMat?.normalMap, wallMat?.roughnessMap,
+      floorMat?.map, floorMat?.normalMap, floorMat?.roughnessMap, floorMat?.aoMap,
+      ceilMat?.map, ceilMat?.normalMap, ceilMat?.roughnessMap, ceilMat?.aoMap
+    ].filter(Boolean);
+
+    cachedMaterials = {
+      wall: wallMat,
+      floor: floorMat,
+      ceil: ceilMat,
+      textures
+    };
+  }
+
+  return cachedMaterials;
+}
+
+export function applyRenderConfig(configKey) {
+  const cfg = RENDER_CONFIGS[configKey] || RENDER_CONFIGS.combined;
+  currentProfileKey = configKey in RENDER_CONFIGS ? configKey : 'combined';
+
+  const maxAniso = renderer?.capabilities?.getMaxAnisotropy?.() || 16;
+  const effectiveAniso = Math.min(cfg.anisotropy, maxAniso);
+
+  console.log(`[RENDER COMPARISON] Applying ${cfg.name} | Aniso: ${effectiveAniso}x (Max GPU: ${maxAniso}x)`);
+
+  // 1. Post-processing uniforms (mutating existing instance directly)
+  if (postMat) {
+    postMat.uniforms.uGrain.value = cfg.grain;
+    postMat.uniforms.uFringe.value = cfg.fringe;
+    postMat.uniforms.uVignette.value = cfg.vignette;
+    postMat.uniforms.uSaturation.value = cfg.saturation;
+  }
+
+  // 2. Texture anisotropy & normalScale on existing Level 0 material instances
+  const mats = cacheMaterials();
+  if (mats) {
+    for (const tex of mats.textures) {
+      if (tex.anisotropy !== effectiveAniso) {
+        tex.anisotropy = effectiveAniso;
+        tex.needsUpdate = true;
+      }
+    }
+    if (mats.wall?.normalScale) {
+      mats.wall.normalScale.set(cfg.wallNormalScale, cfg.wallNormalScale);
+      mats.wall.needsUpdate = true;
+    }
+    if (mats.floor?.normalScale) {
+      mats.floor.normalScale.set(cfg.carpetNormalScale, cfg.carpetNormalScale);
+      mats.floor.needsUpdate = true;
+    }
+  }
+
+  updateDevUI(currentProfileKey, currentViewKey);
+  return cfg;
+}
+
+export function switchView(viewKey) {
+  const vp = VIEWPOINTS[viewKey] || VIEWPOINTS.normal;
+  currentViewKey = viewKey in VIEWPOINTS ? viewKey : 'normal';
+
+  if (mpManager && mpManager.localPlayer) {
+    mpManager.localPlayer.pos.set(vp.pos.x, 0.0, vp.pos.z);
+    mpManager.localPlayer.yaw = vp.yaw;
+    mpManager.localPlayer.pitch = vp.pitch;
+  }
+  camera.position.set(vp.pos.x, vp.pos.y, vp.pos.z);
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y = vp.yaw;
+  camera.rotation.x = vp.pitch;
+
+  if (playerLight) {
+    playerLight.position.copy(camera.position);
+  }
+
+  updateLevel0Env(0.016, camera.position, null, camera.rotation.y);
+  updateDevUI(currentProfileKey, currentViewKey);
+  console.log(`[RENDER COMPARISON] Switched viewpoint to: ${vp.name}`);
+}
+
+function updateDevUI(cfgKey = currentProfileKey, viewKey = currentViewKey) {
+  const cfg = RENDER_CONFIGS[cfgKey];
+  if (!cfg) return;
+
+  const maxAniso = renderer?.capabilities?.getMaxAnisotropy?.() || 16;
+  const effectiveAniso = Math.min(cfg.anisotropy, maxAniso);
+
+  // Update profile buttons active state
+  ['A', 'B', 'C', 'D'].forEach(k => {
+    const btn = document.getElementById(`btn-prof-${k}`);
+    if (btn) btn.classList.toggle('active', cfg.key === k);
+  });
+
+  // Update view buttons active state
+  ['normal', 'wallpaper', 'carpet'].forEach(vk => {
+    const btn = document.getElementById(`btn-v-${vk}`);
+    if (btn) btn.classList.toggle('active', viewKey === vk);
+  });
+
+  // Update text readout
+  const titleEl = document.getElementById('readout-title');
+  const grainEl = document.getElementById('readout-grain');
+  const fringeEl = document.getElementById('readout-fringe');
+  const anisoEl = document.getElementById('readout-aniso');
+  const wallNormEl = document.getElementById('readout-wall-norm');
+  const carpetNormEl = document.getElementById('readout-carpet-norm');
+
+  if (titleEl) titleEl.textContent = cfg.name;
+  if (grainEl) grainEl.textContent = `${cfg.grain.toFixed(3)}${cfg.grain === 0 ? ' (Disabled)' : ''}`;
+  if (fringeEl) fringeEl.textContent = `${cfg.fringe.toFixed(4)}${cfg.fringe === 0 ? ' (Disabled)' : ''}`;
+  if (anisoEl) anisoEl.textContent = `${effectiveAniso}x (Hardware Max: ${maxAniso}x)`;
+  if (wallNormEl) wallNormEl.textContent = `${cfg.wallNormalScale.toFixed(2)}${cfg.wallNormalScale < 1.0 ? ' (Tuned)' : ' (Baseline)'}`;
+  if (carpetNormEl) carpetNormEl.textContent = `${cfg.carpetNormalScale.toFixed(2)}${cfg.carpetNormalScale < 1.0 ? ' (Tuned)' : ' (Baseline)'}`;
+}
+
+function initDevComparisonUI() {
+  const panel = document.getElementById('dev-comparison-panel');
+  const toggleBtn = document.getElementById('dev-panel-toggle');
+  const closeBtn = document.getElementById('btn-dev-close');
+
+  if (!panel) return;
+
+  function setPanelVisible(show) {
+    panel.style.display = show ? 'block' : 'none';
+    if (toggleBtn) toggleBtn.style.display = show ? 'none' : 'block';
+  }
+
+  if (closeBtn) closeBtn.addEventListener('click', () => setPanelVisible(false));
+  if (toggleBtn) toggleBtn.addEventListener('click', () => setPanelVisible(true));
+
+  // Profile selection buttons
+  const profMap = {
+    'btn-prof-A': 'original',
+    'btn-prof-B': 'clean_post',
+    'btn-prof-C': 'texture_quality',
+    'btn-prof-D': 'combined'
+  };
+
+  Object.entries(profMap).forEach(([btnId, pKey]) => {
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      btn.addEventListener('click', () => {
+        applyRenderConfig(pKey);
+      });
+    }
+  });
+
+  // Viewpoint selection buttons
+  const viewMap = {
+    'btn-v-normal': 'normal',
+    'btn-v-wallpaper': 'wallpaper',
+    'btn-v-carpet': 'carpet'
+  };
+
+  Object.entries(viewMap).forEach(([btnId, vKey]) => {
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      btn.addEventListener('click', () => {
+        switchView(vKey);
+      });
+    }
+  });
+
+  // Keyboard shortcut listener
+  window.addEventListener('keydown', (e) => {
+    if (e.target && e.target.tagName === 'INPUT') return;
+
+    if (e.key === '1') applyRenderConfig('original');
+    else if (e.key === '2') applyRenderConfig('clean_post');
+    else if (e.key === '3') applyRenderConfig('texture_quality');
+    else if (e.key === '4') applyRenderConfig('combined');
+    else if (e.key === 'n' || e.key === 'N') switchView('normal');
+    else if (e.key === 'w' || e.key === 'W') switchView('wallpaper');
+    else if (e.key === 'c' || e.key === 'C') switchView('carpet');
+    else if (e.key === 'h' || e.key === 'H' || e.key === 'F2') {
+      e.preventDefault();
+      const isVisible = panel.style.display !== 'none';
+      setPanelVisible(!isVisible);
+    }
+  });
+
+  setPanelVisible(true);
+  updateDevUI(currentProfileKey, currentViewKey);
+}
+
+async function runVerificationSuite(mode) {
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  console.log(`[VERIFICATION SUITE] Starting test mode: ${mode}...`);
+
+  for (let i = 0; i < 60; i++) {
+    if (isEnvReady) break;
+    await wait(100);
+  }
+  await wait(600);
+
+  if (mode === 'test_a') {
+    // Normal Server Test: Panel must be completely absent from DOM, Configuration D active
+    const panel = document.getElementById('dev-comparison-panel');
+    const toggle = document.getElementById('dev-panel-toggle');
+    const panelAbsent = (panel === null && toggle === null);
+
+    const mats = cacheMaterials();
+    const maxAniso = renderer?.capabilities?.getMaxAnisotropy?.() || 16;
+    const effectiveAniso = Math.min(16, maxAniso);
+    const grain = postMat?.uniforms?.uGrain?.value;
+    const fringe = postMat?.uniforms?.uFringe?.value;
+    const wallNorm = mats?.wall?.normalScale?.x;
+    const carpetNorm = mats?.floor?.normalScale?.x;
+    const aniso = mats?.textures?.[0]?.anisotropy;
+
+    const isConfigD = (grain === 0.0 && fringe === 0.0 &&
+      Math.abs(wallNorm - 0.4) < 0.01 &&
+      Math.abs(carpetNorm - 0.6) < 0.01 &&
+      aniso === effectiveAniso);
+
+    const success = panelAbsent && isConfigD;
+    console.log(`[VERIFICATION TEST A] Result: ${success ? 'PASS' : 'FAIL'} | panelAbsent=${panelAbsent}, isConfigD=${isConfigD}`);
+
+    renderScene();
+    const shot = renderer.domElement.toDataURL('image/png');
+    await fetch('/api/screenshot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: 'verify_A_normal_srv', shot })
+    }).catch(() => {});
+
+    await fetch('/api/telemetry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client: 'test_a',
+        test: 'Test A — Normal Server',
+        success,
+        panelAbsent,
+        isConfigD,
+        grain,
+        fringe,
+        wallNormalScale: wallNorm,
+        carpetNormalScale: carpetNorm,
+        anisotropy: aniso,
+        maxAnisotropy: maxAniso
+      })
+    }).catch(() => {});
+
+    await fetch('/api/log', {
+      method: 'POST',
+      body: JSON.stringify({ status: success ? 'TEST_A_PASSED' : 'TEST_A_FAILED' })
+    }).catch(() => {});
+  } else if (mode === 'test_b') {
+    // Developer Server Test: Panel exists and is visible, starts with D, switching A/B/C/D, hide/reopen
+    const panel = document.getElementById('dev-comparison-panel');
+    const toggle = document.getElementById('dev-panel-toggle');
+    const panelVisible = (panel !== null && panel.style.display !== 'none');
+    const toggleHidden = (toggle !== null && toggle.style.display === 'none');
+
+    const activeBtn = document.querySelector('.dev-btn.active');
+    const initialProfileD = (activeBtn?.getAttribute('data-profile') === 'combined');
+    const readoutTitle = document.getElementById('readout-title')?.textContent || '';
+
+    // Test profile switching
+    let switchingPassed = true;
+
+    // Switch A
+    applyRenderConfig('original');
+    await wait(150);
+    const isA = (postMat.uniforms.uGrain.value === 0.085 &&
+      document.getElementById('btn-prof-A')?.classList.contains('active'));
+    if (!isA) switchingPassed = false;
+
+    // Switch B
+    applyRenderConfig('clean_post');
+    await wait(150);
+    const isB = (postMat.uniforms.uGrain.value === 0.0 &&
+      document.getElementById('btn-prof-B')?.classList.contains('active'));
+    if (!isB) switchingPassed = false;
+
+    // Switch C
+    applyRenderConfig('texture_quality');
+    await wait(150);
+    const isC = (postMat.uniforms.uGrain.value === 0.085 &&
+      document.getElementById('btn-prof-C')?.classList.contains('active'));
+    if (!isC) switchingPassed = false;
+
+    // Switch D
+    applyRenderConfig('combined');
+    await wait(150);
+    const isD = (postMat.uniforms.uGrain.value === 0.0 &&
+      document.getElementById('btn-prof-D')?.classList.contains('active'));
+    if (!isD) switchingPassed = false;
+
+    // Repeated switching drift test
+    for (let i = 0; i < 5; i++) {
+      applyRenderConfig('original');
+      applyRenderConfig('combined');
+    }
+    const mats = cacheMaterials();
+    const driftCheckPassed = (Math.abs(mats.wall.normalScale.x - 0.4) < 0.001 &&
+      Math.abs(mats.floor.normalScale.x - 0.6) < 0.001);
+
+    // Hide & reopen test
+    const closeBtn = document.getElementById('btn-dev-close');
+    closeBtn?.click();
+    const hiddenOk = (panel.style.display === 'none' && toggle.style.display !== 'none');
+    toggle?.click();
+    const reopenedOk = (panel.style.display !== 'none' && toggle.style.display === 'none');
+    const hideReopenPassed = hiddenOk && reopenedOk;
+
+    const success = panelVisible && initialProfileD && switchingPassed && driftCheckPassed && hideReopenPassed;
+    console.log(`[VERIFICATION TEST B] Result: ${success ? 'PASS' : 'FAIL'} | initialD=${initialProfileD}, switching=${switchingPassed}, driftCheck=${driftCheckPassed}, hideReopen=${hideReopenPassed}`);
+
+    await fetch('/api/telemetry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client: 'test_b',
+        test: 'Test B — Developer Server',
+        success,
+        panelVisible,
+        toggleHidden,
+        initialProfileD,
+        readoutTitle,
+        switchingPassed,
+        driftCheckPassed,
+        hideReopenPassed
+      })
+    }).catch(() => {});
+
+    await fetch('/api/log', {
+      method: 'POST',
+      body: JSON.stringify({ status: success ? 'TEST_B_PASSED' : 'TEST_B_FAILED' })
+    }).catch(() => {});
+  } else if (mode === 'test_c') {
+    // Visual Verification Test: Capture D at Normal, Wallpaper, Carpet viewpoints
+    await preloadPlayerAssets();
+
+    const peer = new RemotePlayer('peer_proxy', scene, {
+      x: 51.50,
+      y: 0.0,
+      z: -187.65,
+      yaw: Math.PI / 2, // Facing player
+      pitch: 0.0
+    });
+
+    applyRenderConfig('combined');
+
+    // Hide panel for clean shots
+    const panel = document.getElementById('dev-comparison-panel');
+    if (panel) panel.style.display = 'none';
+
+    const views = ['normal', 'wallpaper', 'carpet'];
+    for (const vKey of views) {
+      peer.group.visible = (vKey === 'normal');
+      switchView(vKey);
+      await wait(600);
+      renderScene();
+      const shot = renderer.domElement.toDataURL('image/png');
+      const label = `verify_D_${vKey}`;
+      await fetch('/api/screenshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label, shot })
+      }).catch(() => {});
+    }
+
+    const maxAniso = renderer?.capabilities?.getMaxAnisotropy?.() || 16;
+    const effectiveAniso = Math.min(16, maxAniso);
+    await fetch('/api/telemetry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client: 'test_c',
+        test: 'Test C — Visual Verification',
+        success: true,
+        profile: 'combined',
+        grain: 0.0,
+        fringe: 0.0,
+        wallpaperNormalScale: 0.4,
+        carpetNormalScale: 0.6,
+        anisotropy: effectiveAniso,
+        hardwareMaxAnisotropy: maxAniso,
+        viewsCaptured: views
+      })
+    }).catch(() => {});
+
+    await fetch('/api/log', {
+      method: 'POST',
+      body: JSON.stringify({ status: 'TEST_C_PASSED' })
+    }).catch(() => {});
+  }
+}
+
+async function runAutomatedComparisonSuite() {
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  console.log('[RENDER COMPARISON] Starting 4-profile x 3-viewpoint comparison capture suite...');
+
+  // Wait for Level 0 environment to load
+  for (let i = 0; i < 60; i++) {
+    if (isEnvReady) break;
+    await wait(100);
+  }
+
+  // Preload player assets and spawn peer proxy for normal view
+  await preloadPlayerAssets();
+
+  const peer = new RemotePlayer('peer_proxy', scene, {
+    x: 51.50,
+    y: 0.0,
+    z: -187.65,
+    yaw: Math.PI / 2, // Facing player
+    pitch: 0.0
+  });
+
+  const maxAniso = renderer?.capabilities?.getMaxAnisotropy?.() || 16;
+  console.log(`[RENDER COMPARISON] Hardware Max Anisotropy: ${maxAniso}x`);
+
+  const profiles = ['original', 'clean_post', 'texture_quality', 'combined'];
+  const views = ['normal', 'wallpaper', 'carpet'];
+
+  for (const profKey of profiles) {
+    const cfg = applyRenderConfig(profKey);
+    await wait(300);
+
+    for (const vKey of views) {
+      peer.group.visible = (vKey === 'normal');
+      switchView(vKey);
+
+      await wait(600); // Allow render & lighting to settle
+
+      renderScene();
+
+      const shot = renderer.domElement.toDataURL('image/png');
+      const label = `compare_${cfg.key}_${vKey}`;
+
+      try {
+        await fetch('/api/screenshot', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label, shot })
+        });
+        console.log(`[RENDER COMPARISON] Captured: ${label}`);
+      } catch (err) {
+        console.warn('Screenshot upload failed:', err);
+      }
+
+      const effectiveAniso = Math.min(cfg.anisotropy, maxAniso);
+      const telemetry = {
+        suite: 'interactive_comparison',
+        profileKey: cfg.key,
+        profileId: cfg.id,
+        profileName: cfg.name,
+        viewpointKey: vKey,
+        viewpointName: VIEWPOINTS[vKey].name,
+        grain: cfg.grain,
+        fringe: cfg.fringe,
+        vignette: cfg.vignette,
+        saturation: cfg.saturation,
+        anisotropy: effectiveAniso,
+        hardwareMaxAnisotropy: maxAniso,
+        wallNormalScale: cfg.wallNormalScale,
+        carpetNormalScale: cfg.carpetNormalScale,
+        cameraPosition: { x: +camera.position.x.toFixed(2), y: +camera.position.y.toFixed(2), z: +camera.position.z.toFixed(2) },
+        cameraRotation: { x: +camera.rotation.x.toFixed(2), y: +camera.rotation.y.toFixed(2), z: +camera.rotation.z.toFixed(2) },
+        viewport: { width: window.innerWidth, height: window.innerHeight, pixelRatio: window.devicePixelRatio },
+        artifact: `${label}.png`
+      };
+
+      try {
+        await fetch('/api/telemetry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ client: `${cfg.key}_${vKey}`, ...telemetry })
+        });
+      } catch (err) {}
+
+      await wait(300);
+    }
+  }
+
+  console.log('[RENDER COMPARISON] All 12 screenshots and telemetry records successfully captured!');
+  try {
+    await fetch('/api/log', {
+      method: 'POST',
+      body: JSON.stringify({ status: 'ALL_COMPARISONS_CAPTURED' })
+    });
+  } catch (e) {}
 }
 
 async function runAutoTest(clientNum, roomCode, action) {

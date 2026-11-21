@@ -18,6 +18,12 @@ const CLIENT_DIR = fs.existsSync(path.resolve(__dirname, '../multiplayer.html'))
 const PORT = parseInt(process.env.PORT, 10) || 8749;
 const HOST = '0.0.0.0';
 
+// Parse optional startup flag for developer rendering comparison panel
+const DEV_RENDERING = process.argv.includes('--dev-rendering');
+if (DEV_RENDERING) {
+  console.log('[SERVER CONFIG] Developer rendering tools enabled (--dev-rendering)');
+}
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=UTF-8',
   '.js': 'application/javascript; charset=UTF-8',
@@ -46,6 +52,16 @@ const server = http.createServer((req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
     res.end();
+    return;
+  }
+
+  // Server-controlled developer configuration endpoint
+  if (req.url === '/__config' && req.method === 'GET') {
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache, no-store, must-revalidate'
+    });
+    res.end(JSON.stringify({ renderingDevTools: DEV_RENDERING }));
     return;
   }
 
