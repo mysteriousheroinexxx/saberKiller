@@ -5,6 +5,12 @@
   2. Implemented hierarchical dynamic attachment parenting the blood quad directly to the character group (`zb.group`), with parent scale compensation ($s_{\text{local}} = s_{\text{base}} / \text{parentScale}$) and camera billboarding in local space ($Q_{\text{local}} = Q_{\text{parent}}^{-1} \times Q_{\text{cam}}$) while preserving randomized roll angle. The splash now moves synchronously with Artoria Lily across walking and chasing animations.
   3. Replaced monolithic coarse bounding box with animated Mixamo bone hitboxes (`mixamorigHead`, `mixamorigSpine2`, `mixamorigHips`, limbs) for pinpoint headshot and surface normal accuracy.
   4. Added `detachFrom(zb.group)` lifecycle hook on entity death/removal preventing orphaned scene nodes.
+- 2026-11-21: First-Person Weapon Viewmodel Upgrade & Floating Magazines Glitch Resolution:
+  1. Root-cause analysis of floating orange magazines: `handgun.glb` contained showcase models (`mag_full`, `mag_full.001`, `mag_empty`) positioned floating beside the grip, rendered indiscriminately by the generic `fitWeapon` loader.
+  2. Integrated `assets/beretta_px4_storm_compact.glb` (3.7 MB, single-mesh `Object_4`, PBR `pistola` material with normal/roughness/metalness) completely eliminating stray magazine artifacts. Positioned and scaled at $[0, 0.02, -0.16]$, scale $0.021$, rotation $[0, \pi, 0]$.
+  3. Integrated `assets/stagecoach_shotgun.glb` (7.7 MB, 7 functional sub-meshes, authentic PBR walnut wood stock `StockLowMat` and blued steel double barrels `BarrelLowMat`). Positioned at $[0, -0.04, -0.10]$, scale $0.65$.
+  4. Implemented dynamic muzzle flash and light positioning via `setWeaponMuzzle(idx)` updating sprite and point light offsets on weapon swap (`1` -> Handgun, `2` -> Shotgun).
+  5. Preserved all weapon mechanics, damage tables, firing rates, and ammo pools. Tested and verified in browser autotests with zero errors.
 - 2026-11-20: Baseline committed (db8e641). Playable DOOM-like FPS: Mixamo-animated
   Saber horde (walk/attack/fall), handgun/shotgun GLB viewmodels, pfp.png HUD
   portrait, wave survival, headshots, pickups, minimap, status-bar HUD. Verified

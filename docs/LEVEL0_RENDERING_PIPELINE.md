@@ -148,3 +148,34 @@ While WebM video texture is supported via `videoPool`, the **Sprite Sheet Flipbo
 
 ---
 
+## 5. First-Person Weapon Viewmodels & Glitch Resolution
+
+### 5.1 Root-Cause Analysis: The Floating Orange Magazines Glitch
+In earlier builds, the first-person handgun view exhibited two bright orange magazine models floating in mid-air immediately to the right of the pistol.
+- **Origin**: In `assets/handgun.glb`, the 3D asset creator bundled extraneous showcase geometry into the GLB file (`mag_full`, `mag_full.001`, and `mag_empty`), positioned detached from the pistol grip.
+- **Loader Flaw**: The generic `fitWeapon()` loader in `js/engine.js` traversed all nodes in the GLB scene indiscriminately and assigned a uniform matte material, causing the floating magazine models to be rendered prominently in the first-person viewport.
+
+### 5.2 Beretta Px4 Storm Compact Integration
+- **Asset**: `assets/beretta_px4_storm_compact.glb` (3.7 MB).
+- **Structure**: Clean single-mesh geometry (`Object_4`) with authentic PBR materials (`pistola` with metalness, roughness, and normal mapping). Completely free of stray showcase geometry or floating magazines.
+- **Viewmodel Transform**:
+  - Scale: $0.021$ (maps realistic 17.3cm pistol dimensions into first-person viewport).
+  - Rotation: $[0, \pi, 0]$ (orienting slide toward target and grip toward player).
+  - Translation: $[0, 0.02, -0.16]$.
+  - Muzzle Flash & Light Anchor: $[0, 0.08, -0.36]$.
+
+### 5.3 Stagecoach Double-Barrel Shotgun Integration
+- **Asset**: `assets/stagecoach_shotgun.glb` (7.7 MB).
+- **Structure**: Authentically detailed side-by-side coach gun consisting of 7 distinct functional components (`StockMesh`, `BarrelMesh`, `Hammer1`, `Hammer2`, `Trigger1`, `Trigger2`, `EjectorMesh`).
+- **PBR Materials**: Authentic walnut wood stock (`StockLowMat`) and blued steel double barrels (`BarrelLowMat`).
+- **Viewmodel Transform**:
+  - Scale: $0.65$.
+  - Rotation: $[0, 0, 0]$.
+  - Translation: $[0, -0.04, -0.10]$.
+  - Twin Muzzle Flash & Light Anchor: $[0, 0.02, -0.44]$.
+
+### 5.4 Weapon System Integrity
+All combat tuning and gameplay mechanics are strictly preserved:
+- Handgun: 12-round magazine, 36 reserve, 22 damage per hit, semi-automatic fire rate.
+- Shotgun: 2 shells per load, 16 reserve, 7 pellets with 16 damage each (112 damage max per blast), double-barrel sound and recoil kick.
+- Weapon switching via keys `1` and `2` seamlessly swaps models and updates muzzle coordinates via `setWeaponMuzzle(idx)`.

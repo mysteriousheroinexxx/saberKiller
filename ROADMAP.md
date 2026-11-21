@@ -92,3 +92,10 @@ scattered wall outlets, occasional pitch-black rooms / blood-red rooms.
 - [x] 11.7 Purge legacy procedural blood particles (bloodBurst/bloodMat), leaving bulletHit_sheet.webp as the sole impact effect
 - [x] 11.8 Anchor blood impact quad directly to target mesh with 2mm surface normal offset and bone-tracking attachment
 - [x] 11.9 Mixamo bone-aligned precision hitboxes (head, spine, limbs) replacing monolithic box for accurate surface normal and headshot detection
+
+## Milestone 12 — Weapon Viewmodel Overhaul & Floating Magazine Glitch Resolution
+- [x] 12.1 Root-cause analysis of floating orange magazines in handgun.glb (showcase geometry bundled in asset rendered by generic loader)
+- [x] 12.2 Integration of Beretta Px4 Storm Compact PBR viewmodel (Object_4, metalness/roughness/normal, custom transform, zero floating artifacts)
+- [x] 12.3 Integration of Stagecoach Double-Barrel Shotgun PBR viewmodel (walnut stock, blued steel, twin hammers)
+- [x] 12.4 Dynamic muzzle flash and point light alignment per weapon slot via `setWeaponMuzzle(idx)`
+- [x] 12.5 Full preservation of weapon stats, ammo, recoil, and reload mechanics

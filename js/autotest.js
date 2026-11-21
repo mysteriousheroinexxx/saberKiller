@@ -81,6 +81,47 @@
     window.particles.length = 0;
   }
 
+  // --- TEST: Weapon Viewmodels (Beretta Px4 & Stagecoach Shotgun) ---
+  // Position player in corridor to inspect first-person weapon models
+  P.pos.set(53.63, 0, -173.14);
+  P.yaw = -Math.PI / 2;
+  P.pitch = -0.04;
+  camera.position.set(53.63, 1.62, -173.14);
+  camera.rotation.y = P.yaw;
+  camera.rotation.x = P.pitch;
+  await wait(400);
+
+  // Weapon 0: Beretta Px4 Storm Compact viewmodel
+  P.weapon = 0; P.switchT = 0;
+  if (window.gunPistol && window.gunShotgun) {
+    window.gunPistol.visible = true;
+    window.gunShotgun.visible = false;
+  }
+  if (typeof window.setWeaponMuzzle === 'function') window.setWeaponMuzzle(0);
+  await wait(300);
+  await captureShot('weapon_handgun_beretta_px4');
+  console.log('[AUTOTEST] Captured Beretta Px4 Compact viewmodel.');
+
+  // Weapon 1: Stagecoach Double-Barrel Shotgun viewmodel
+  P.weapon = 1; P.switchT = 0;
+  if (window.gunPistol && window.gunShotgun) {
+    window.gunPistol.visible = false;
+    window.gunShotgun.visible = true;
+  }
+  if (typeof window.setWeaponMuzzle === 'function') window.setWeaponMuzzle(1);
+  await wait(300);
+  await captureShot('weapon_shotgun_stagecoach');
+  console.log('[AUTOTEST] Captured Stagecoach Shotgun viewmodel.');
+
+  // Switch back to Handgun for combat tests
+  P.weapon = 0; P.switchT = 0;
+  if (window.gunPistol && window.gunShotgun) {
+    window.gunPistol.visible = true;
+    window.gunShotgun.visible = false;
+  }
+  if (typeof window.setWeaponMuzzle === 'function') window.setWeaponMuzzle(0);
+  await wait(200);
+
   // --- TEST: Saber Hit & Blood Animation Surface Positioning ---
   function aimAt(zb, targetY = 1.25) {
     const dx = zb.group.position.x - P.pos.x;

@@ -1256,10 +1256,21 @@ function buildGuns(){
   b=new THREE.Mesh(new THREE.BoxGeometry(.09,.07,.14),wood);b.position.set(0,-.045,-.18);gunShotgun.add(b);
   gunShotgun.visible=false;gunGroup.add(gunShotgun);
 
-  muzzleSprite.position.set(0,.05,-.62);gunGroup.add(muzzleSprite);
+  muzzleSprite.position.set(0,.08,-.36);gunGroup.add(muzzleSprite);
+  setWeaponMuzzle(0);
   loadWeaponModels();
 }
-/* ---- real weapon viewmodels (handgun.glb / shotgun.glb) ---- */
+function setWeaponMuzzle(idx){
+  if(!muzzleSprite)return;
+  if(idx===0){
+    muzzleSprite.position.set(0,.08,-.36);
+    if(muzzleLight)muzzleLight.position.set(.25,-.18,-.92);
+  }else{
+    muzzleSprite.position.set(0,.02,-.44);
+    if(muzzleLight)muzzleLight.position.set(.25,-.24,-1.02);
+  }
+}
+/* ---- real weapon viewmodels (beretta_px4_storm_compact.glb / stagecoach_shotgun.glb) ---- */
 function loadBarrel(){
   if(!THREE.GLTFLoader)return;
   new THREE.GLTFLoader().load('assets/prop_barrel.glb',g=>{
@@ -1274,8 +1285,79 @@ function loadBarrel(){
 function loadWeaponModels(){
   if(!THREE.GLTFLoader)return;
   const L=new THREE.GLTFLoader();
-  L.load('assets/handgun.glb',g=>fitWeapon(g.scene,gunPistol,.5,[0,Math.PI,0]),undefined,()=>{});
-  L.load('assets/shotgun.glb',g=>fitWeapon(g.scene,gunShotgun,.8,null),undefined,()=>{});
+
+  // 1. Handgun: Beretta Px4 Storm Compact (authentic clean PBR viewmodel)
+  L.load('assets/beretta_px4_storm_compact.glb', g=>{
+    while(gunPistol.children.length)gunPistol.remove(gunPistol.children[0]);
+    const model=g.scene;
+    model.updateMatrixWorld(true);
+    const box=new THREE.Box3().setFromObject(model);
+    const center=box.getCenter(new THREE.Vector3());
+    const size=box.getSize(new THREE.Vector3());
+    // Modeled in cm (17.3cm long, 12.8cm high, 3.8cm wide). Scale 0.021 gives ~0.36m FPS viewmodel length
+    const s=0.36/(Math.max(size.x,size.y,size.z)||1);
+    model.position.set(-center.x, -center.y + 2.5, -center.z);
+    model.traverse(o=>{
+      if(o.isMesh){
+        o.frustumCulled=false;
+        if(o.material){
+          o.material.roughness=0.38;
+          o.material.metalness=0.65;
+          o.material.needsUpdate=true;
+        }
+      }
+    });
+    const wrap=new THREE.Group();
+    wrap.add(model);
+    // +Z is muzzle in Px4 model; rotate 180 deg around Y so it points forward along -Z
+    wrap.rotation.set(0, Math.PI, 0);
+    wrap.scale.setScalar(s);
+    wrap.position.set(0, .02, -.16);
+    gunPistol.add(wrap);
+    gunPistol.userData.weaponWrap=wrap;
+    console.log('[WEAPON] Beretta Px4 Storm Compact loaded successfully.');
+  }, undefined, ()=>{
+    L.load('assets/handgun.glb',g=>fitWeapon(g.scene,gunPistol,.5,[0,Math.PI,0]),undefined,()=>{});
+  });
+
+  // 2. Shotgun: Stagecoach Shotgun (authentic double-barrel coach gun)
+  L.load('assets/stagecoach_shotgun.glb', g=>{
+    while(gunShotgun.children.length)gunShotgun.remove(gunShotgun.children[0]);
+    const model=g.scene;
+    model.updateMatrixWorld(true);
+    const box=new THREE.Box3().setFromObject(model);
+    const center=box.getCenter(new THREE.Vector3());
+    const size=box.getSize(new THREE.Vector3());
+    // Modeled in meters (0.997m length). Scale 0.65 gives authentic 0.65m coach gun length
+    const s=0.65/(Math.max(size.x,size.y,size.z)||1);
+    model.position.set(-center.x, -center.y + 0.02, -center.z + 0.12);
+    model.traverse(o=>{
+      if(o.isMesh){
+        o.frustumCulled=false;
+        if(o.material){
+          if(o.name.includes('Stock')){
+            o.material.roughness=0.48;
+            o.material.metalness=0.15;
+          }else{
+            o.material.roughness=0.32;
+            o.material.metalness=0.75;
+          }
+          o.material.needsUpdate=true;
+        }
+      }
+    });
+    const wrap=new THREE.Group();
+    wrap.add(model);
+    // Barrels already face forward along -Z in stagecoach_shotgun.glb
+    wrap.rotation.set(0, 0, 0);
+    wrap.scale.setScalar(s);
+    wrap.position.set(0, -.04, -.10);
+    gunShotgun.add(wrap);
+    gunShotgun.userData.weaponWrap=wrap;
+    console.log('[WEAPON] Stagecoach Shotgun loaded successfully.');
+  }, undefined, ()=>{
+    L.load('assets/shotgun.glb',g=>fitWeapon(g.scene,gunShotgun,.8,null),undefined,()=>{});
+  });
 }
 function fitWeapon(model,holder,targetLen,fixedRot){
   while(holder.children.length)holder.remove(holder.children[0]);
@@ -2689,8 +2771,8 @@ function bindInput(){
     if(e.code==='KeyI'&&WS.playing&&!Dialogue.isActive()){toggleInventory();e.preventDefault();return;}
     if(e.code==='KeyR'&&WS.playing&&!WS.paused&&!Dialogue.isActive()){startReload();e.preventDefault();return;}
     keys[e.code]=true;
-    if(e.code==='Digit1'&&P.weapon!==0){P.weapon=0;P.switchT=.22;gunPistol.visible=true;gunShotgun.visible=false;}
-    if(e.code==='Digit2'&&P.weapon!==1){P.weapon=1;P.switchT=.22;gunPistol.visible=false;gunShotgun.visible=true;}
+    if(e.code==='Digit1'&&P.weapon!==0){P.weapon=0;P.switchT=.22;gunPistol.visible=true;gunShotgun.visible=false;setWeaponMuzzle(0);}
+    if(e.code==='Digit2'&&P.weapon!==1){P.weapon=1;P.switchT=.22;gunPistol.visible=false;gunShotgun.visible=true;setWeaponMuzzle(1);}
     if(['Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();
   });
   addEventListener('keyup',e=>{keys[e.code]=false;if(e.code==='AltLeft')e.preventDefault();});
@@ -2777,7 +2859,7 @@ function resetGame(){
   P.yaw=0;P.pitch=0;
   P.hp=100;P.bullets=36;P.shells=2;P.mag.bullets=12;P.mag.shells=6;P.weapon=0;P.kills=0;
   P.cool=0;P.reloadT=0;P.reloadWeapon=-1;P.dead=false;P.dmgFlash=0;P.grinT=0;
-  gunPistol.visible=true;gunShotgun.visible=false;
+  gunPistol.visible=true;gunShotgun.visible=false;setWeaponMuzzle(0);
   WS.spawnTimer=4;WS.massSpawnTimer=60;WS.massSpawnQueue=0;WS.massSpawnBeat=0;
   applyLevelTheme(currentLevel);
 }
@@ -2889,9 +2971,10 @@ Object.assign(window,{P,WS,Progress,SETTINGS,Dialogue,ZMODEL,LEVELS,TEX,SND,KTG,
   CELL,WALLH,floorCells,isWall,cellOf,cellCenter,circleHitsWall,spawnZombie,removeZombie,addPickup,
   enemyHp,makeNPCFigure,createNPCs,applyLevelTheme,goNextLevel,levelTransition,banner,showMsg,
   hurtPlayer,updateHUD,resetGame,startGame,BALANCE,mission,registerLevel,runLevelHook,
-  renderScene,spawnBloodImpact,shoot});
+  renderScene,spawnBloodImpact,shoot,setWeaponMuzzle});
 for(const [k,f] of Object.entries({npcs:()=>npcs,pickups:()=>pickups,zombies:()=>zombies,
   scene:()=>scene,camera:()=>camera,renderer:()=>renderer,currentLevel:()=>currentLevel,
+  gunGroup:()=>gunGroup,gunPistol:()=>gunPistol,gunShotgun:()=>gunShotgun,
   decals:()=>decals,tracers:()=>tracers,particles:()=>particles,trapCells:()=>trapCells})){
   Object.defineProperty(window,k,{get:f,configurable:true});
 }
