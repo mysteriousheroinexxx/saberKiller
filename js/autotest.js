@@ -72,7 +72,14 @@
   await wait(150);
   const afterMissCount = BloodVFX ? BloodVFX.getActiveCount() : 0;
   const wallHitDidNotTriggerBlood = (beforeMissCount === 0 && afterMissCount === 0);
-  console.log('[AUTOTEST] Wall hit test:', { beforeMissCount, afterMissCount, wallHitDidNotTriggerBlood });
+  const wallSparksGenerated = window.particles && window.particles.length > 0;
+  console.log('[AUTOTEST] Wall hit test:', { beforeMissCount, afterMissCount, wallHitDidNotTriggerBlood, wallSparksGenerated });
+
+  // Clear spark particles before Saber test
+  if (window.particles) {
+    for (const p of window.particles) { if (p.s) scene.remove(p.s); }
+    window.particles.length = 0;
+  }
 
   // --- TEST: Saber Hit & Blood Animation Playback ---
   // Position player in corridor looking West at Saber
@@ -118,10 +125,17 @@
   await wait(120);
   const hitActiveCount = BloodVFX ? BloodVFX.getActiveCount() : 0;
   const bloodTriggeredOnSaberHit = hitActiveCount > 0;
-  console.log('[AUTOTEST] Saber hit test:', { hitActiveCount, bloodTriggeredOnSaberHit });
+  const legacyParticleCountOnSaberHit = window.particles ? window.particles.length : 0;
+  const noLegacyBloodParticles = (legacyParticleCountOnSaberHit === 0);
+  console.log('[AUTOTEST] Saber hit test:', {
+    hitActiveCount,
+    bloodTriggeredOnSaberHit,
+    legacyParticleCountOnSaberHit,
+    noLegacyBloodParticles
+  });
 
-  // Capture screenshot of blood impact animation on Saber
-  await captureShot('saber_blood_impact');
+  // Capture screenshot of single clean blood impact animation on Saber
+  await captureShot('saber_blood_impact_clean');
 
   // --- TEST: Repeated Multi-Hit Test ---
   P.cool = 0; P.reloadT = 0;
@@ -181,7 +195,9 @@
     solidWallBlocksMovement: wallHitsWall,
     customCollisionActive: customColl,
     wallHitDidNotTriggerBlood,
+    wallSparksGenerated,
     bloodTriggeredOnSaberHit,
+    noLegacyBloodParticles,
     multiHitSupported,
     cleanedUpProperly,
     activeBloodCountFinal: afterCompletionCount,

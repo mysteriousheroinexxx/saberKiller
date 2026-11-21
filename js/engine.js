@@ -1769,14 +1769,12 @@ function damageZombie(zb,dmg,point,headshot){
   if(zb.state==='dying'||zb.state==='dead')return;
   zb.hp-=dmg;zb.flashT=.12;
   for(const m of zb.mats)if(m.emissive)m.emissive.setRGB(.6,.05,.05);
-  bloodBurst(point,headshot?14:8);
   spawnBloodImpact(point, headshot);
   if(zb.hp<=0){
     zb.state='dying';zb.dieT=0;
     P.kills++;P.grinT=1.2;
     if(rng()<0.35)Progress.addItem('scrap',1);
     SND.death();
-    bloodBurst(point,18);
     spawnBloodImpact(point, true);
     addBloodDecalAsset(zb.group.position);
     // drops
@@ -1932,18 +1930,7 @@ function updateZombies(dt){
 }
 
 /* ---------------- particles / decals / tracers ---------------- */
-const bloodMat=new THREE.SpriteMaterial({color:0xa01010,transparent:true});
 const sparkMat=new THREE.SpriteMaterial({color:0xffc060,transparent:true});
-function bloodBurst(point,n){
-  for(let i=0;i<n;i++){
-    if(particles.length>180)break;
-    const s=new THREE.Sprite(bloodMat.clone());
-    s.position.copy(point);
-    const sc=R(.05,.13);s.scale.set(sc,sc,1);
-    scene.add(s);
-    particles.push({s,vx:R(-2.4,2.4),vy:R(.5,3.4),vz:R(-2.4,2.4),life:R(.35,.7),t:0});
-  }
-}
 function sparkBurst(point,n){
   for(let i=0;i<n;i++){
     if(particles.length>180)break;

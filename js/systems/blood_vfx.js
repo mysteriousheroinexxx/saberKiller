@@ -29,14 +29,24 @@ export function initBloodVFX(scene, camera) {
 
   // Load the 8x8 sprite sheet atlas (WebP with alpha, fallback to PNG)
   const loader = new THREE.TextureLoader();
-  const texturePath = 'assets/vfx/bulletHit_sheet.png';
+  const texturePath = 'assets/vfx/bulletHit_sheet.webp';
 
   baseTexture = loader.load(texturePath, (tex) => {
     tex.generateMipmaps = true;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.encoding = THREE.sRGBEncoding;
-    console.log('[BloodVFX] Blood splash atlas loaded successfully.');
+    console.log('[BloodVFX] Blood splash WebP atlas loaded successfully.');
+  }, undefined, (err) => {
+    console.warn('[BloodVFX] WebP load error, falling back to PNG:', err);
+    loader.load('assets/vfx/bulletHit_sheet.png', (tex) => {
+      tex.generateMipmaps = true;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      tex.encoding = THREE.sRGBEncoding;
+      baseTexture.image = tex.image;
+      baseTexture.needsUpdate = true;
+    });
   });
 
   // Pre-allocate mesh pool

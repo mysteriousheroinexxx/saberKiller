@@ -129,3 +129,8 @@ While WebM video texture is supported via `videoPool`, the **Sprite Sheet Flipbo
 - **Depth & Blending**: `transparent: true`, `alphaTest: 0.005`, `depthTest: true`, `depthWrite: false` (prevents depth buffer culling of subsequent transparent particles).
 - **Authoritative Hook**: Triggered inside `damageZombie(zb, dmg, point, headshot)` exclusively on successful hits on Saber. Wall and environmental impacts trigger `sparkBurst(h.point, 4)`.
 - **Resource Lifecycle**: 16 pre-allocated pooled quads. After 1.07s of animation, instances hide themselves and return to the pool with zero garbage collection allocations.
+
+### 4.5 Deprecation & Complete Removal of Legacy Procedural Blood Particles
+- The legacy particle-burst generator (`bloodBurst(point, n)` and `bloodMat`) previously spawned procedural red sprite squares into the scene on hit.
+- This legacy generator has been completely removed from `js/engine.js`. The `bulletHit_sheet.webp` flipbook implementation now operates as the sole, authoritative blood impact effect on Saber hits.
+- Environmental sparks on bullet wall impacts (`sparkBurst` and `sparkMat`) and floor splat decals upon death (`addBloodDecalAsset`) remain fully active and preserved.

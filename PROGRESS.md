@@ -266,4 +266,10 @@
   4. Authoritative hit binding: triggered inside `damageZombie()` exclusively on Saber hits. Wall/environmental impacts trigger `sparkBurst()`.
   5. Verified multi-hit concurrent playback (shotgun and rapid fire) with automatic resource cleanup after 1.07s.
   6. Documented the complete pipeline, coordinate conversions, and VFX architecture in `docs/LEVEL0_RENDERING_PIPELINE.md`.
+- 2026-11-21: Blood impact cleanup & legacy particle removal —
+  1. Purged legacy procedural blood particle generator (`bloodBurst` and `bloodMat`) from `js/engine.js`.
+  2. Configured `js/systems/blood_vfx.js` to load `bulletHit_sheet.webp` as the sole primary blood-impact atlas.
+  3. Verified that Saber hits trigger exclusively the new `bulletHit` flipbook animation with 0 legacy particles.
+  4. Preserved environmental spark bursts (`sparkBurst`) on bullet wall impacts and death splat decals on the floor.
+  5. Verified normal hits, headshots, and rapid consecutive multi-hits via automated browser test with telemetry.
 
