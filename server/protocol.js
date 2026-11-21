@@ -1,0 +1,28 @@
+// Saber Killer Multiplayer Protocol
+// Shared packet definitions and validation utilities
+
+export const MSG_TYPES = {
+  CREATE_ROOM: 'CREATE_ROOM',
+  JOIN_ROOM: 'JOIN_ROOM',
+  ROOM_JOINED: 'ROOM_JOINED',
+  PLAYER_JOINED: 'PLAYER_JOINED',
+  PLAYER_LEFT: 'PLAYER_LEFT',
+  PLAYER_UPDATE: 'PLAYER_UPDATE',
+  SERVER_ERROR: 'SERVER_ERROR',
+  HEARTBEAT: 'HEARTBEAT'
+};
+
+export const MAX_PAYLOAD_SIZE = 4096; // 4KB per message maximum
+export const MAX_PLAYERS_PER_ROOM = 2; // Phase 1 is two-player rooms
+
+export function isValidNumber(val) {
+  return typeof val === 'number' && Number.isFinite(val);
+}
+
+export function validatePlayerUpdate(payload) {
+  if (!payload || typeof payload !== 'object') return false;
+  const { x, y, z, yaw, pitch } = payload;
+  if (!isValidNumber(x) || !isValidNumber(y) || !isValidNumber(z)) return false;
+  if (!isValidNumber(yaw) || !isValidNumber(pitch)) return false;
+  return true;
+}

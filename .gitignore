@@ -3,5 +3,7 @@
 Thumbs.db
 *.swp
 *~
+# Node
+node_modules/
 # Hermes scratch
 .hermes/
