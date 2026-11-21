@@ -72,3 +72,20 @@ scattered wall outlets, occasional pitch-black rooms / blood-red rooms.
 - [x] 9.2 Balance: enemy density per level, resource economy, difficulty curve
 - [x] 9.3 Performance pass (instancing, disposal, texture budgets) for a full horde
 - [x] 9.4 Final README + credits + git tag
+
+## Milestone 10 — Unreal Engine 1:1 Level 0 Reconstruction & Atmosphere
+- [x] 10.1 Direct M_LV0.umap map geometry extraction (826 floors, 762 walls, 344 lights, 46 pillars, 17 decals, 15 props)
+- [x] 10.2 High-performance THREE.InstancedMesh environment renderer (~15 draw calls total)
+- [x] 10.3 PBR material reconstruction (AmbientCG CC0 damp carpet, 1k_paperwalls chevron, acoustic ceiling tiles)
+- [x] 10.4 Complete floor flickering / Z-fighting elimination
+- [x] 10.5 Visual atmosphere matching reference: ivory-white ceiling panels, ceiling glow halos, downward carpet light pools, dark ochre ambient bounce, distant horizon fog, tactical player flashlight
+- [x] 10.6 Exact 1-meter sub-cell collision grid + radar minimap with complete flood-fill reachability from spawn to exit ladder
+- [x] 10.7 Full preservation of combat mechanics, weapon handling, HUD, and Artoria Lily antagonist encounters
+
+## Milestone 11 — Blood Impact VFX & Complete Technical Documentation
+- [x] 11.1 Inspect `bulletHit.mov` (ProRes 4444, yuva444p12le, 1920x1920, 60fps, 70 frames, 139 MB)
+- [x] 11.2 Convert to browser-friendly formats: VP9 WebM with alpha (321 KB) and 64-frame 8x8 sprite sheet atlas (WebP 623 KB, PNG 1.85 MB)
+- [x] 11.3 Build `js/systems/blood_vfx.js` with 16-mesh object pooling, zero-latency flipbook playback, and camera-facing billboard orientation
+- [x] 11.4 Connect visual impact effect exclusively to authoritative hits on Saber in `damageZombie()` (environmental misses trigger `sparkBurst()`)
+- [x] 11.5 Support concurrent overlapping hits (shotgun and automatic fire) with automatic lifecycle cleanup and zero garbage collection spikes
+- [x] 11.6 Document full Level 0 asset pipeline, PBR rendering, dynamic lighting, collision, and VFX architecture in `docs/LEVEL0_RENDERING_PIPELINE.md`

@@ -1,5 +1,6 @@
 "use strict";
 import { WEAPONS, startReload as startWeaponReload, updateReload } from './systems/weapons.js';
+import { initBloodVFX, spawnBloodImpact, updateBloodVFX, cleanupBloodVFX } from './systems/blood_vfx.js';
 window.__errors = [];
 window.addEventListener('error', e => { window.__errors.push(String(e.message)); });
 
@@ -423,9 +424,24 @@ function assignWallVariants(){
     grid[z][x]=1+(h%10<5?0:h%10<8?1:2);
   }
 }
-const isWall=(x,z)=>x<0||z<0||x>=MAPW||z>=MAPH||grid[z][x]>0;
-const cellOf=v=>Math.floor(v/CELL);
+let customCollision=null;
+function setCustomCollision(cc){
+  customCollision=cc;
+  if(cc&&cc.floorCells){floorCells.length=0;floorCells.push(...cc.floorCells);}
+}
+const isWall=(x,z)=>{
+  if(customCollision)return customCollision.isWall(x,z);
+  return x<0||z<0||x>=MAPW||z>=MAPH||grid[z][x]>0;
+};
+const cellOf=(x,z)=>{
+  if(customCollision){
+    if(z!==undefined)return [customCollision.cellOfX(x),customCollision.cellOfZ(z)];
+    return customCollision.cellOfX(x);
+  }
+  return z!==undefined?[Math.floor(x/CELL),Math.floor(z/CELL)]:Math.floor(x/CELL);
+};
 function circleHitsWall(px,pz,r){
+  if(customCollision)return customCollision.circleHitsWall(px,pz,r);
   const cx=cellOf(px),cz=cellOf(pz);
   for(let z=cz-1;z<=cz+1;z++)for(let x=cx-1;x<=cx+1;x++){
     if(!isWall(x,z))continue;
@@ -437,7 +453,10 @@ function circleHitsWall(px,pz,r){
 }
 const floorCells=[];
 const _reach=new Set();
-const cellCenter=(x,z)=>[x*CELL+CELL/2,z*CELL+CELL/2];
+const cellCenter=(x,z)=>{
+  if(customCollision)return customCollision.cellCenter(x,z);
+  return [x*CELL+CELL/2,z*CELL+CELL/2];
+};
 // flood-fill from player start: only spawn on cells the player can reach
 function computeReach(){
   _reach.clear();floorCells.length=0;
@@ -488,7 +507,7 @@ setLayout('arena');
 /* ---------------- globals ---------------- */
 let scene,camera,renderer,raycaster;
 let wallMeshes=[],trimMeshes=[],zombies=[],hitMeshes=[],pickups=[],particles=[],tracers=[],decals=[];
-let muzzleLight,muzzleSprite,gunGroup,gunPistol,gunShotgun,playerLight;
+let muzzleLight,muzzleSprite,gunGroup,gunPistol,gunShotgun,playerLight,playerFlashlight=null;
 let TEX={};
 let ambientLight=null,roomLights=[],floorMesh=null,ceilMesh=null,fluorescentGroup=null,fixtures=[],outletGroup=null,propGroup=null,whisperTimer=8;
 let BARREL_TEMPLATE=null,pipeGroup=null,steamGroup=null,steamPuffs=[],torchGroup=null,torchFlames=[],torchLights=[],trapGroup=null,trapCells=[],trapTimer=0;
@@ -502,7 +521,7 @@ const P={ // player
   cool:0,reloadT:0,reloadWeapon:-1,switchT:0,kick:0,bob:0,dead:false,
   dmgFlash:0,grinT:0,winceT:0
 };
-const WS={playing:false,paused:false,started:false,spawnTimer:4};
+const WS={playing:false,paused:false,started:false,spawnTimer:4,massSpawnTimer:60,massSpawnQueue:0,massSpawnBeat:0};
 const keys={};
 let locked=false,dragLook=false,lastMX=0,lastMY=0;
 let minimapWalls=null,hbTimer=0;
@@ -561,10 +580,10 @@ const LEVELS={
   },
   backrooms:{
     name:'LEVEL 0 — THE LOBBY', sub:'the madness of mono-yellow', ambientSound:'fluorescent',
-    bg:0x1a1608, fog:0x2a2410, fogDensity:.05,
-    ambient:{color:0xb0a060,intensity:.75},
-    playerLight:{color:0xfff0c0,intensity:.95},
-    roomLight:{color:0xf0e070,intensity:.75},
+    bg:0x181404, fog:0x282006, fogDensity:0.022,
+    ambient:{color:0x362c0a,intensity:0.35},
+    playerLight:{color:0xfffae0,intensity:0.0},
+    roomLight:{color:0x000000,intensity:0.0},
     wallTex:{1:'wall_yellow',2:'wall_yellow',3:'wall_yellow'}, floorTex:'carpet_damp', ceilTex:'ceil_tile',
     layout:'backrooms', enemies:'saber'
   },
@@ -599,7 +618,7 @@ const LEVELS={
     layout:'dungeon', enemies:'saber'
   }
 };
-let currentLevel='arena';
+let currentLevel='backrooms';
 function applyLevelTheme(id){
   const L=LEVELS[id];if(!L||!scene)return;
   if(currentLevel!==id)runLevelHook('leave');
@@ -610,11 +629,37 @@ function applyLevelTheme(id){
   if(playerLight){playerLight.color.setHex(L.playerLight.color);playerLight.intensity=L.playerLight.intensity;}
   for(const l of roomLights){l.color.setHex(L.roomLight.color);l.intensity=L.roomLight.intensity;}
   if(typeof SND!=='undefined'&&L.ambientSound)SND.ambient(L.ambientSound);
-  if(fluorescentGroup)fluorescentGroup.visible=(id==='backrooms');
+  if(playerFlashlight)playerFlashlight.visible=(id==='backrooms');
+  if(fluorescentGroup)fluorescentGroup.visible=false;
   if(outletGroup)outletGroup.visible=(id==='backrooms');
-  if(L.layout&&L.layout!==currentLayout){currentLayout=L.layout;setLayout(L.layout);buildWalls();buildTrim();buildMinimapWalls();createOutlets();createProps();createPipes();createSteam();createTorches();createTraps();createNPCs();}
+  if(id==='backrooms'){
+    if(floorMesh)floorMesh.visible=false;
+    if(ceilMesh)ceilMesh.visible=false;
+    if(outletGroup)outletGroup.visible=false;
+    if(propGroup)propGroup.visible=false;
+    if(pipeGroup)pipeGroup.visible=false;
+    if(steamGroup)steamGroup.visible=false;
+    if(torchGroup)torchGroup.visible=false;
+    if(trapGroup)trapGroup.visible=false;
+    for(const im of wallMeshes){scene.remove(im);if(im.geometry)im.geometry.dispose();}
+    wallMeshes.length=0;
+    for(const tm of trimMeshes){scene.remove(tm);if(tm.geometry)tm.geometry.dispose();}
+    trimMeshes.length=0;
+  }
+  if(L.layout&&L.layout!==currentLayout){
+    currentLayout=L.layout;
+    if(id==='backrooms'){
+      for(const im of wallMeshes){scene.remove(im);if(im.geometry)im.geometry.dispose();}
+      wallMeshes.length=0;
+      for(const tm of trimMeshes){scene.remove(tm);if(tm.geometry)tm.geometry.dispose();}
+      trimMeshes.length=0;
+      if(propGroup){while(propGroup.children.length){const c=propGroup.children.pop();if(c.geometry)c.geometry.dispose();}}
+    } else {
+      setLayout(L.layout);buildWalls();buildTrim();buildMinimapWalls();createOutlets();createProps();createPipes();createSteam();createTorches();createTraps();createNPCs();
+    }
+  }
   // per-level textures (walls / floor / ceiling)
-  if(L.wallTex)for(const im of wallMeshes){const tx=TEX[L.wallTex[im.userData.wallType]];
+  if(L.wallTex&&id!=='backrooms')for(const im of wallMeshes){const tx=TEX[L.wallTex[im.userData.wallType]];
     if(tx&&im.material.map!==tx){im.material.map=tx;im.material.needsUpdate=true;}}
   if(L.floorTex&&floorMesh&&TEX[L.floorTex]){const tx=TEX[L.floorTex].clone();tx.needsUpdate=true;
     tx.repeat.set(MAPW,MAPH);floorMesh.material.map=tx;floorMesh.material.needsUpdate=true;}
@@ -623,7 +668,7 @@ function applyLevelTheme(id){
   runLevelHook('enter',id,exitPortal);
 }
 /* ---- exit portal (noclip zone) + level progression ---- */
-const LEVEL_ORDER=['arena','backrooms','habitable','pipedreams','dungeon'];
+const LEVEL_ORDER=['backrooms','habitable','pipedreams','dungeon','arena'];
 let exitPortal=null;const exitPos=new THREE.Vector3();
 function createExitPortal(cx,cz){
   const [wx,wz]=cellCenter(cx,cz);exitPos.set(wx,0,wz);
@@ -870,7 +915,8 @@ function setNPCAnimation(n,state){
   to.reset().setEffectiveWeight(1).play();from.crossFadeTo(to,.25,false);a.state=state;return true;
 }
 function followerPath(start,goal){
-  const key=(x,z)=>z*MAPW+x, prev=new Map(), q=[[start[0],start[1]]];
+  const stride=customCollision?customCollision.cols:MAPW;
+  const key=(x,z)=>z*stride+x, prev=new Map(), q=[[start[0],start[1]]];
   prev.set(key(...q[0]),-1);
   for(let i=0;i<q.length;i++){
     const [x,z]=q[i];if(x===goal[0]&&z===goal[1])break;
@@ -881,7 +927,7 @@ function followerPath(start,goal){
     }
   }
   let k=key(...goal);if(!prev.has(k))return [];
-  const out=[];while(k!==-1){out.push([k%MAPW,Math.floor(k/MAPW)]);k=prev.get(k);}
+  const out=[];while(k!==-1){out.push([k%stride,Math.floor(k/stride)]);k=prev.get(k);}
   return out.reverse();
 }
 function updateNPCFollower(n,dt){
@@ -890,8 +936,10 @@ function updateNPCFollower(n,dt){
   const dx=P.pos.x-n.group.position.x,dz=P.pos.z-n.group.position.z,d=Math.hypot(dx,dz);
   if(d<1.25){setNPCAnimation(n,'idle');return;}
   if(n.followTimer<=0||!n.followPath?.length){
-    const gx=cellOf(P.pos.x+Math.sin(P.yaw)*1.7),gz=cellOf(P.pos.z+Math.cos(P.yaw)*1.7);
-    const sx=cellOf(n.group.position.x),sz=cellOf(n.group.position.z);
+    const gx=customCollision?customCollision.cellOfX(P.pos.x+Math.sin(P.yaw)*1.7):cellOf(P.pos.x+Math.sin(P.yaw)*1.7);
+    const gz=customCollision?customCollision.cellOfZ(P.pos.z+Math.cos(P.yaw)*1.7):cellOf(P.pos.z+Math.cos(P.yaw)*1.7);
+    const sx=customCollision?customCollision.cellOfX(n.group.position.x):cellOf(n.group.position.x);
+    const sz=customCollision?customCollision.cellOfZ(n.group.position.z):cellOf(n.group.position.z);
     n.followPath=followerPath([sx,sz],[gx,gz]);n.followPathIndex=1;n.followTimer=.45;
   }
   const cell=n.followPath?.[n.followPathIndex];if(!cell)return;
@@ -1003,20 +1051,138 @@ function buildTrim(){
     aim.instanceMatrix.needsUpdate=true;scene.add(aim);trimMeshes.push(aim);
   }
 }
+let postScene=null, postCam=null, postRenderTarget=null, postMat=null;
+
+function initPostProcessing() {
+  const w = window.innerWidth || 1280;
+  const h = window.innerHeight || 720;
+  postScene = new THREE.Scene();
+  postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, -1, 1);
+  postRenderTarget = new THREE.WebGLRenderTarget(w, h, {
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    format: THREE.RGBAFormat,
+    encoding: THREE.LinearEncoding
+  });
+
+  const postShader = {
+    uniforms: {
+      tDiffuse: { value: null },
+      uResolution: { value: new THREE.Vector2(w, h) },
+      uSaturation: { value: 1.85 },
+      uVignette: { value: 0.95 },
+      uGrain: { value: 0.085 },
+      uFringe: { value: 0.0035 }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = vec4(position.xy, 0.0, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D tDiffuse;
+      uniform vec2 uResolution;
+      uniform float uSaturation;
+      uniform float uVignette;
+      uniform float uGrain;
+      uniform float uFringe;
+      varying vec2 vUv;
+
+      float rand(vec2 co) {
+        return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+      }
+
+      void main() {
+        vec2 uv = vUv;
+        vec2 dir = uv - vec2(0.5);
+        float dist = length(dir);
+
+        // Chromatic Aberration (Scene Fringe)
+        vec2 offset = dir * uFringe * pow(dist, 1.4);
+        float r = texture2D(tDiffuse, uv - offset).r;
+        float g = texture2D(tDiffuse, uv).g;
+        float b = texture2D(tDiffuse, uv + offset).b;
+        vec3 col = vec3(r, g, b);
+
+        // White Balance Cool Shift (15000K in UE4) & SceneColorTint (1.0, 0.99, 0.87)
+        col *= vec3(0.98, 0.99, 0.92);
+
+        // 200% Color Saturation
+        float lum = dot(col, vec3(0.299, 0.587, 0.114));
+        col = mix(vec3(lum), col, uSaturation);
+
+        // Film Slope / Toe curve (ACES adjustment)
+        col = pow(col, vec3(0.95));
+
+        // Edge Vignette
+        float vig = 1.0 - smoothstep(0.4, 0.95, dist) * uVignette;
+        col *= vig;
+
+        // Film Grain
+        float grain = (rand(uv * 500.0) - 0.5) * uGrain;
+        col += grain;
+
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `
+  };
+
+  postMat = new THREE.ShaderMaterial({
+    uniforms: postShader.uniforms,
+    vertexShader: postShader.vertexShader,
+    fragmentShader: postShader.fragmentShader,
+    depthTest: false,
+    depthWrite: false
+  });
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMat);
+  postScene.add(quad);
+}
+
+function renderScene() {
+  if (currentLevel === 'backrooms' && postRenderTarget && postMat) {
+    renderer.setRenderTarget(postRenderTarget);
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    postMat.uniforms.tDiffuse.value = postRenderTarget.texture;
+    renderer.render(postScene, postCam);
+  } else {
+    renderer.setRenderTarget(null);
+    renderer.render(scene, camera);
+  }
+}
+
 function initScene(){
   scene=new THREE.Scene();
   scene.background=new THREE.Color(0x050508);
   scene.fog=new THREE.FogExp2(0x050508,.042);
   camera=new THREE.PerspectiveCamera(SETTINGS.get().fov,innerWidth/innerHeight,.05,120);
-  renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+  renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance',preserveDrawingBuffer:true});
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
   renderer.setSize(innerWidth,innerHeight);
+  renderer.outputEncoding=THREE.sRGBEncoding;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=1.05;
+  renderer.physicallyCorrectLights=true;
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   $('game').appendChild(renderer.domElement);
   raycaster=new THREE.Raycaster();
 
+  initPostProcessing();
+  initBloodVFX(scene, camera);
+
   ambientLight=new THREE.AmbientLight(0x606070,.5);scene.add(ambientLight);
   playerLight=new THREE.PointLight(0xffd8a0,.85,16,2);
-  camera.add(playerLight);scene.add(camera);
+  camera.add(playerLight);
+  playerFlashlight=new THREE.SpotLight(0xfffae0,22.0,35.0,Math.PI/7.0,0.5,1.8);
+  playerFlashlight.position.set(0.18,-0.15,-0.05);
+  playerFlashlight.target.position.set(0.18,-0.15,-10);
+  camera.add(playerFlashlight);
+  camera.add(playerFlashlight.target);
+  playerFlashlight.visible=false;
+  scene.add(camera);
 
   // static room lights
   for(const [x,z] of [[15.5,15.5],[5,5],[26,5],[5,26],[26,26],[15.5,4],[15.5,27],[4,15.5],[27,15.5]]){
@@ -1045,9 +1211,11 @@ function initScene(){
   ceil.rotation.x=Math.PI/2;ceil.position.set(MAPW*CELL/2,WALLH,MAPH*CELL/2);scene.add(ceil);ceilMesh=ceil;
 
   // walls (per-level layout)
-  buildWalls();
-  buildTrim();
-  applyLevelTheme('arena');
+  if(currentLevel!=='backrooms'){
+    buildWalls();
+    buildTrim();
+  }
+  applyLevelTheme(currentLevel);
 
   // muzzle flash light + sprite
   muzzleLight=new THREE.PointLight(0xffb040,0,11,2);
@@ -1527,8 +1695,13 @@ function spawnModelZombie(wx,wz){
 function spawnZombie(fx,fz){
   let x,z,tries=0;
   if(fx===undefined){
-    do{[x,z]=floorCells[(rng()*floorCells.length)|0];tries++;}
-    while(tries<60 && Math.hypot(x*CELL-P.pos.x,z*CELL-P.pos.z)<14);
+    let wx,wz;
+    do{
+      [x,z]=floorCells[(rng()*floorCells.length)|0];
+      [wx,wz]=cellCenter(x,z);
+      tries++;
+    }
+    while(tries<60 && Math.hypot(wx-P.pos.x,wz-P.pos.z)<14);
   } else {x=fx;z=fz;}
   const [wx,wz]=cellCenter(x,z);
   if(ZMODEL.ready)return ZMODEL.mixamo?spawnMixamoZombie(wx,wz):(ZMODEL.animated?spawnAnimatedZombie(wx,wz):spawnModelZombie(wx,wz));
@@ -1597,12 +1770,14 @@ function damageZombie(zb,dmg,point,headshot){
   zb.hp-=dmg;zb.flashT=.12;
   for(const m of zb.mats)if(m.emissive)m.emissive.setRGB(.6,.05,.05);
   bloodBurst(point,headshot?14:8);
+  spawnBloodImpact(point, headshot);
   if(zb.hp<=0){
     zb.state='dying';zb.dieT=0;
     P.kills++;P.grinT=1.2;
     if(rng()<0.35)Progress.addItem('scrap',1);
     SND.death();
     bloodBurst(point,18);
+    spawnBloodImpact(point, true);
     addBloodDecalAsset(zb.group.position);
     // drops
     const roll=rng();
@@ -1622,6 +1797,7 @@ function crosshairHit(){$('crosshair').classList.add('hit');$('hitmarker').class
 
 function updateZombies(dt){
   const px=P.pos.x,pz=P.pos.z;
+  mission.hitCooldown=Math.max(0,(mission.hitCooldown||0)-dt);
   for(const zb of [...zombies]){
     const g=zb.group;
     if(zb.mixamo)zb.mixer.update(dt);
@@ -1654,6 +1830,7 @@ function updateZombies(dt){
     const dx=tx-g.position.x,dz=tz-g.position.z;
     const dist=Math.hypot(dx,dz)||.001;
     let vx=dx/dist*zb.speed,vz=dz/dist*zb.speed;
+    if(target&&dist<1.55){vx=0;vz=0;}
     // separation
     for(const o of zombies){
       if(o===zb||o.state==='dying')continue;
@@ -1662,6 +1839,18 @@ function updateZombies(dt){
       if(sd<.95&&sd>.001){vx+=sx/sd*1.4;vz+=sz/sd*1.4;}
     }
     vx+=zb.kbx;vz+=zb.kbz;
+    if(target){
+      const mx=vx*dt,mz=vz*dt,nx=g.position.x+mx,nz=g.position.z+mz;
+      const nd=Math.hypot(target.x-nx,target.z-nz);
+      if(nd<1.35){
+        const safe=1.35,rx=target.x-g.position.x,rz=target.z-g.position.z,rd=Math.hypot(rx,rz);
+        if(dist<safe){
+          const ux=rd>.001?rx/rd:Math.cos(zb.phase),uz=rd>.001?rz/rd:Math.sin(zb.phase);
+          vx=-ux*Math.min(zb.speed,(safe-dist)*5);vz=-uz*Math.min(zb.speed,(safe-dist)*5);
+        }
+        else {const allowed=Math.max(0,dist-safe)/Math.max(.001,dist-nd);vx*=allowed;vz*=allowed;}
+      }
+    }
     zb.kbx*=Math.pow(.02,dt);zb.kbz*=Math.pow(.02,dt);
     // move with wall sliding
     const r=.34*zb.scale;
@@ -1724,10 +1913,13 @@ function updateZombies(dt){
     }
     // attack
     zb.attackCool-=dt;
-    if(dist<1.35&&zb.attackCool<=0&&!P.dead){
+    const attackRange=target?1.7:1.35;
+    if(dist<attackRange&&zb.attackCool<=0&&!P.dead){
       zb.attackCool=zb.mixamo?1.4:1.1;zb.attackAnimT=.28;
       if(zb.mixamo){const ac=zb.attacks[(rng()*zb.attacks.length)|0];ac.reset().play();zb.walk.crossFadeTo(ac,0.1);}
-      if(target&&mission.onHit)mission.onHit(9+((rng()*7)|0));
+      if(target&&mission.onHit){
+        if(mission.hitCooldown<=0){mission.hitCooldown=2.2;mission.onHit(3+((rng()*3)|0));}
+      }
       else hurtPlayer(9+((rng()*7)|0));
     }
     // groan
@@ -1879,7 +2071,13 @@ function shoot(){
   setTimeout(()=>{muzzleSprite.visible=false;},45);
 
   camera.getWorldDirection(_dir);
-  const targets=wallMeshes.concat(hitMeshes);
+  let wallTargets=[];
+  if(customCollision&&typeof customCollision.getRaycastTargets==='function'){
+    wallTargets=customCollision.getRaycastTargets();
+  }else{
+    wallTargets=wallMeshes.filter(m=>m.visible);
+  }
+  const targets=wallTargets.concat(hitMeshes);
   for(let i=0;i<w.pellets;i++){
     _dir.copy(camera.getWorldDirection(new THREE.Vector3()));
     _dir.x+=R(-w.spread,w.spread);_dir.y+=R(-w.spread,w.spread);_dir.z+=R(-w.spread,w.spread);
@@ -1941,6 +2139,18 @@ function banner(main,sub){
 }
 function updateSaberSpawns(dt){
   if(!WS.playing||P.dead)return;
+  WS.massSpawnTimer-=dt;
+  if(WS.massSpawnTimer<=0){
+    WS.massSpawnTimer+=60;WS.massSpawnQueue+=15;
+    banner('SABER SURGE','15 INCOMING');
+  }
+  WS.massSpawnBeat-=dt;
+  if(WS.massSpawnQueue>0&&WS.massSpawnBeat<=0){
+    const alive=zombies.filter(z=>z.state!=='dying').length;
+    const count=Math.min(3,WS.massSpawnQueue,35-alive);
+    if(count>0){for(let i=0;i<count;i++)spawnZombie();WS.massSpawnQueue-=count;}
+    WS.massSpawnBeat=count>0 ? .35 : .75;
+  }
   WS.spawnTimer-=dt;
   if(WS.spawnTimer>0)return;
   const alive=zombies.filter(z=>z.state!=='dying').length;
@@ -2183,6 +2393,10 @@ function buildMinimapWalls(){
 function drawMinimap(){
   const c=$('minimap').getContext('2d');
   c.clearRect(0,0,150,150);
+  if(customCollision){
+    customCollision.drawMinimap(c,P.pos,P.yaw,exitPos,zombies,npcs);
+    return;
+  }
   c.drawImage(minimapWalls,0,0);
   const fogOn=currentLevel!=='arena';
   const cs=150/MAPW;
@@ -2214,9 +2428,7 @@ function updateHUD(){
   $('hpVal').textContent=Math.ceil(P.hp);
   const w=WEAPONS[P.weapon];
   $('ammoVal').textContent=`${P.mag[w.ammo]} / ${P[w.ammo]}`;
-  $('killVal').textContent=P.kills;
   $('scrapVal').textContent=Progress.get().items.scrap||0;
-  $('saberVal').textContent=zombies.filter(z=>z.state!=='dying').length;
   $('weaponName').textContent=`[${P.weapon+1}] ${w.name}`;
   const ammoCap=w.capacity;
   $('hpBar').style.width=Math.max(0,Math.min(1,P.hp/100))*100+'%';
@@ -2475,6 +2687,10 @@ function bindInput(){
   addEventListener('resize',()=>{
     camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();
     renderer.setSize(innerWidth,innerHeight);
+    if(postRenderTarget){
+      postRenderTarget.setSize(innerWidth,innerHeight);
+      if(postMat)postMat.uniforms.uResolution.value.set(innerWidth,innerHeight);
+    }
   });
   $('startBtn').onclick=()=>startGame(true);
   $('resumeBtn').onclick=()=>{
@@ -2512,21 +2728,27 @@ function startGame(withLock){
   $('deathScreen').classList.add('hidden');
   $('hud').style.display='block';
   WS.playing=true;WS.paused=false;WS.started=true;
-  WS.spawnTimer=4;
+  WS.spawnTimer=4;WS.massSpawnTimer=60;WS.massSpawnQueue=0;WS.massSpawnBeat=0;
   if(withLock)tryLock();
 }
 function resetGame(){
+  cleanupBloodVFX();
   for(const zb of [...zombies])removeZombie(zb);
   for(const p of pickups)scene.remove(p.mesh);pickups=[];
   for(const p of particles)scene.remove(p.s);particles=[];
   for(const t of tracers)scene.remove(t.line);tracers=[];
   for(const d of decals)scene.remove(d.mesh);decals=[];
-  P.pos.set(16*CELL,0,16*CELL);P.yaw=0;P.pitch=0;
+  if(currentLevel==='backrooms'){
+    P.pos.set(48.69,0,-187.65);
+  }else{
+    P.pos.set(16*CELL,0,16*CELL);
+  }
+  P.yaw=0;P.pitch=0;
   P.hp=100;P.bullets=36;P.shells=2;P.mag.bullets=12;P.mag.shells=6;P.weapon=0;P.kills=0;
   P.cool=0;P.reloadT=0;P.reloadWeapon=-1;P.dead=false;P.dmgFlash=0;P.grinT=0;
   gunPistol.visible=true;gunShotgun.visible=false;
-  WS.spawnTimer=4;
-  applyLevelTheme('arena');
+  WS.spawnTimer=4;WS.massSpawnTimer=60;WS.massSpawnQueue=0;WS.massSpawnBeat=0;
+  applyLevelTheme(currentLevel);
 }
 
 /* ---------------- debug / test API ---------------- */
@@ -2546,7 +2768,7 @@ window.G={
       updatePlayer(dt);updateZombies(dt);updateSaberSpawns(dt);
       updatePickups(dt);updateParticles(dt);updateTracers(dt);updateDecals(dt);
     }
-    updateHUD();renderer.render(scene,camera);
+    updateHUD();renderScene();
   },
   shoot,
   spawn(n=1){for(let i=0;i<n;i++)spawnZombie();},
@@ -2593,9 +2815,10 @@ function loop(t){
     updatePickups(dt);
   }
   updateParticles(dt);updateTracers(dt);updateDecals(dt);
+  updateBloodVFX(dt);
   muzzleLight.intensity*=Math.pow(.0001,dt);
   if(WS.started)updateHUD();
-  renderer.render(scene,camera);
+  renderScene();
 }
 
 /* ---------------- boot ---------------- */
@@ -2626,14 +2849,16 @@ export { P, WS, Progress, SETTINGS, Dialogue, ZMODEL, LEVELS, TEX, SND, KTG, rng
   addBloodDecalAsset, gameOver,
   levelTransition, hurtPlayer, cellCenter, cellOf, isWall, makeNPCFigure, createNPCs,
   installSorcererModel, setNPCAnimation,
-  npcs, floorCells, zombies, pickups, scene, camera, currentLevel, startGame, resetGame, updateHUD };
+  npcs, floorCells, zombies, pickups, scene, camera, currentLevel, startGame, resetGame, updateHUD,
+  wallMeshes, floorMesh, ceilMesh, fluorescentGroup, outletGroup, propGroup, trimMeshes, WALLH, setCustomCollision };
 
 /* debug bridge: expose module state to window for console/test access (live getters for
    reassignable bindings). The supported public API remains window.G + registerLevel. */
 Object.assign(window,{P,WS,Progress,SETTINGS,Dialogue,ZMODEL,LEVELS,TEX,SND,KTG,grid,MAPW,MAPH,
-  CELL,WALLH,floorCells,isWall,cellOf,cellCenter,spawnZombie,removeZombie,addPickup,
+  CELL,WALLH,floorCells,isWall,cellOf,cellCenter,circleHitsWall,spawnZombie,removeZombie,addPickup,
   enemyHp,makeNPCFigure,createNPCs,applyLevelTheme,goNextLevel,levelTransition,banner,showMsg,
-  hurtPlayer,updateHUD,resetGame,startGame,BALANCE,mission,registerLevel,runLevelHook});
+  hurtPlayer,updateHUD,resetGame,startGame,BALANCE,mission,registerLevel,runLevelHook,
+  renderScene,spawnBloodImpact,shoot});
 for(const [k,f] of Object.entries({npcs:()=>npcs,pickups:()=>pickups,zombies:()=>zombies,
   scene:()=>scene,camera:()=>camera,renderer:()=>renderer,currentLevel:()=>currentLevel,
   decals:()=>decals,tracers:()=>tracers,particles:()=>particles,trapCells:()=>trapCells})){

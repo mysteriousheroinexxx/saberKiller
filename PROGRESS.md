@@ -5,6 +5,17 @@
   portrait, wave survival, headshots, pickups, minimap, status-bar HUD. Verified
   in browser, zero console errors. Roadmap + AGENTS.md created for the autonomous
   evolution loop toward a Backrooms dungeon crawler with VN NPC dialogue + trading.
+- 2026-11-20: Level 0 Unreal Engine 1:1 Map & Atmosphere Reconstruction & Fixes:
+  1. Root cause of broken / arch geometry identified: procedural `buildTrim()` in legacy Milestone 4.1 constructed baseboards, cornices, door posts, and curved torus arches. In Level 0, `trimMeshes` and procedural `wallMeshes` are now completely bypassed and purged on load, eliminating all ghost frames and arches.
+  2. Fixed collision vs shooting inconsistency: player movement uses the 1m sub-cell grid (`circleHitsWall`), while weapon raycasting now queries `customCollision.getRaycastTargets()` (`instancedWalls` and `instancedPillars`). Bullets now cleanly strike solid walls and pillars and pass unimpeded through open doorways.
+  3. Standardized wall geometry to double-sided closed box geometry (`side: THREE.DoubleSide`) preventing any backface culling or missing surfaces.
+  4. Extracted complete M_LV0.umap map geometry into assets/level0/level0_map.json (826 floors, 762 walls, 344 lights, 46 pillars, 17 decals, 15 props, 1m collision grid).
+  5. Built js/levels/level0_env.js with THREE.InstancedMesh: complete 260m x 630m level rendered in single draw calls per layer at 60+ FPS.
+  6. Reconstructed PBR materials: AmbientCG CC0 damp carpet, 1k_paperwalls chevron wallpaper, acoustic ceiling tiles, Megascans arrow decals.
+  7. Eliminated floor flickering / Z-fighting completely by hiding procedural floor mesh on backrooms theme.
+  8. Atmosphere matched to target reference: ivory-white rectangular ceiling fixtures, soft ceiling bloom halos, golden downward carpet light pools, dark ochre ambient gloom, atmospheric distance fog, and focused player tactical flashlight.
+  9. Preserved all core combat loops, weapon handling, HUD, and Artoria Lily enemy encounters (lore confirmed: Artoria Lily as horror villain).
+  10. Full verification suite passed (8/8 criteria: wall blocking movement, wall blocking shots, doorway movement, doorway shooting, pillar collision, double-sided walls, 0 leftover trim/arches, 1:1 map fidelity). Zero git commits made.
 - 2026-11-20: M1.1 done — cohesive overlay theme: framed .panel containers with
   entrance animation, gradient glowing title, amber divider rules, keycap-styled
   control hints, gradient buttons with hover/active/focus states, refined death +
@@ -242,3 +253,17 @@
 - 2026-11-20: shared death decals + encounter fail state — Saber kills now use the same
   imported decal instead of the generated floor splat. If the Summoner dies, the Level 0
   defense ends in the game-over screen rather than allowing a ritual retry.
+- 2026-11-21: Level 0 PBR rendering & physical lighting integration —
+  1. Extracted and reconstructed authentic PBR textures (damp carpet BaseColor/Normal/Roughness/AO, chevron wallpaper BaseColor/Normal/Roughness, acoustic ceiling BaseColor/Normal/Roughness/AO, Megascans decals).
+  2. Replaced fake additive light billboards with physically correct suspended PointLights ($Y = 2.2\text{m}$, 1.8m below 4.0m ceiling matching UE4 `Lights.uasset`).
+  3. Dynamic light budget: 8 active PointLights (4 shadow casters with 512x512 PCF soft shadows + 4 fill lights) dynamically prioritized via forward view direction ($\vec{dir} \cdot \vec{fwd}$) and dedicated Saber tracking slot.
+  4. Post-processing pipeline: 15,000K white balance cooling, SceneColorTint $(1.0, 0.99, 0.87)$, 200% chroma saturation, ACES film curve, analog grain, chromatic fringe, and vignette.
+  5. Synchronized 1m collision grid with visual geometry: solid walls block movement and bullet raycasts; doorways permit both.
+- 2026-11-21: Blood impact visual effect (`bulletHit.mov`) & technical documentation —
+  1. Inspected `assets/bulletHit.mov` (ProRes 4444, yuva444p12le, 1920x1920, 60fps, 70 frames, 139 MB).
+  2. Converted to browser-friendly formats: VP9 WebM with alpha (`assets/vfx/bulletHit.webm`, 321 KB, 99.8% size reduction) and an 8x8 sprite sheet atlas (`assets/vfx/bulletHit_sheet.png` at 1.85 MB and WebP at 623 KB).
+  3. Created `js/systems/blood_vfx.js`: 16-quad object pool, zero-latency flipbook playback, camera-facing billboard orientation with random roll, and physical scaling ($0.95\text{m} - 1.25\text{m}$).
+  4. Authoritative hit binding: triggered inside `damageZombie()` exclusively on Saber hits. Wall/environmental impacts trigger `sparkBurst()`.
+  5. Verified multi-hit concurrent playback (shotgun and rapid fire) with automatic resource cleanup after 1.07s.
+  6. Documented the complete pipeline, coordinate conversions, and VFX architecture in `docs/LEVEL0_RENDERING_PIPELINE.md`.
+

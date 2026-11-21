@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Level 0 Controlled Rendering Experiment</title>
+<style>
+  html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000; }
+  canvas { display:block; width:100%; height:100%; }
+  #info { position:fixed; top:12px; left:16px; color:#f0e070; font-family:monospace; font-size:14px;
+    background:#111c; padding:8px 14px; border:1px solid #443; border-radius:4px; z-index:10; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="info">LEVEL 0 CONTROLLED PBR & POST-PROCESSING EXPERIMENT</div>
+<script src="vendor/three.min.js"></script>
+<script>
+(async function() {
+  const width = window.innerWidth || 1280;
+  const height = window.innerHeight || 720;
+
+  // 1. Renderer with physically correct lighting, shadows, and ACES tone mapping
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
+  renderer.setSize(width, height);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+  renderer.physicallyCorrectLights = true;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  document.body.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x181404);
+  scene.fog = new THREE.FogExp2(0x282006, 0.022);
+
+  // 2. Camera placed at player spawn [48.69, 1.62, -187.65] looking East towards doorway
+  const camera = new THREE.PerspectiveCamera(78, width / height, 0.1, 100);
+  camera.position.set(48.69, 1.62, -187.65);
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y = -Math.PI / 2; // Look East toward the doorway and corridor
+  camera.rotation.x = -0.04;
+
+  // 3. Texture Loader with LoadingManager to ensure all textures are loaded
+  const manager = new THREE.LoadingManager();
+  let allTexturesLoaded = false;
+  manager.onLoad = () => {
+    console.log('All textures successfully loaded from disk!');
+    allTexturesLoaded = true;
+  };
+  manager.onError = (url) => {
+    console.error('Failed to load texture:', url);
+  };
+
+  const tl = new THREE.TextureLoader(manager);
+  function loadTex(url, srgb = true, rx = 1, rz = 1) {
+    const t = tl.load(url);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(rx, rz);
+    if (srgb) t.encoding = THREE.sRGBEncoding;
+    return t;
+  }
+
+  // Authentic UE4 Carpet PBR textures (512x512)
+  const carpetBase = loadTex('assets/level0/Carpet_INST_basecolor.png', true, 10, 10);
+  const carpetNorm = loadTex('assets/level0/Carpet_INST_normal.png', false, 10, 10);
+  const carpetRough = loadTex('assets/level0/Carpet_INST_roughness.png', false, 10, 10);
+  const carpetAO = loadTex('assets/level0/Carpet_INST_ambientOcclusion.png', false, 10, 10);
+
+  // Authentic UE4 Wall PBR textures (1024x1024)
+  const wallBase = loadTex('assets/level0/test3_basecolor.png', true, 1, 1);
+  const wallNorm = loadTex('assets/level0/norm_1k_paperwalls.png', false, 1, 1);
+  const wallRough = loadTex('assets/level0/test3_roughness.png', false, 1, 1);
+
+  // Authentic UE4 Ceiling PBR textures (1024x1024 optimized)
+  const ceilBase = loadTex('assets/level0/OfficeCeiling001_4K_Color_1k.png', true, 5, 5);
+  const ceilNorm = loadTex('assets/level0/OfficeCeiling001_4K_NormalGL_1k.png', false, 5, 5);
+  const ceilRough = loadTex('assets/level0/OfficeCeiling001_4K_Roughness_1k.png', false, 5, 5);
+  const ceilAO = loadTex('assets/level0/OfficeCeiling001_4K_AmbientOcclusion_1k.png', false, 5, 5);
+
+  // 4. Materials
+  const floorMat = new THREE.MeshStandardMaterial({
+    map: carpetBase,
+    normalMap: carpetNorm,
+    normalScale: new THREE.Vector2(1.2, 1.2),
+    roughnessMap: carpetRough,
+    roughness: 0.82,
+    aoMap: carpetAO,
+    aoMapIntensity: 1.0,
+    metalness: 0.02
+  });
+
+  const wallMat = new THREE.MeshStandardMaterial({
+    map: wallBase,
+    normalMap: wallNorm,
+    normalScale: new THREE.Vector2(1.0, 1.0),
+    roughnessMap: wallRough,
+    roughness: 0.85,
+    metalness: 0.01,
+    side: THREE.DoubleSide
+  });
+
+  const ceilMat = new THREE.MeshStandardMaterial({
+    map: ceilBase,
+    normalMap: ceilNorm,
+    normalScale: new THREE.Vector2(0.8, 0.8),
+    roughnessMap: ceilRough,
+    roughness: 0.75,
+    aoMap: ceilAO,
+    aoMapIntensity: 1.0,
+    metalness: 0.0,
+    side: THREE.DoubleSide
+  });
+
+  const lightPanelMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff
+  });
+
+  // Helper to add UV2 for AO map
+  function addUV2(geo) {
+    geo.setAttribute('uv2', geo.attributes.uv);
+    return geo;
+  }
+
+  // 5. Construct Room Geometry:
+  // Floor (10m x 10m centered at [50, 0, -185])
+  const floorGeo = addUV2(new THREE.PlaneGeometry(20, 20).rotateX(-Math.PI / 2));
+  const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+  floorMesh.position.set(50, 0, -185);
+  floorMesh.receiveShadow = true;
+  scene.add(floorMesh);
+
+  // Ceiling at Y = 4.0m
+  const ceilGeo = addUV2(new THREE.PlaneGeometry(20, 20).rotateX(Math.PI / 2));
+  const ceilMesh = new THREE.Mesh(ceilGeo, ceilMat);
+  ceilMesh.position.set(50, 4.0, -185);
+  ceilMesh.receiveShadow = true;
+  scene.add(ceilMesh);
+
+  // Walls:
+  const wallBoxGeo = new THREE.BoxGeometry(10, 4.0, 0.8).translate(0, 2.0, 0);
+
+  // West Wall (solid, behind player)
+  const westWall = new THREE.Mesh(wallBoxGeo, wallMat);
+  westWall.position.set(45.99, 0, -187.65);
+  westWall.rotation.y = Math.PI / 2;
+  westWall.castShadow = true;
+  westWall.receiveShadow = true;
+  scene.add(westWall);
+
+  // North Wall (left of player)
+  const northWall = new THREE.Mesh(wallBoxGeo, wallMat);
+  northWall.position.set(48.69, 0, -192.65);
+  northWall.castShadow = true;
+  northWall.receiveShadow = true;
+  scene.add(northWall);
+
+  // South Wall (right of player)
+  const southWall = new THREE.Mesh(wallBoxGeo, wallMat);
+  southWall.position.set(48.69, 0, -182.65);
+  southWall.castShadow = true;
+  southWall.receiveShadow = true;
+  scene.add(southWall);
+
+  // East Wall with Doorway: Two segments flanking a 2m open doorway
+  const eastWallLeft = new THREE.Mesh(new THREE.BoxGeometry(4.0, 4.0, 0.8).translate(0, 2.0, 0), wallMat);
+  eastWallLeft.position.set(53.69, 0, -189.65);
+  eastWallLeft.rotation.y = Math.PI / 2;
+  eastWallLeft.castShadow = true;
+  eastWallLeft.receiveShadow = true;
+  scene.add(eastWallLeft);
+
+  const eastWallRight = new THREE.Mesh(new THREE.BoxGeometry(4.0, 4.0, 0.8).translate(0, 2.0, 0), wallMat);
+  eastWallRight.position.set(53.69, 0, -185.65);
+  eastWallRight.rotation.y = Math.PI / 2;
+  eastWallRight.castShadow = true;
+  eastWallRight.receiveShadow = true;
+  scene.add(eastWallRight);
+
+  // Far Hallway Wall (visible through doorway at x = 58.69)
+  const farHallWall = new THREE.Mesh(new THREE.BoxGeometry(16.0, 4.0, 0.8).translate(0, 2.0, 0), wallMat);
+  farHallWall.position.set(58.69, 0, -187.65);
+  farHallWall.rotation.y = Math.PI / 2;
+  farHallWall.castShadow = true;
+  farHallWall.receiveShadow = true;
+  scene.add(farHallWall);
+
+  // Structural Pillar in hallway
+  const pillarGeo = new THREE.BoxGeometry(2.0, 4.0, 2.0).translate(0, 2.0, 0);
+  const pillar = new THREE.Mesh(pillarGeo, wallMat);
+  pillar.position.set(56.0, 0, -183.0);
+  pillar.castShadow = true;
+  pillar.receiveShadow = true;
+  scene.add(pillar);
+
+  // 6. Ceiling Light Fixture (Light_1303 at [48.27, 4.0, -187.70])
+  const fixtureFrameGeo = new THREE.BoxGeometry(2.5, 0.1, 1.3);
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x1f1c16, roughness: 0.6 });
+  const fixtureFrame = new THREE.Mesh(fixtureFrameGeo, frameMat);
+  fixtureFrame.position.set(48.27, 3.96, -187.70);
+  scene.add(fixtureFrame);
+
+  const lightPanelGeo = new THREE.PlaneGeometry(2.3, 1.1).rotateX(Math.PI / 2);
+  const lightPanel = new THREE.Mesh(lightPanelGeo, lightPanelMat);
+  lightPanel.position.set(48.27, 3.91, -187.70);
+  scene.add(lightPanel);
+
+  // 7. Authentic UE4 Point Light:
+  // Placed at Y = 2.2m (1.8m below ceiling, exactly matching RelativeLocation = -180cm in Lights.uasset)
+  const roomLight = new THREE.PointLight(0xfff6cf, 32.0, 14.0, 2.0);
+  roomLight.position.set(48.27, 2.4, -187.70);
+  roomLight.castShadow = true;
+  roomLight.shadow.bias = -0.0015;
+  roomLight.shadow.normalBias = 0.04;
+  roomLight.shadow.mapSize.width = 1024;
+  roomLight.shadow.mapSize.height = 1024;
+  roomLight.shadow.camera.near = 0.2;
+  roomLight.shadow.camera.far = 16.0;
+  scene.add(roomLight);
+
+  // Adjacent Corridor Light (Light_1058 at [53.63, 2.4, -173.14]) illuminating the far hallway
+  const hallLight = new THREE.PointLight(0xfff0c0, 28.0, 14.0, 2.0);
+  hallLight.position.set(56.5, 2.4, -180.0);
+  hallLight.castShadow = true;
+  hallLight.shadow.bias = -0.0015;
+  hallLight.shadow.normalBias = 0.04;
+  hallLight.shadow.mapSize.width = 1024;
+  hallLight.shadow.mapSize.height = 1024;
+  scene.add(hallLight);
+
+  // Subtle ambient bounce matching the sampled #82742b shadow palette
+  const ambient = new THREE.AmbientLight(0x403612, 0.35);
+  scene.add(ambient);
+
+  // Tactical forward flashlight on camera
+  const flash = new THREE.SpotLight(0xfff6de, 22.0, 35.0, Math.PI / 7.0, 0.5, 1.8);
+  flash.position.set(0.2, -0.2, 0.1);
+  camera.add(flash);
+  flash.target.position.set(0.2, -0.2, -10);
+  camera.add(flash.target);
+
+  // 8. Custom Fullscreen Post-Processing Shader matching UE4's `effects_lv0`:
+  // Implements:
+  // - 15000K White Balance cool shift
+  // - SceneColorTint: (1.00, 0.99, 0.87)
+  // - 2.0x Color Saturation (rich mono-yellow!)
+  // - Film Slope 0.25 / Film Toe 0.788
+  // - Edge Vignette (Intensity = 1.0)
+  // - Film Grain & Jitter (Intensity = 0.12)
+  // - Chromatic Aberration Fringe (Intensity = 5.0)
+
+  const postScene = new THREE.Scene();
+  const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, -1, 1);
+  const renderTarget = new THREE.WebGLRenderTarget(width, height, {
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    format: THREE.RGBAFormat,
+    encoding: THREE.LinearEncoding
+  });
+
+  const postShader = {
+    uniforms: {
+      tDiffuse: { value: null },
+      uResolution: { value: new THREE.Vector2(width, height) },
+      uSaturation: { value: 1.85 },
+      uVignette: { value: 0.95 },
+      uGrain: { value: 0.085 },
+      uFringe: { value: 0.0035 }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = vec4(position.xy, 0.0, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D tDiffuse;
+      uniform vec2 uResolution;
+      uniform float uSaturation;
+      uniform float uVignette;
+      uniform float uGrain;
+      uniform float uFringe;
+      varying vec2 vUv;
+
+      float rand(vec2 co) {
+        return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+      }
+
+      void main() {
+        vec2 uv = vUv;
+        vec2 dir = uv - vec2(0.5);
+        float dist = length(dir);
+
+        // Chromatic Aberration (Scene Fringe)
+        vec2 offset = dir * uFringe * pow(dist, 1.4);
+        float r = texture2D(tDiffuse, uv - offset).r;
+        float g = texture2D(tDiffuse, uv).g;
+        float b = texture2D(tDiffuse, uv + offset).b;
+        vec3 col = vec3(r, g, b);
+
+        // White Balance Cool Shift (15000K in UE4) & SceneColorTint (1.0, 0.99, 0.87)
+        col *= vec3(0.98, 0.99, 0.92);
+
+        // 200% Color Saturation
+        float lum = dot(col, vec3(0.299, 0.587, 0.114));
+        col = mix(vec3(lum), col, uSaturation);
+
+        // Film Slope / Toe curve (ACES adjustment)
+        col = pow(col, vec3(0.95));
+
+        // Edge Vignette
+        float vig = 1.0 - smoothstep(0.4, 0.95, dist) * uVignette;
+        col *= vig;
+
+        // Film Grain
+        float grain = (rand(uv * 500.0) - 0.5) * uGrain;
+        col += grain;
+
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `
+  };
+
+  const postMat = new THREE.ShaderMaterial({
+    uniforms: postShader.uniforms,
+    vertexShader: postShader.vertexShader,
+    fragmentShader: postShader.fragmentShader,
+    depthTest: false,
+    depthWrite: false
+  });
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMat);
+  postScene.add(quad);
+
+  let usePost = true;
+
+  // Render loop
+  function render() {
+    if (usePost) {
+      renderer.setRenderTarget(renderTarget);
+      renderer.render(scene, camera);
+
+      renderer.setRenderTarget(null);
+      postMat.uniforms.tDiffuse.value = renderTarget.texture;
+      renderer.render(postScene, postCam);
+    } else {
+      renderer.setRenderTarget(null);
+      renderer.render(scene, camera);
+    }
+  }
+
+  let frameCount = 0;
+  let capturing = false;
+
+  async function runAutoCapture() {
+    capturing = true;
+    console.log('Starting automated experiment capture...');
+
+    async function postShot(label, isLast = false) {
+      render();
+      const shot = renderer.domElement.toDataURL('image/png');
+      await fetch('/api/screenshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shot, label, isLast })
+      });
+      console.log('Posted shot:', label);
+    }
+
+    // 1. East Doorway view with Post-Processing
+    usePost = true;
+    window.exp.lookEast();
+    await new Promise(r => setTimeout(r, 300));
+    await postShot('experiment_angle1_doorway');
+
+    // 1b. East Doorway view RAW (No Post-Processing, pure Three.js PBR)
+    usePost = false;
+    window.exp.lookEast();
+    await new Promise(r => setTimeout(r, 300));
+    await postShot('experiment_raw_pbr');
+
+    // 2. Doorway close-up with Post-Processing
+    usePost = true;
+    window.exp.lookDoor();
+    await new Promise(r => setTimeout(r, 300));
+    await postShot('experiment_angle2_hall');
+
+    // 3. Corner with Post-Processing
+    usePost = true;
+    window.exp.lookCorner();
+    await new Promise(r => setTimeout(r, 300));
+    await postShot('experiment_angle3_corner', true);
+
+    console.log('AutoCapture complete!');
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    render();
+    frameCount++;
+    if (allTexturesLoaded && frameCount > 25) {
+      window.__EXPERIMENT_READY__ = true;
+      if (new URLSearchParams(location.search).has('autocapture') && !capturing) {
+        runAutoCapture();
+      }
+    }
+  }
+  requestAnimationFrame(animate);
+
+  // Expose global controller
+  window.exp = {
+    camera, scene, renderer, render,
+    setPost(val) { usePost = Boolean(val); render(); },
+    lookEast() { camera.rotation.y = -Math.PI / 2; camera.position.set(48.69, 1.62, -187.65); render(); },
+    lookDoor() { camera.rotation.y = -Math.PI / 2.2; camera.position.set(49.5, 1.62, -187.65); render(); },
+    lookCorner() { camera.rotation.y = Math.PI * 0.8; camera.position.set(51.0, 1.62, -186.0); render(); }
+  };
+})();
+</script>
+</body>
+</html>

@@ -160,7 +160,6 @@
   .stat .value{font-size:38px;font-weight:bold;line-height:1.05;
     text-shadow:0 0 10px currentColor,0 2px 0 #000}
   #hpVal{color:var(--doom-red)} #ammoVal{color:var(--doom-amber)}
-  #killVal{color:#cfcfcf} #saberVal{color:var(--doom-green)}
   #face{width:64px;height:64px;image-rendering:pixelated;margin:0 14px;
     border:2px solid #2c2216;background:#0c0a06}
   #weaponName{position:absolute;right:16px;bottom:96px;color:#9a8a6a;
@@ -306,7 +305,7 @@
   .stat{border-right:2px solid #4a3a66}
   .stat .label{color:#9a8abc}
   .stat .value{font-variant-numeric:tabular-nums}
-  #hpVal{color:#ff6688}#ammoVal{color:var(--osu-pink-light)}#killVal{color:#e8dcf5}#saberVal{color:#aa88ff}
+  #hpVal{color:#ff6688}#ammoVal{color:var(--osu-pink-light)}
   .bar{background:#1e1530;border:1px solid #4a3a66}
   .bar.hp i{background:linear-gradient(90deg,#cc5288,#ff66aa)}
   .bar.ammo i{background:linear-gradient(90deg,#6644cc,#aa88ff)}
@@ -318,6 +317,42 @@
   #waveSub{color:var(--osu-pink-light)}
   #crosshair{--ch:#ff99cc}
   #pickupMsg{color:var(--osu-pink-light)}
+
+  /* Compact top-corner combat HUD */
+  #statusbar{position:absolute;left:12px;top:12px;bottom:auto;transform:none;display:flex;
+    flex-direction:column;align-items:stretch;gap:11px;width:290px;padding:0;
+    background:transparent;border:0;border-radius:0;box-shadow:none;backdrop-filter:none}
+  #statusbar .stat{display:flex;align-items:stretch;justify-content:flex-start;padding:0;border:0}
+  #statusbar .stat .label{font-size:10px;letter-spacing:.16em;color:#c5b5d8}
+  #statusbar .stat .value{font-size:22px;line-height:1.1}
+  #statusbar .barHeader .label{font-size:10px;letter-spacing:.16em;color:#c5b5d8}
+  #face{width:38px;height:38px;margin:0;border:1px solid #704260;border-radius:8px}
+  #missionHud{position:static;display:none;opacity:0;transform:none;width:calc(100% - 49px);padding:0;margin:0 0 0 49px;
+    background:transparent;border:0;border-radius:0;box-shadow:none;color:#f4dce8;text-shadow:none;
+    font-size:10px;letter-spacing:.13em;white-space:normal}
+  #summonerBarTrack{width:120px;height:8px;margin-top:6px;background:#100c18;border:1px solid #704457;
+    border-radius:0;transform:skewX(-13deg);clip-path:polygon(7% 0,100% 0,93% 100%,0 100%);overflow:hidden}
+  #summonerBarFill{height:100%;background:linear-gradient(90deg,#a82064,#ff66aa 72%,#ffb1d3);transform:skewX(13deg);transform-origin:left center}
+  #summonerStatus{margin-top:5px;color:#a995bb;font-size:9px;text-align:left}
+  .healthGroup{display:flex;align-items:center;gap:11px}
+  .healthDetails{flex:1;min-width:0}
+  .barHeader{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  #hpBar,#ammoBar{width:100%}
+  .healthDetails .bar,.ammoStat .bar{width:120px}
+  #statusbar .ammoStat{width:calc(100% - 49px);margin-left:49px}
+  #hpVal,#ammoVal{font-size:19px}
+  #ammoVal{color:#d5b4ff}
+  #reloadVal{min-height:12px}
+  #minimap{width:136px;height:136px;border:1px solid #704260;border-radius:10px}
+  #weaponName{position:static;color:#f0d9e8;font-size:11px;letter-spacing:.1em}
+  #scrapHud{position:static;padding:0;border:0;background:transparent;color:#ffb8d8;font-size:12px}
+  #hudQuick{position:absolute;top:160px;right:12px;display:flex;flex-direction:column;align-items:flex-end;gap:9px;
+    min-width:0;padding:0;background:transparent;border:0;border-radius:0;box-shadow:none;backdrop-filter:none}
+  @media(max-width:600px){
+    #statusbar{left:8px;top:8px;width:min(240px,62vw);padding:10px 11px;gap:8px}
+    #minimap{width:104px;height:104px;right:8px;top:8px}
+    #hudQuick{top:120px;right:8px;gap:6px}
+  }
 
   @media (prefers-reduced-motion:reduce){
     .title,#startScreen .panel::before,.overlay:after,.panel,#dialogueBox{animation:none}
@@ -335,15 +370,23 @@
   <div id="waveBanner"></div><div id="waveSub"></div>
   <div id="pickupMsg"></div>
   <div id="npcPrompt"></div>
-  <div id="missionHud"></div>
-  <div id="scrapHud">⚙ <b id="scrapVal">0</b> SCRAP</div>
-  <div id="weaponName"></div>
   <div id="statusbar">
-    <div class="stat"><span class="label">HEALTH</span><span class="value" id="hpVal">100</span><div class="bar hp"><i id="hpBar"></i></div></div>
-    <canvas id="face" width="64" height="64"></canvas>
-    <div class="stat"><span class="label">AMMO</span><span class="value" id="ammoVal">12 / 36</span><div class="bar ammo"><i id="ammoBar"></i></div><span id="reloadVal"></span></div>
-    <div class="stat"><span class="label">KILLS</span><span class="value" id="killVal">0</span></div>
-    <div class="stat"><span class="label">SABERS</span><span class="value" id="saberVal">0</span></div>
+    <div class="healthGroup">
+      <canvas id="face" width="64" height="64"></canvas>
+      <div class="healthDetails">
+        <div class="barHeader"><span class="label">HEALTH</span><span class="value" id="hpVal">100</span></div>
+        <div class="bar hp"><i id="hpBar"></i></div>
+      </div>
+    </div>
+    <div id="missionHud"></div>
+    <div class="stat ammoStat">
+      <div class="barHeader"><span class="label">AMMO</span><span class="value" id="ammoVal">12 / 36</span></div>
+      <div class="bar ammo"><i id="ammoBar"></i></div><span id="reloadVal"></span>
+    </div>
+  </div>
+  <div id="hudQuick">
+    <div id="weaponName"></div>
+    <div id="scrapHud">⚙ <b id="scrapVal">0</b> SCRAP</div>
   </div>
 </div>
 <div id="damage"></div><div id="lowhp"></div><div id="scanlines"></div>
@@ -445,5 +488,6 @@
 <script src="vendor/SkeletonUtils.js"></script>
 <script type="module" src="js/engine.js"></script>
 <script type="module" src="js/levels/level0.js"></script>
+<script type="module" src="js/autotest.js"></script>
 </body>
 </html>

@@ -22,6 +22,7 @@ Read `ROADMAP.md` for the ordered build plan and `PROGRESS.md` for what's done.
 6. Stop. Never leave the game broken or half-migrated between commits.
 
 ## Key technical facts
+- Technical Documentation: Detailed reverse-engineering, coordinate conversions, PBR reconstruction, dynamic lighting allocation, post-processing, and blood VFX architecture are documented in `docs/LEVEL0_RENDERING_PIPELINE.md`.
 - Engine r147 (upgraded from r128 so cloned SkinnedMesh deform while moving).
 - Enemies: Mixamo Saber GLBs normalized via Blender (`*_clean.glb`). Raw Mixamo
   exports have a mesh-meters-vs-bone-cm mismatch under a 0.01 Armature — fix

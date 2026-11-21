@@ -49,6 +49,20 @@ procedurally at runtime and carry no external license.
 - **`athena.glb`**, **`saber_animated.glb`** — earlier experiments, not loaded by the current
   game. Retained for reference; same provenance as the Saber assets above.
 
+## Backrooms Level 0 Assets (`assets/level0/`)
+- **`lv0_scene.glb`** — converted scene extracted from `Content/Maps/M_LV0/M_LV0_Alt1.umap` of the
+  open-source *Budget Backrooms* Unreal Engine 4.27 project (GPLv3). Converted via local Blender 5 /
+  FMeshDescription parser pipeline.
+- **`test3_basecolor.png`**, **`norm_1k_paperwalls.png`**, **`test3_roughness.png`** — original
+  monochrome-yellow chevron wallpaper textures from *Budget Backrooms* (`1k_paperwalls`).
+- **`Carpet_INST_basecolor.png`** — damp beige carpet texture, sourced via *Budget Backrooms*
+  from **AmbientCG** under **CC0** (Public Domain).
+- **`OfficeCeiling001_4K_Color.png`** — acoustic mineral-fiber drop ceiling tile texture,
+  sourced from **AmbientCG** under **CC0** (Public Domain).
+- **`pessi.png`**, **`pessi_normal.png`**, **`pessi_almond.png`** — vintage soda vending machine
+  textures from *Budget Backrooms* scrapped folder (`hl2/vending`), adapted for in-game Backrooms flavor.
+  Kept for local project use only; not for standalone commercial redistribution.
+
 ## Notes on Milestone 8 (online CC0 resources)
 - 8.1 (CC0 textures) and 8.2 (CC0 props/NPC meshes) were **evaluated and deemed unnecessary**:
   the procedural texture pipeline and the Blender prop pipeline produce satisfactory results
