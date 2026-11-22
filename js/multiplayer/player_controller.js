@@ -309,9 +309,14 @@ export class LocalPlayerController {
       if (this.isEditorActive) {
         return;
       }
-      // Allow regular typing in input/textarea elements without interference
-      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-        return;
+      // Allow regular typing in visible input/textarea elements when not in active pointer lock
+      if (!this.isPointerLocked && e.target) {
+        const tag = e.target.tagName;
+        const type = (e.target.type || '').toLowerCase();
+        const isEditableText = (tag === 'TEXTAREA') || (tag === 'INPUT' && ['text', 'password', 'search', 'email', 'url', 'tel', 'number', ''].includes(type));
+        if (isEditableText && e.target.offsetParent !== null) {
+          return;
+        }
       }
 
       // Browser keyboard shortcut protection during active first-person pointer lock

@@ -95,6 +95,10 @@ export class MPManager {
       if (this.itemManager && payload.itemId) {
         this.itemManager.hideItem(payload.itemId);
       }
+      if (window.interactionManager) {
+        window.interactionManager.clearTargetIfId(payload.itemId);
+        window.interactionManager.recordServerResponse('ITEM_COLLECTED', payload);
+      }
       if (this.ui.onItemCollected) this.ui.onItemCollected(payload);
     };
 
@@ -102,10 +106,16 @@ export class MPManager {
       if (payload && payload.inventory) {
         this.inventory.deserialize(payload.inventory);
       }
+      if (window.interactionManager) {
+        window.interactionManager.recordServerResponse('INVENTORY_UPDATE', payload);
+      }
       if (this.ui.onInventoryUpdate) this.ui.onInventoryUpdate(payload);
     };
 
     this.network.onPickupRejected = (payload) => {
+      if (window.interactionManager) {
+        window.interactionManager.recordServerResponse('PICKUP_REJECTED', payload);
+      }
       if (this.ui.onPickupRejected) this.ui.onPickupRejected(payload);
     };
 

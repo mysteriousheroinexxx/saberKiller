@@ -1,10 +1,18 @@
 /**
  * Saber Killer — Reusable Interaction Framework
  * Camera-centered raycasting, hover/unhover detection, contextual prompts,
- * and debounced E-key interaction for multiplayer survival gameplay.
+ * debounced E-key interaction, and real-time developer diagnostics for multiplayer survival gameplay.
  */
 
 import { getItemDefinition, isPickupItem } from './item_catalog.js';
+
+function isInteractionKey(e) {
+  if (!e) return false;
+  if (e.code === 'KeyE') return true;
+  if (e.key === 'e' || e.key === 'E') return true;
+  if (e.keyCode === 69) return true;
+  return false;
+}
 
 export class InteractionManager {
   constructor(camera, scene, itemManager, options = {}) {
@@ -17,12 +25,27 @@ export class InteractionManager {
     this.rayOrigin = new THREE.Vector2(0, 0); // Viewport center
     this.currentTarget = null;
     this.eKeyPressed = false;
+    this._lastKeyDownTime = 0;
     this.enabled = true;
 
     // Interaction callbacks
     this.onInteract = options.onInteract || null;
     this.onHover = options.onHover || null;
     this.onUnhover = options.onUnhover || null;
+    this.onDiagnosticsChange = options.onDiagnosticsChange || null;
+
+    // Real-time developer pickup pipeline diagnostics state
+    this.diagnostics = {
+      targetId: null,
+      targetType: null,
+      targetDistance: null,
+      eligibility: 'NOT TARGETED',
+      lastKey: 'NONE',
+      lastRequest: 'NONE',
+      serverResult: 'NONE',
+      inventoryResult: '0 / 12 slots',
+      lastRejection: 'NONE'
+    };
 
     // Custom interactables registry (for doors, card readers, vending machines)
     this.customInteractables = new Map();
@@ -86,34 +109,68 @@ export class InteractionManager {
     this.promptEl.style.display = 'flex';
   }
 
+  _notifyDiagnostics() {
+    if (typeof this.onDiagnosticsChange === 'function') {
+      try {
+        this.onDiagnosticsChange(this.diagnostics);
+      } catch (e) {
+        console.warn('[InteractionManager] onDiagnosticsChange error:', e);
+      }
+    }
+  }
+
   _bindEvents() {
     this._onKeyDown = (e) => {
-      // Ignore if typing in text inputs or textareas
-      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-        return;
+      // 1. Pointer lock priority: if pointer locked, player is in active first-person view
+      const isPointerLocked = (document.pointerLockElement !== null);
+      if (!isPointerLocked && e.target) {
+        const tag = e.target.tagName;
+        const type = (e.target.type || '').toLowerCase();
+        const isEditableText = (tag === 'TEXTAREA') || (tag === 'INPUT' && ['text', 'password', 'search', 'email', 'url', 'tel', 'number', ''].includes(type));
+        // Only block if actually typing into a visible editable text element
+        if (isEditableText && e.target.offsetParent !== null) {
+          return;
+        }
       }
 
-      // Check if world editor is in active Edit mode
+      // 2. Suppress interaction when World Placement Editor is in active Edit mode
       if (window.worldEditor && window.worldEditor.editorMode === 'edit') {
         return;
       }
 
-      if (e.code === 'KeyE') {
-        if (!this.eKeyPressed) {
+      // 3. Multi-layout E-key detection (code, key, and keyCode)
+      if (isInteractionKey(e)) {
+        const now = Date.now();
+        // Allow trigger if not currently held OR >300ms safeguard against dropped keyup events
+        if (!this.eKeyPressed || (now - this._lastKeyDownTime > 300)) {
           this.eKeyPressed = true;
+          this._lastKeyDownTime = now;
+          this.diagnostics.lastKey = `E received (code=${e.code || 'n/a'}, key=${e.key || 'n/a'}) at ${new Date(now).toLocaleTimeString()}`;
+          this._notifyDiagnostics();
           this.triggerInteraction();
         }
       }
     };
 
     this._onKeyUp = (e) => {
-      if (e.code === 'KeyE') {
+      if (isInteractionKey(e)) {
         this.eKeyPressed = false;
       }
     };
 
-    window.addEventListener('keydown', this._onKeyDown, { capture: false });
-    window.addEventListener('keyup', this._onKeyUp, { capture: false });
+    this._onBlur = () => {
+      this.eKeyPressed = false;
+    };
+
+    this._onPointerLockChange = () => {
+      this.eKeyPressed = false;
+    };
+
+    // Attach in capture phase to guarantee interception before other elements
+    window.addEventListener('keydown', this._onKeyDown, { capture: true });
+    window.addEventListener('keyup', this._onKeyUp, { capture: true });
+    window.addEventListener('blur', this._onBlur);
+    document.addEventListener('pointerlockchange', this._onPointerLockChange);
   }
 
   /**
@@ -134,19 +191,62 @@ export class InteractionManager {
    * Performs single-action interaction on current target
    */
   triggerInteraction() {
-    if (!this.enabled || !this.currentTarget) return;
-
-    // Proximity guard
-    if (this.currentTarget.distance > this.maxDistance) {
+    if (!this.enabled) {
+      this.diagnostics.eligibility = 'DISABLED';
+      this._notifyDiagnostics();
+      return;
+    }
+    if (!this.currentTarget) {
+      this.diagnostics.eligibility = 'NOT TARGETED (No object in crosshair)';
+      this._notifyDiagnostics();
       return;
     }
 
+    // Proximity guard
+    if (this.currentTarget.distance > this.maxDistance) {
+      this.diagnostics.eligibility = `OUT OF RANGE (${this.currentTarget.distance.toFixed(2)}m > ${this.maxDistance}m)`;
+      this._notifyDiagnostics();
+      return;
+    }
+
+    const target = this.currentTarget;
+    this.diagnostics.lastRequest = `PICKUP_REQUEST sent (${target.id}) at ${new Date().toLocaleTimeString()}`;
+    this.diagnostics.serverResult = 'PENDING (Awaiting server response...)';
+    this._notifyDiagnostics();
+
     if (typeof this.onInteract === 'function') {
       try {
-        this.onInteract(this.currentTarget);
+        this.onInteract(target);
       } catch (err) {
         console.error('[InteractionManager] Error executing onInteract:', err);
       }
+    }
+  }
+
+  /**
+   * Records server packet response into diagnostics
+   */
+  recordServerResponse(type, payload) {
+    const timeStr = new Date().toLocaleTimeString();
+    if (type === 'ITEM_COLLECTED') {
+      this.diagnostics.serverResult = `ACCEPTED — ${payload.itemId} (${payload.itemType || 'item'}) at ${timeStr}`;
+      this.diagnostics.lastRejection = 'NONE';
+    } else if (type === 'PICKUP_REJECTED') {
+      this.diagnostics.serverResult = `REJECTED — ${payload.reason || 'Server rejection'} at ${timeStr}`;
+      this.diagnostics.lastRejection = payload.reason || 'Server rejection';
+    } else if (type === 'INVENTORY_UPDATE') {
+      const occupied = payload?.inventory?.slots ? payload.inventory.slots.filter(s => s !== null).length : 0;
+      this.diagnostics.inventoryResult = `${occupied} / 12 slots (updated at ${timeStr})`;
+    }
+    this._notifyDiagnostics();
+  }
+
+  /**
+   * Immediately clears current hover target if matching the collected item ID
+   */
+  clearTargetIfId(id) {
+    if (this.currentTarget && this.currentTarget.id === id) {
+      this._clearHoverTarget();
     }
   }
 
@@ -207,7 +307,7 @@ export class InteractionManager {
       if (wrapperId) {
         // 1. Check if it's an ItemManager item
         const item = this.itemManager.getItemById(wrapperId);
-        if (item) {
+        if (item && !item.isCollected && (!item.object || item.object.visible !== false)) {
           const def = getItemDefinition(item.type);
           const isPickup = isPickupItem(item.type);
           const isEnvironmental = def && def.isInteractable;
@@ -254,8 +354,13 @@ export class InteractionManager {
       if (!this.currentTarget || this.currentTarget.id !== foundTarget.id) {
         this._setHoverTarget(foundTarget);
       } else {
-        // Update distance
+        // Update distance and eligibility
         this.currentTarget.distance = foundTarget.distance;
+        this.diagnostics.targetDistance = foundTarget.distance;
+        this.diagnostics.eligibility = (foundTarget.distance <= this.maxDistance)
+          ? `ELIGIBLE (${foundTarget.distance.toFixed(2)}m)`
+          : `OUT OF RANGE (${foundTarget.distance.toFixed(2)}m > ${this.maxDistance}m)`;
+        this._notifyDiagnostics();
       }
     } else {
       if (this.currentTarget) {
@@ -272,6 +377,14 @@ export class InteractionManager {
     this.currentTarget = target;
     this._updatePrompt(target);
 
+    this.diagnostics.targetId = target.id;
+    this.diagnostics.targetType = target.type;
+    this.diagnostics.targetDistance = target.distance;
+    this.diagnostics.eligibility = (target.distance <= this.maxDistance)
+      ? `ELIGIBLE (${target.distance.toFixed(2)}m)`
+      : `OUT OF RANGE (${target.distance.toFixed(2)}m > ${this.maxDistance}m)`;
+    this._notifyDiagnostics();
+
     if (this.onHover) {
       try { this.onHover(target); } catch (e) {}
     }
@@ -283,6 +396,12 @@ export class InteractionManager {
     }
     this.currentTarget = null;
     this._updatePrompt(null);
+
+    this.diagnostics.targetId = null;
+    this.diagnostics.targetType = null;
+    this.diagnostics.targetDistance = null;
+    this.diagnostics.eligibility = 'NOT TARGETED';
+    this._notifyDiagnostics();
   }
 
   /**
@@ -293,7 +412,9 @@ export class InteractionManager {
     if (this.promptEl && this.promptEl.parentNode) {
       this.promptEl.parentNode.removeChild(this.promptEl);
     }
-    window.removeEventListener('keydown', this._onKeyDown);
-    window.removeEventListener('keyup', this._onKeyUp);
+    window.removeEventListener('keydown', this._onKeyDown, { capture: true });
+    window.removeEventListener('keyup', this._onKeyUp, { capture: true });
+    window.removeEventListener('blur', this._onBlur);
+    document.removeEventListener('pointerlockchange', this._onPointerLockChange);
   }
 }

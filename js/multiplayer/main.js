@@ -230,6 +230,13 @@ async function init() {
     },
     onRoomJoined: (payload) => {
       isGameActive = true;
+      if (document.activeElement && typeof document.activeElement.blur === 'function') {
+        try { document.activeElement.blur(); } catch (e) {}
+      }
+      if (renderer && renderer.domElement) {
+        renderer.domElement.tabIndex = 0;
+        try { renderer.domElement.focus(); } catch (e) {}
+      }
       if (lobbyPanel) lobbyPanel.style.display = 'none';
       if (hudOverlay) hudOverlay.style.display = 'block';
       if (sanityHUD) sanityHUD.setVisible(true);
@@ -307,7 +314,9 @@ async function init() {
   });
 
   // Click canvas to resume pointer lock
+  renderer.domElement.tabIndex = 0;
   renderer.domElement.addEventListener('click', () => {
+    try { renderer.domElement.focus(); } catch (e) {}
     if (isGameActive && mpManager && !mpManager.localPlayer.isEditorActive && (!worldEditor || !worldEditor.isOpen)) {
       mpManager.localPlayer.requestPointerLock(renderer.domElement);
     }
@@ -370,6 +379,9 @@ async function init() {
         console.log(`[INTERACTION] Requesting pickup for item: ${target.id} (${target.type})`);
         mpManager.network.requestItemPickup(target.id);
       }
+    },
+    onDiagnosticsChange: (diag) => {
+      updatePickupDiagnosticsUI(diag);
     }
   });
   window.interactionManager = interactionManager;
@@ -423,6 +435,7 @@ async function init() {
     document.getElementById('dev-comparison-panel')?.remove();
     document.getElementById('dev-panel-toggle')?.remove();
     document.getElementById('world-editor-overlay')?.remove();
+    document.getElementById('dev-pickup-hud-diag')?.remove();
   }
 
   // Check URL query parameters for verification suite
@@ -1065,8 +1078,63 @@ function initDevComparisonUI() {
     appendPickupLog(`<span style="color:#a0e0ff;">[ROOM STATE]</span> ${payload.roomCode}: ${available}/${total} items available`);
   };
 
+  // Real-time developer pickup pipeline diagnostics update
+  function updatePickupDiagnosticsUI(diag) {
+    if (!diag) return;
+    const targetIdEl = document.getElementById('diag-target-id');
+    const targetTypeEl = document.getElementById('diag-target-type');
+    const eligEl = document.getElementById('diag-target-eligibility');
+    const keyEl = document.getElementById('diag-last-key');
+    const reqEl = document.getElementById('diag-last-request');
+    const serverEl = document.getElementById('diag-server-result');
+    const invEl = document.getElementById('diag-inv-result');
+    const rejEl = document.getElementById('diag-last-rejection');
+
+    if (targetIdEl) targetIdEl.textContent = diag.targetId || 'NONE';
+    if (targetTypeEl) targetTypeEl.textContent = diag.targetType || '--';
+    if (eligEl) {
+      eligEl.textContent = diag.eligibility || 'NOT TARGETED';
+      eligEl.style.color = (diag.eligibility && diag.eligibility.startsWith('ELIGIBLE')) ? '#00ff88' : ((diag.eligibility && diag.eligibility.startsWith('OUT')) ? '#ff6b6b' : '#9c9a92');
+    }
+    if (keyEl) keyEl.textContent = diag.lastKey || 'NONE';
+    if (reqEl) reqEl.textContent = diag.lastRequest || 'NONE';
+    if (serverEl) {
+      serverEl.textContent = diag.serverResult || 'NONE';
+      serverEl.style.color = (diag.serverResult && diag.serverResult.startsWith('ACCEPTED')) ? '#00ff88' : ((diag.serverResult && diag.serverResult.startsWith('REJECTED')) ? '#ff6b6b' : '#edece6');
+    }
+    if (invEl) invEl.textContent = diag.inventoryResult || '0 / 12 slots';
+    if (rejEl) {
+      rejEl.textContent = diag.lastRejection || 'NONE';
+      rejEl.style.color = (diag.lastRejection && diag.lastRejection !== 'NONE') ? '#ff4444' : '#9c9a92';
+    }
+
+    // Live HUD reflection of pickup pipeline (only under --dev-rendering)
+    const hudDiag = document.getElementById('dev-pickup-hud-diag');
+    const hudTarget = document.getElementById('hud-diag-target');
+    const hudStatus = document.getElementById('hud-diag-status');
+    if (hudDiag && hudTarget && hudStatus) {
+      if (diag.targetId) {
+        hudDiag.style.display = 'block';
+        hudTarget.textContent = `${diag.targetId} (${diag.targetType || 'item'})`;
+        const shortKey = diag.lastKey ? diag.lastKey.split(' at ')[0] : 'NONE';
+        const shortServer = diag.serverResult ? diag.serverResult.split(' at ')[0] : 'NONE';
+        hudStatus.innerHTML = `${diag.eligibility} &middot; KEY: ${shortKey} &middot; ${shortServer}`;
+      } else if (diag.serverResult && diag.serverResult !== 'NONE') {
+        hudDiag.style.display = 'block';
+        hudTarget.textContent = 'NONE';
+        hudStatus.innerHTML = `${diag.serverResult.split(' at ')[0]}`;
+      } else {
+        hudDiag.style.display = 'none';
+      }
+    }
+  }
+  window.updatePickupDiagnosticsUI = updatePickupDiagnosticsUI;
+
   // Initial render
   renderDevInventoryGrid();
+  if (interactionManager?.diagnostics) {
+    updatePickupDiagnosticsUI(interactionManager.diagnostics);
+  }
 
   // Keyboard shortcut listener (Preserves WASD and eliminates single-letter hotkey conflicts)
   window.addEventListener('keydown', (e) => {

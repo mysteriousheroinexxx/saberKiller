@@ -204,7 +204,7 @@ export class RoomManager {
     // Add item to player's authoritative inventory
     const addResult = player.inventory.addItem(item.type, 1);
     if (!addResult.success) {
-      return { error: 'Player inventory is full' };
+      return { error: addResult.reason || 'Player inventory is full' };
     }
 
     // Atomically claim item

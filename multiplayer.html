@@ -490,7 +490,7 @@
   </style>
 </head>
 <body>
-  <div id="canvas-container"></div>
+  <div id="canvas-container" tabindex="0"></div>
 
   <!-- Developer Comparison Panel -->
   <div id="dev-panel-toggle" title="Show Render Comparison Panel (F2 or H)">RENDER DEV [F2]</div>
@@ -631,6 +631,18 @@
       <div style="color: #9c9a92;">No events yet.</div>
     </div>
 
+    <div class="dev-section-label">PICKUP PIPELINE DIAGNOSTICS [DEV]</div>
+    <div id="dev-pickup-diagnostics" style="background: rgba(10,10,8,0.85); border: 1px solid rgba(212,175,55,0.4); border-radius: 2px; padding: 6px; font-family: monospace; font-size: 10px; color: #edece6; margin-bottom: 8px; line-height: 1.5;">
+      <div><span style="color:#9c9a92;">TARGET:</span> <span id="diag-target-id" style="color:#00e5ff; font-weight:600;">NONE</span></div>
+      <div><span style="color:#9c9a92;">TYPE:</span> <span id="diag-target-type" style="color:#edece6;">--</span></div>
+      <div><span style="color:#9c9a92;">ELIGIBILITY:</span> <span id="diag-target-eligibility" style="color:#9c9a92;">NOT TARGETED</span></div>
+      <div><span style="color:#9c9a92;">KEY:</span> <span id="diag-last-key" style="color:#edece6;">NONE</span></div>
+      <div><span style="color:#9c9a92;">REQUEST:</span> <span id="diag-last-request" style="color:#edece6;">NONE</span></div>
+      <div><span style="color:#9c9a92;">SERVER:</span> <span id="diag-server-result" style="color:#edece6;">NONE</span></div>
+      <div><span style="color:#9c9a92;">INVENTORY:</span> <span id="diag-inv-result" style="color:#edece6;">0 / 12 slots</span></div>
+      <div><span style="color:#9c9a92;">LAST REJECTION:</span> <span id="diag-last-rejection" style="color:#ff6b6b;">NONE</span></div>
+    </div>
+
     <div class="dev-shortcuts-hint">
       Keys: <b>1-4</b> Profile &middot; <b>N/W/C</b> View &middot; <b>[ / ]</b> Drain/Heal &middot; <b>H/F2</b> Panel
     </div>
@@ -668,6 +680,13 @@
     </div>
     <div id="crosshair"></div>
     <div id="controls-hint">WASD / Shift: Move &middot; Mouse: Look &middot; Click: Lock Mouse</div>
+
+    <!-- Dev Pickup HUD Diagnostic Badge (Only enabled under --dev-rendering) -->
+    <div id="dev-pickup-hud-diag" style="display: none; position: fixed; bottom: 42px; left: 20px; background: rgba(15, 15, 12, 0.85); border: 1px solid rgba(212, 175, 55, 0.5); border-radius: 4px; padding: 6px 10px; font-family: monospace; font-size: 11px; color: #edece6; z-index: 920; pointer-events: none; line-height: 1.4; box-shadow: 0 2px 10px rgba(0,0,0,0.5);">
+      <div style="color: #d4af37; font-weight: 600; margin-bottom: 2px;">[DEV PICKUP DIAGNOSTICS]</div>
+      <div>TARGET: <span id="hud-diag-target" style="color:#00e5ff;">NONE</span></div>
+      <div>STATUS: <span id="hud-diag-status" style="color:#9c9a92;">IDLE</span></div>
+    </div>
   </div>
 
   <div id="error-banner"></div>
