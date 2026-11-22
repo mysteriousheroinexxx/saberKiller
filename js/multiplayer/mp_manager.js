@@ -4,6 +4,7 @@
 import { NetworkClient } from './network_client.js';
 import { RemotePlayer, preloadPlayerAssets } from './remote_player.js';
 import { LocalPlayerController } from './player_controller.js';
+import { InventoryController } from './inventory_controller.js';
 
 export class MPManager {
   constructor(scene, camera, uiCallbacks = {}) {
@@ -14,6 +15,9 @@ export class MPManager {
     this.network = new NetworkClient();
     this.remotePlayers = new Map(); // playerId -> RemotePlayer
     this.localPlayer = new LocalPlayerController(camera, scene, this.network, null);
+    this.inventory = new InventoryController(12);
+    this.localPlayer.inventory = this.inventory;
+    this.itemManager = null;
 
     this.currentRoomCode = null;
     this.myPlayerId = null;
@@ -24,6 +28,10 @@ export class MPManager {
 
   setCollisionHandler(ch) {
     this.localPlayer.setCollisionHandler(ch);
+  }
+
+  setItemManager(im) {
+    this.itemManager = im;
   }
 
   _bindNetworkEvents() {
@@ -37,6 +45,11 @@ export class MPManager {
 
       // Spawn local player at assigned spawn
       this.localPlayer.setSpawn(payload.spawn);
+
+      // Hide any already collected world items in this room
+      if (Array.isArray(payload.collectedItems) && this.itemManager) {
+        this.itemManager.setCollectedItems(payload.collectedItems);
+      }
 
       // Spawn any players who were already in the room
       if (Array.isArray(payload.existingPlayers)) {
@@ -78,6 +91,28 @@ export class MPManager {
       }
     };
 
+    this.network.onItemCollected = (payload) => {
+      if (this.itemManager && payload.itemId) {
+        this.itemManager.hideItem(payload.itemId);
+      }
+      if (this.ui.onItemCollected) this.ui.onItemCollected(payload);
+    };
+
+    this.network.onInventoryUpdate = (payload) => {
+      if (payload && payload.inventory) {
+        this.inventory.deserialize(payload.inventory);
+      }
+      if (this.ui.onInventoryUpdate) this.ui.onInventoryUpdate(payload);
+    };
+
+    this.network.onPickupRejected = (payload) => {
+      if (this.ui.onPickupRejected) this.ui.onPickupRejected(payload);
+    };
+
+    this.network.onRoomItemsState = (payload) => {
+      if (this.ui.onRoomItemsState) this.ui.onRoomItemsState(payload);
+    };
+
     this.network.onError = (errMsg) => {
       if (this.ui.onError) this.ui.onError(errMsg);
     };
@@ -110,6 +145,7 @@ export class MPManager {
     this.remotePlayers.clear();
     this.currentRoomCode = null;
     this.myPlayerId = null;
+    this.inventory.clear();
     this._updatePlayerCount();
   }
 

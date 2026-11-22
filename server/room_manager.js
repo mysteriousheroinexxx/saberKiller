@@ -1,5 +1,7 @@
 // Saber Killer Room & Player Session Manager
 import { MAX_PLAYERS_PER_ROOM } from './protocol.js';
+import { InventoryController } from '../js/multiplayer/inventory_controller.js';
+import { isPickupItem } from '../js/multiplayer/item_catalog.js';
 
 // Predefined verified Level 0 spawn slots (safe from walls, 2.8m apart)
 const SPAWN_SLOTS = [
@@ -27,7 +29,7 @@ export class RoomManager {
     return 'ROOM' + Math.floor(Math.random() * 1000);
   }
 
-  createRoom(ws, customCode = null, layoutRevision = null) {
+  createRoom(ws, customCode = null, layoutRevision = null, layoutData = null) {
     const roomCode = (customCode && typeof customCode === 'string' && customCode.trim().length > 0)
       ? customCode.trim().toUpperCase()
       : this.generateRoomCode();
@@ -44,6 +46,8 @@ export class RoomManager {
       ws,
       slot: 0,
       spawn,
+      position: { ...spawn },
+      inventory: new InventoryController(12),
       lastUpdate: 0,
       seq: 0
     };
@@ -52,13 +56,38 @@ export class RoomManager {
       code: roomCode,
       createdAt: Date.now(),
       layoutRevision: (typeof layoutRevision === 'string' && layoutRevision.trim()) ? layoutRevision.trim() : 'default',
-      players: new Map([[playerId, player]])
+      players: new Map([[playerId, player]]),
+      worldItems: new Map()
     };
+
+    // Initialize room world pickup state from frozen layout
+    if (layoutData && Array.isArray(layoutData.placements)) {
+      for (const p of layoutData.placements) {
+        const isPickup = isPickupItem(p.type);
+        room.worldItems.set(p.id, {
+          id: p.id,
+          type: p.type,
+          category: p.category || (layoutData.catalog?.[p.type]?.category) || 'prop',
+          position: Array.isArray(p.position) ? [p.position[0], p.position[1], p.position[2]] : [0, 0, 0],
+          isPickup,
+          available: isPickup,
+          collectedBy: null,
+          collectedAt: null
+        });
+      }
+    }
 
     this.rooms.set(roomCode, room);
     this.clientToRoom.set(ws, { roomCode, playerId });
 
-    return { roomCode, player, spawn, totalPlayers: 1, layoutRevision: room.layoutRevision };
+    return {
+      roomCode,
+      player,
+      spawn,
+      totalPlayers: 1,
+      layoutRevision: room.layoutRevision,
+      collectedItems: []
+    };
   }
 
   joinRoom(ws, roomCode) {
@@ -84,6 +113,8 @@ export class RoomManager {
       ws,
       slot,
       spawn,
+      position: { ...spawn },
+      inventory: new InventoryController(12),
       lastUpdate: 0,
       seq: 0
     };
@@ -98,6 +129,14 @@ export class RoomManager {
       });
     }
 
+    // Collect already picked up items in this room
+    const collectedItems = [];
+    for (const [id, item] of room.worldItems) {
+      if (item.isPickup && !item.available) {
+        collectedItems.push(id);
+      }
+    }
+
     room.players.set(playerId, player);
     this.clientToRoom.set(ws, { roomCode: code, playerId });
 
@@ -107,7 +146,78 @@ export class RoomManager {
       spawn,
       existingPlayers,
       totalPlayers: room.players.size,
-      layoutRevision: room.layoutRevision || 'default'
+      layoutRevision: room.layoutRevision || 'default',
+      collectedItems
+    };
+  }
+
+  /**
+   * Authoritative pickup validation and atomic claiming
+   */
+  handlePickupRequest(ws, itemId) {
+    const meta = this.clientToRoom.get(ws);
+    if (!meta) return { error: 'Client not associated with any active room session' };
+
+    const room = this.rooms.get(meta.roomCode);
+    if (!room) return { error: `Room ${meta.roomCode} does not exist` };
+
+    const player = room.players.get(meta.playerId);
+    if (!player) return { error: `Player ${meta.playerId} not found in room` };
+
+    if (!itemId || typeof itemId !== 'string') {
+      return { error: 'Invalid or missing item ID' };
+    }
+
+    const item = room.worldItems.get(itemId);
+    if (!item) {
+      return { error: `Item '${itemId}' does not exist in room layout` };
+    }
+
+    if (!item.isPickup) {
+      return { error: `Object '${itemId}' (${item.type}) is not a collectible pickup` };
+    }
+
+    if (!item.available) {
+      return { error: `Item '${itemId}' has already been collected by player ${item.collectedBy}` };
+    }
+
+    // Server-side proximity check
+    const pPos = player.position || player.spawn;
+    const iPos = item.position;
+    console.log(`[HANDLE PICKUP] player ${player.id} pPos:`, pPos, 'itemPos:', iPos);
+    const dx = pPos.x - iPos[0];
+    const dy = (pPos.y || 0) - iPos[1];
+    const dz = pPos.z - iPos[2];
+
+    // Distance from camera eye (approx y + 1.62) vs distance from feet
+    const eyeDy = ((pPos.y || 0) + 1.62) - iPos[1];
+    const eyeDist = Math.sqrt(dx * dx + eyeDy * eyeDy + dz * dz);
+    const feetDist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const dist = Math.min(eyeDist, feetDist);
+
+    // Initial interaction distance is 2.1m. With network tolerance: 2.6m
+    const MAX_PICKUP_DIST = 2.6;
+    if (dist > MAX_PICKUP_DIST) {
+      return { error: `Player too far from item (${dist.toFixed(2)}m > 2.1m limit)` };
+    }
+
+    // Add item to player's authoritative inventory
+    const addResult = player.inventory.addItem(item.type, 1);
+    if (!addResult.success) {
+      return { error: 'Player inventory is full' };
+    }
+
+    // Atomically claim item
+    item.available = false;
+    item.collectedBy = player.id;
+    item.collectedAt = Date.now();
+
+    return {
+      success: true,
+      room,
+      player,
+      item,
+      inventory: player.inventory.serialize()
     };
   }
 

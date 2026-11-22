@@ -111,6 +111,37 @@ function loadStartupLayout() {
 // Initial layout load on server startup
 loadStartupLayout();
 
+function getLayoutDataForRevision(requestedRev) {
+  const layoutDir = path.join(CLIENT_DIR, 'world-layouts/level0');
+  const defaultPath = path.join(CLIENT_DIR, 'assets/data/world_items.json');
+
+  if (requestedRev && requestedRev !== 'default') {
+    if (activeDevLayout && activeDevLayout.filename === requestedRev && activeDevLayout.data) {
+      return activeDevLayout.data;
+    }
+    const targetPath = path.join(layoutDir, path.basename(requestedRev));
+    if (fs.existsSync(targetPath)) {
+      try {
+        return JSON.parse(fs.readFileSync(targetPath, 'utf8'));
+      } catch (err) {
+        console.warn(`[WORLD LAYOUT] Error reading requested revision ${requestedRev}:`, err.message);
+      }
+    }
+  }
+
+  if (activeDevLayout && activeDevLayout.data) {
+    return activeDevLayout.data;
+  }
+  if (fs.existsSync(defaultPath)) {
+    try {
+      return JSON.parse(fs.readFileSync(defaultPath, 'utf8'));
+    } catch (err) {
+      console.warn(`[WORLD LAYOUT] Error reading default layout:`, err.message);
+    }
+  }
+  return null;
+}
+
 // 1. Static HTTP File Server
 const server = http.createServer((req, res) => {
   // CORS & WebSocket upgrade headers
@@ -628,7 +659,8 @@ wss.on('connection', (ws, req) => {
         const requestedRev = (typeof payload?.layoutRevision === 'string' && payload.layoutRevision.trim())
           ? payload.layoutRevision.trim()
           : defaultRev;
-        const res = roomManager.createRoom(ws, payload?.roomCode, requestedRev);
+        const layoutData = getLayoutDataForRevision(requestedRev);
+        const res = roomManager.createRoom(ws, payload?.roomCode, requestedRev, layoutData);
         if (res.error) {
           send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error });
         } else {
@@ -638,7 +670,8 @@ wss.on('connection', (ws, req) => {
             slot: res.player.slot,
             spawn: res.spawn,
             totalPlayers: res.totalPlayers,
-            layoutRevision: res.layoutRevision
+            layoutRevision: res.layoutRevision,
+            collectedItems: res.collectedItems || []
           });
         }
         break;
@@ -657,7 +690,8 @@ wss.on('connection', (ws, req) => {
             spawn: res.spawn,
             existingPlayers: res.existingPlayers,
             totalPlayers: res.totalPlayers,
-            layoutRevision: res.layoutRevision
+            layoutRevision: res.layoutRevision,
+            collectedItems: res.collectedItems || []
           });
 
           // Notify existing players in room about new arrival
@@ -694,6 +728,10 @@ wss.on('connection', (ws, req) => {
           return; // reject malformed update
         }
 
+        // Cache authoritative player coordinates for proximity validation
+        player.position = { x: payload.x, y: payload.y, z: payload.z };
+        // console.log(`[SERVER PLAYER_UPDATE] Cached pos:`, player.position);
+
         player.seq++;
         const updatePayload = {
           playerId: player.id,
@@ -713,6 +751,60 @@ wss.on('connection', (ws, req) => {
             send(otherPlayer.ws, MSG_TYPES.PLAYER_UPDATE, updatePayload);
           }
         }
+        break;
+      }
+
+      case MSG_TYPES.ITEM_PICKUP_REQUEST: {
+        const itemId = payload?.itemId;
+        console.log(`[SERVER PICKUP] Request for item '${itemId}' from socket`);
+        const res = roomManager.handlePickupRequest(ws, itemId);
+        if (res.error) {
+          console.log(`[SERVER PICKUP] Rejected item '${itemId}': ${res.error}`);
+          send(ws, MSG_TYPES.PICKUP_REJECTED, {
+            itemId,
+            reason: res.error
+          });
+        } else {
+          console.log(`[SERVER PICKUP] Approved item '${res.item.id}' for player '${res.player.id}'`);
+          // Broadcast ITEM_COLLECTED to all players in the room
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.ITEM_COLLECTED, {
+              itemId: res.item.id,
+              itemType: res.item.type,
+              collectedBy: res.player.id
+            });
+          }
+          // Send INVENTORY_UPDATE to collector
+          send(ws, MSG_TYPES.INVENTORY_UPDATE, {
+            inventory: res.inventory,
+            addedItem: {
+              id: res.item.id,
+              type: res.item.type
+            }
+          });
+        }
+        break;
+      }
+
+      case MSG_TYPES.ROOM_ITEMS_STATE: {
+        const session = roomManager.getPlayer(ws);
+        if (!session) return;
+        const { room } = session;
+        const items = [];
+        for (const [id, item] of room.worldItems) {
+          items.push({
+            id: item.id,
+            type: item.type,
+            isPickup: item.isPickup,
+            available: item.available,
+            collectedBy: item.collectedBy
+          });
+        }
+        send(ws, MSG_TYPES.ROOM_ITEMS_STATE, {
+          roomCode: room.code,
+          layoutRevision: room.layoutRevision,
+          items
+        });
         break;
       }
 

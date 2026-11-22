@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48" fill="none">
+  <!-- Translucent inner charge body (Material Two-Tone Battery) -->
+  <path fill="#edece6" fill-opacity="0.35" d="M9 10h6v8H9z"/>
+  <!-- Foreground shell & terminal nub -->
+  <path fill="#edece6" d="M17 4h-3V2h-4v2H7v18h10V4zm-2 16H9V6h6v14z"/>
+</svg>

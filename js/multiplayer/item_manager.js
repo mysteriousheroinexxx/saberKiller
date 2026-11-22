@@ -34,6 +34,7 @@ export class WorldItemManager {
     this.propMap = new Map(); // propId -> wrapper
     this.isLoaded = false;
     this.debugVisualsActive = false;
+    this.collectedItemIds = new Set();
 
     // Obstacle geometry cache for high-precision narrow-phase collision (SAT)
     this.obstacles = [];
@@ -893,10 +894,63 @@ export class WorldItemManager {
       this.propMap.set(p.id, itemEntry);
     }
 
+    if (this.collectedItemIds.has(p.id)) {
+      wrapper.visible = false;
+      itemEntry.isCollected = true;
+    }
+
     this.container.add(wrapper);
     this.items.push(itemEntry);
 
     return itemEntry;
+  }
+
+  /**
+   * Finds an item entry by ID
+   */
+  getItemById(id) {
+    if (!id) return null;
+    return this.items.find(i => i.id === id) || null;
+  }
+
+  /**
+   * Hides a collected item from the world and marks it unavailable
+   */
+  hideItem(id) {
+    if (!id) return false;
+    this.collectedItemIds.add(id);
+    const item = this.getItemById(id);
+    if (item) {
+      if (item.object) {
+        item.object.visible = false;
+      }
+      item.isCollected = true;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Sets initial collection state for a list of collected item IDs
+   */
+  setCollectedItems(ids) {
+    if (!Array.isArray(ids)) return;
+    for (const id of ids) {
+      this.hideItem(id);
+    }
+  }
+
+  /**
+   * Restores all world items to visible/uncollected state
+   */
+  resetCollectedItems() {
+    this.collectedItemIds.clear();
+    for (const item of this.items) {
+      if (item.isCollected) {
+        item.isCollected = false;
+        if (item.object) item.object.visible = true;
+      }
+    }
   }
 
   /**

@@ -13,6 +13,18 @@ This directory contains the monochromatic, transparent icon assets used by the S
 | `hud_stamina.png` / `hud_stamina.svg` | `directions_run` (Two-Tone) | Google Material Design Icons | Apache License 2.0 | Bottom-Center Stamina Bar runner icon |
 | `hud_pause.png` / `hud_pause.svg` | `pause_circle` (Two-Tone) | Google Material Design Icons | Apache License 2.0 | Sanity Decay Paused pulsing indicator |
 
+## Inventory & World Item Icons
+
+| Icon Asset | Visual Motif | Sourced / Created | License | Usage in Inventory / Catalog |
+|---|---|---|---|---|
+| `item_first_aid.svg` | Medical kit case with cross & handle | Extended from Material medical symbols | Apache License 2.0 | First Aid Kit pickup & inventory icon |
+| `item_almond_can.svg` | Aluminum can with water drop emblem | Custom two-tone Backrooms beverage vector | Apache License 2.0 | Almond Water Can consumable icon |
+| `item_energy_drink.svg` | Slim can with lightning bolt symbol | Custom two-tone energy beverage vector | Apache License 2.0 | Almond Water Energy Drink consumable icon |
+| `item_sanity_pill.svg` | Medicine bottle with capsule emblem | Custom two-tone pharmaceuticals vector | Apache License 2.0 | Sanity Pills Bottle consumable icon |
+| `item_key.svg` | Brass door key with ring, shaft & wards | Custom two-tone key symbol | Apache License 2.0 | Level 0 Brass Door Key icon |
+| `item_ammo_box.svg` | Ammo crate case with cartridge silhouettes | Extended from MDI Ammunition motif | Apache License 2.0 | .45 ACP Ammunition Box icon |
+| `item_battery.svg` | Battery terminal and cell charge block | Two-tone battery vector (matching HUD) | Apache License 2.0 | Flashlight AA Battery Pack icon |
+
 ## Characteristics
 - **Formats:** 
   - Native 96x96 transparent PNGs (`image/png`) with true alpha transparency (zero square background plate, zero rectangular artifacts).

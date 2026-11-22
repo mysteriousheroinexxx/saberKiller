@@ -8,7 +8,13 @@ export const MSG_TYPES = {
   PLAYER_LEFT: 'PLAYER_LEFT',
   PLAYER_UPDATE: 'PLAYER_UPDATE',
   SERVER_ERROR: 'SERVER_ERROR',
-  HEARTBEAT: 'HEARTBEAT'
+  HEARTBEAT: 'HEARTBEAT',
+  // Interaction & Inventory packet types
+  ITEM_PICKUP_REQUEST: 'ITEM_PICKUP_REQUEST',
+  ITEM_COLLECTED: 'ITEM_COLLECTED',
+  INVENTORY_UPDATE: 'INVENTORY_UPDATE',
+  PICKUP_REJECTED: 'PICKUP_REJECTED',
+  ROOM_ITEMS_STATE: 'ROOM_ITEMS_STATE'
 };
 
 export class NetworkClient {
@@ -27,6 +33,10 @@ export class NetworkClient {
     this.onPlayerLeft = null;
     this.onPlayerUpdate = null;
     this.onError = null;
+    this.onItemCollected = null;
+    this.onInventoryUpdate = null;
+    this.onPickupRejected = null;
+    this.onRoomItemsState = null;
   }
 
   connect(url) {
@@ -141,6 +151,22 @@ export class NetworkClient {
         // Pong received, connection is healthy
         break;
 
+      case MSG_TYPES.ITEM_COLLECTED:
+        if (this.onItemCollected) this.onItemCollected(payload);
+        break;
+
+      case MSG_TYPES.INVENTORY_UPDATE:
+        if (this.onInventoryUpdate) this.onInventoryUpdate(payload);
+        break;
+
+      case MSG_TYPES.PICKUP_REJECTED:
+        if (this.onPickupRejected) this.onPickupRejected(payload);
+        break;
+
+      case MSG_TYPES.ROOM_ITEMS_STATE:
+        if (this.onRoomItemsState) this.onRoomItemsState(payload);
+        break;
+
       default:
         console.log('[NetworkClient] Unhandled packet type:', type);
         break;
@@ -161,6 +187,10 @@ export class NetworkClient {
 
   joinRoom(roomCode) {
     return this.send(MSG_TYPES.JOIN_ROOM, { roomCode });
+  }
+
+  requestItemPickup(itemId) {
+    return this.send(MSG_TYPES.ITEM_PICKUP_REQUEST, { itemId });
   }
 
   sendUpdate(x, y, z, yaw, pitch, weapon = 0) {

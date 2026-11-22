@@ -21,6 +21,7 @@ import { SanityController, SANITY_STATE, SANITY_EVENTS } from './sanity_controll
 import { SanityHUD } from './sanity_hud.js';
 import { WorldItemManager } from './item_manager.js';
 import { WorldPlacementEditor } from './world_editor.js';
+import { InteractionManager } from './interaction_manager.js';
 
 let scene, camera, renderer, mpManager, playerLight;
 let lastTime = performance.now();
@@ -28,6 +29,7 @@ let isGameActive = false;
 let isEnvReady = false;
 let itemManager = null;
 let worldEditor = null;
+let interactionManager = null;
 
 // Survival Mode Sanity System
 let sanityController = null;
@@ -347,6 +349,7 @@ async function init() {
 
     // Initialize world item placements with collision handler for intersection checks
     itemManager = new WorldItemManager(scene, ch);
+    mpManager.setItemManager(itemManager);
     window.itemManager = itemManager;
   });
 
@@ -358,6 +361,19 @@ async function init() {
     console.warn(`[WORLD ITEMS] Failed to load ${initialLayout}, falling back to default:`, err);
     await itemManager.loadWorldItems('assets/data/world_items.json');
   }
+
+  // Initialize Reusable Interaction Framework
+  interactionManager = new InteractionManager(camera, scene, itemManager, {
+    maxDistance: 2.1,
+    onInteract: (target) => {
+      if (target.isPickup) {
+        console.log(`[INTERACTION] Requesting pickup for item: ${target.id} (${target.type})`);
+        mpManager.network.requestItemPickup(target.id);
+      }
+    }
+  });
+  window.interactionManager = interactionManager;
+  window.inventory = mpManager.inventory;
 
   isEnvReady = true;
   statusEl.textContent = 'Ready to Connect';
@@ -884,6 +900,173 @@ function initDevComparisonUI() {
   document.getElementById('dev-item-torch')?.addEventListener('click', () => mpManager?.localPlayer?.setWeapon(2));
   document.getElementById('dev-item-fire')?.addEventListener('click', () => mpManager?.localPlayer?.fire());
   document.getElementById('dev-item-reload')?.addEventListener('click', () => mpManager?.localPlayer?.startReload());
+
+  // Developer Inventory & Pickup Inspection UI
+  const invPlayerEl = document.getElementById('dev-inv-player');
+  const invSlotsEl = document.getElementById('dev-inv-slots');
+  const invGridEl = document.getElementById('dev-inventory-grid');
+  const btnToggleSlotDetails = document.getElementById('dev-btn-toggle-slot-details');
+  const btnQueryRoomItems = document.getElementById('dev-btn-query-room-items');
+  const slotDetailsEl = document.getElementById('dev-slot-details');
+  const pickupLogEl = document.getElementById('dev-pickup-log');
+
+  function appendPickupLog(html) {
+    if (!pickupLogEl) return;
+    const time = new Date().toLocaleTimeString();
+    const row = document.createElement('div');
+    row.style.marginBottom = '2px';
+    row.innerHTML = `<span style="color:#7a7872;">[${time}]</span> ${html}`;
+    pickupLogEl.appendChild(row);
+    pickupLogEl.scrollTop = pickupLogEl.scrollHeight;
+  }
+
+  function renderDevInventoryGrid() {
+    if (!invGridEl || !mpManager?.inventory) return;
+    const slots = mpManager.inventory.getSlots();
+    const occupied = slots.filter(s => s !== null).length;
+
+    if (invPlayerEl) {
+      invPlayerEl.textContent = `PLAYER: ${mpManager.myPlayerId || 'LOCAL'}`;
+    }
+    if (invSlotsEl) {
+      invSlotsEl.textContent = `SLOTS: ${occupied} / ${mpManager.inventory.capacity}`;
+    }
+
+    invGridEl.innerHTML = '';
+    slots.forEach((slot, idx) => {
+      const slotBox = document.createElement('div');
+      slotBox.style.aspectRatio = '1 / 1';
+      slotBox.style.background = slot ? 'rgba(30, 28, 22, 0.85)' : 'rgba(12, 12, 10, 0.6)';
+      slotBox.style.border = slot ? '1px solid #d4af37' : '1px solid rgba(212, 175, 55, 0.15)';
+      slotBox.style.borderRadius = '3px';
+      slotBox.style.position = 'relative';
+      slotBox.style.display = 'flex';
+      slotBox.style.flexDirection = 'column';
+      slotBox.style.alignItems = 'center';
+      slotBox.style.justifyContent = 'center';
+      slotBox.title = slot ? `${slot.name} (${slot.typeId})\nQty: ${slot.quantity}/${slot.maxStack}\nID: ${slot.instanceId}` : `Slot #${idx + 1} (Empty)`;
+
+      const numBadge = document.createElement('span');
+      numBadge.style.position = 'absolute';
+      numBadge.style.top = '1px';
+      numBadge.style.left = '3px';
+      numBadge.style.fontSize = '8px';
+      numBadge.style.color = '#7a7872';
+      numBadge.textContent = `${idx + 1}`;
+      slotBox.appendChild(numBadge);
+
+      if (slot) {
+        if (slot.iconUrl) {
+          const img = document.createElement('img');
+          img.src = slot.iconUrl;
+          img.style.width = '18px';
+          img.style.height = '18px';
+          img.style.objectFit = 'contain';
+          slotBox.appendChild(img);
+        } else {
+          const label = document.createElement('span');
+          label.style.fontSize = '9px';
+          label.style.fontWeight = 'bold';
+          label.textContent = slot.typeId.substring(0, 3).toUpperCase();
+          slotBox.appendChild(label);
+        }
+
+        if (slot.quantity > 1) {
+          const countBadge = document.createElement('span');
+          countBadge.style.position = 'absolute';
+          countBadge.style.bottom = '1px';
+          countBadge.style.right = '3px';
+          countBadge.style.fontSize = '9px';
+          countBadge.style.fontWeight = 'bold';
+          countBadge.style.color = '#edece6';
+          countBadge.textContent = `${slot.quantity}`;
+          slotBox.appendChild(countBadge);
+        }
+      }
+
+      invGridEl.appendChild(slotBox);
+    });
+
+    renderDevSlotDetails();
+  }
+
+  function renderDevSlotDetails() {
+    if (!slotDetailsEl || !mpManager?.inventory) return;
+    const slots = mpManager.inventory.getSlots();
+    const occupied = slots.filter(s => s !== null);
+    if (occupied.length === 0) {
+      slotDetailsEl.innerHTML = '<div style="color: #9c9a92;">No inventory items.</div>';
+      return;
+    }
+    let html = '<table style="width:100%; border-collapse:collapse; font-size:10px;">';
+    html += '<tr style="border-bottom: 1px solid rgba(212,175,55,0.3); color:#d4af37;"><th style="text-align:left;">#</th><th style="text-align:left;">Item</th><th style="text-align:center;">Qty</th><th style="text-align:left;">Instance</th></tr>';
+    slots.forEach((s, idx) => {
+      if (s) {
+        html += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+          <td>${idx + 1}</td>
+          <td>${s.name}</td>
+          <td style="text-align:center;">${s.quantity}/${s.maxStack}</td>
+          <td style="color:#9c9a92; font-size:9px;" title="${s.instanceId}">${s.instanceId.split('_').slice(-2).join('_')}</td>
+        </tr>`;
+      }
+    });
+    html += '</table>';
+    slotDetailsEl.innerHTML = html;
+  }
+
+  if (mpManager?.inventory) {
+    mpManager.inventory.subscribe((slots, event) => {
+      renderDevInventoryGrid();
+      if (event && event.type === 'item_added') {
+        appendPickupLog(`<span style="color:#a8ffb2;">+ Added ${event.added}x ${event.typeId}</span>`);
+      }
+    });
+  }
+
+  if (btnToggleSlotDetails) {
+    btnToggleSlotDetails.addEventListener('click', () => {
+      if (slotDetailsEl) {
+        const isHidden = slotDetailsEl.style.display === 'none';
+        slotDetailsEl.style.display = isHidden ? 'block' : 'none';
+        btnToggleSlotDetails.textContent = isHidden ? 'Hide Details' : 'Inspect Details';
+      }
+    });
+  }
+
+  if (btnQueryRoomItems) {
+    btnQueryRoomItems.addEventListener('click', () => {
+      if (mpManager?.network?.isConnected) {
+        mpManager.network.send('ROOM_ITEMS_STATE', {});
+        appendPickupLog('Requested room items state...');
+      } else {
+        appendPickupLog('<span style="color:#ff6b6b">Not connected to room</span>');
+      }
+    });
+  }
+
+  // Hook into mpManager ui events for dev pickup log
+  const prevItemCollected = mpManager.ui.onItemCollected;
+  mpManager.ui.onItemCollected = (payload) => {
+    if (prevItemCollected) prevItemCollected(payload);
+    appendPickupLog(`<span style="color:#d4af37;">[COLLECTED]</span> ${payload.itemId} (${payload.itemType}) by ${payload.collectedBy}`);
+  };
+
+  const prevPickupRejected = mpManager.ui.onPickupRejected;
+  mpManager.ui.onPickupRejected = (payload) => {
+    if (prevPickupRejected) prevPickupRejected(payload);
+    appendPickupLog(`<span style="color:#ff6b6b;">[REJECTED]</span> ${payload.itemId || 'unknown'}: ${payload.reason}`);
+  };
+
+  const prevRoomItemsState = mpManager.ui.onRoomItemsState;
+  mpManager.ui.onRoomItemsState = (payload) => {
+    if (prevRoomItemsState) prevRoomItemsState(payload);
+    const available = payload.items ? payload.items.filter(i => i.available).length : 0;
+    const total = payload.items ? payload.items.length : 0;
+    appendPickupLog(`<span style="color:#a0e0ff;">[ROOM STATE]</span> ${payload.roomCode}: ${available}/${total} items available`);
+  };
+
+  // Initial render
+  renderDevInventoryGrid();
 
   // Keyboard shortcut listener (Preserves WASD and eliminates single-letter hotkey conflicts)
   window.addEventListener('keydown', (e) => {
@@ -1463,6 +1646,11 @@ function loop(timestamp) {
   // Update Survival Mode HUD (Health, Resources, Stamina)
   if (sanityHUD && mpManager?.localPlayer) {
     sanityHUD.updatePlayer(mpManager.localPlayer);
+  }
+
+  // Update Reusable Interaction Framework
+  if (interactionManager && isGameActive) {
+    interactionManager.update();
   }
 
   renderScene();

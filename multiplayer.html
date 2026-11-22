@@ -611,6 +611,26 @@
       <button class="dev-view-btn" id="dev-item-reload" style="flex:1;">Reload [R]</button>
     </div>
 
+    <div class="dev-section-label">INVENTORY & PICKUP INSPECTOR [DEV]</div>
+    <div id="dev-inventory-summary" style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 6px; color: #d4af37; font-family: monospace;">
+      <span id="dev-inv-player">PLAYER: --</span>
+      <span id="dev-inv-slots">SLOTS: 0 / 12</span>
+    </div>
+    <div id="dev-inventory-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 8px;">
+      <!-- Populated dynamically with slot contents, icons & counts -->
+    </div>
+    <div style="display: flex; gap: 4px; margin-bottom: 6px;">
+      <button class="dev-view-btn" id="dev-btn-toggle-slot-details" style="flex:1;">Inspect Details</button>
+      <button class="dev-view-btn" id="dev-btn-query-room-items" style="flex:1;">Query Room Items</button>
+    </div>
+    <div id="dev-slot-details" style="display: none; background: rgba(0,0,0,0.6); border: 1px solid rgba(212,175,55,0.25); border-radius: 2px; padding: 6px; font-family: monospace; font-size: 10px; max-height: 120px; overflow-y: auto; color: #edece6; margin-bottom: 8px;">
+      <div style="color: #9c9a92;">No inventory items.</div>
+    </div>
+    <div style="font-size: 10px; color: #9c9a92; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Pickup & Rejection Log:</div>
+    <div id="dev-pickup-log" style="background: rgba(0,0,0,0.6); border: 1px solid rgba(212,175,55,0.25); border-radius: 2px; padding: 6px; font-family: monospace; font-size: 10px; max-height: 80px; overflow-y: auto; color: #edece6; margin-bottom: 8px;">
+      <div style="color: #9c9a92;">No events yet.</div>
+    </div>
+
     <div class="dev-shortcuts-hint">
       Keys: <b>1-4</b> Profile &middot; <b>N/W/C</b> View &middot; <b>[ / ]</b> Drain/Heal &middot; <b>H/F2</b> Panel
     </div>
