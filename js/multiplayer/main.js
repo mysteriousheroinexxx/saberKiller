@@ -164,7 +164,7 @@ async function init() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 0.50;
   renderer.physicallyCorrectLights = true;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -321,8 +321,8 @@ async function init() {
     // Apply default Configuration D immediately to environment materials
     applyRenderConfig('combined');
 
-    // Initialize world item placements (Stage 4 data-driven prototype)
-    itemManager = new WorldItemManager(scene);
+    // Initialize world item placements with collision handler for intersection checks
+    itemManager = new WorldItemManager(scene, ch);
     window.itemManager = itemManager;
     itemManager.loadWorldItems('assets/data/world_items.json')
       .then(() => {
@@ -508,7 +508,7 @@ export const VIEWPOINTS = {
   items_overview: {
     key: 'items_overview',
     name: 'World Items Overview (Hallway)',
-    pos: { x: 48.0, y: 1.50, z: -187.6 },
+    pos: { x: 47.0, y: 1.50, z: -187.5 },
     yaw: -Math.PI / 2,
     pitch: -0.15
   },
@@ -529,9 +529,9 @@ export const VIEWPOINTS = {
   items_floor: {
     key: 'items_floor',
     name: 'Items on Carpet Floor (Close-up)',
-    pos: { x: 47.8, y: 1.30, z: -187.6 },
+    pos: { x: 45.0, y: 1.20, z: -187.4 },
     yaw: -Math.PI / 2,
-    pitch: -0.55
+    pitch: -0.45
   },
   items_vending: {
     key: 'items_vending',
@@ -539,6 +539,13 @@ export const VIEWPOINTS = {
     pos: { x: 41.5, y: 1.25, z: -186.9 },
     yaw: 0.0,
     pitch: 0.0
+  },
+  items_furniture: {
+    key: 'items_furniture',
+    name: 'Furniture Wall Clearance (Oblique View)',
+    pos: { x: 42.5, y: 1.45, z: -187.35 },
+    yaw: -Math.PI / 2 + 0.35,
+    pitch: -0.15
   }
 };
 
@@ -800,6 +807,18 @@ function initDevComparisonUI() {
       if (valPlayerFill) valPlayerFill.textContent = def.playerLightIntensity.toFixed(2);
       if (colorTint) colorTint.value = def.lightColorHex;
       if (valColor) valColor.textContent = def.lightColorHex;
+    });
+  }
+
+  // World items placement debug bounding box toggle
+  const btnToggleBounds = document.getElementById('dev-toggle-bounds');
+  if (btnToggleBounds) {
+    btnToggleBounds.addEventListener('click', () => {
+      if (itemManager) {
+        const isVis = itemManager.toggleDebugVisuals();
+        btnToggleBounds.textContent = isVis ? 'Hide Placement Bounds [ON]' : 'Show Placement Bounds [OFF]';
+        btnToggleBounds.classList.toggle('active', isVis);
+      }
     });
   }
 

@@ -285,30 +285,109 @@ In browser-based first-person games using Pointer Lock, accidental keystrokes li
 
 ## 6. Placement Manifest Summary (`assets/data/world_items.json`)
 
-| Placement ID | Type | Surface | Position ($X, Y, Z$) | Rotation ($Y$) | Wall Clearance |
+| Placement ID | Type | Surface | Position ($X, Y, Z$) | Rotation ($Y$) | Wall Clearance & Surface Contact |
 |---|---|---|---|---|---|
-| `prop_table_01` | `table` | Floor | `[44.5, 0.0, -185.35]` | `-1.5708` ($-90^\circ$) | $14.7\text{ cm}$ (North) |
-| `prop_shelf_01` | `metal_shelf` | Floor | `[44.5, 0.0, -189.50]` | `+1.5708` ($+90^\circ$) | $15.7\text{ cm}$ (South) |
-| `prop_vending_01` | `vending_almond` | Floor | `[41.5, 0.0, -185.45]` | `0.0` ($0^\circ$) | $16.2\text{ cm}$ (North) |
-| `prop_crate_01` | `ammo_crate` | Floor | `[42.5, 0.0, -189.40]` | `+0.2` ($+11^\circ$) | $30.6\text{ cm}$ (South) |
-| `floor_first_aid_01` | `first_aid` | Floor | `[46.6, 0.0, -187.1]` | `+0.3` | Center path |
-| `floor_ammo_crate_01` | `ammo_crate` | Floor | `[46.5, 0.0, -188.1]` | `-0.2` | Center path |
-| `floor_ammo_box_01` | `ammo_box` | Floor | `[46.2, 0.0, -187.8]` | `+0.5` | Center path |
-| `floor_almond_can_01` | `almond_can` | Floor | `[41.8, 0.0, -186.2]` | `+0.4` | Beside vending |
-| `floor_energy_drink_01` | `energy_drink` | Floor | `[47.1, 0.0, -187.3]` | `+0.8` | Center path |
-| `floor_sanity_pill_01` | `sanity_pill` | Floor | `[47.1, 0.0, -187.9]` | `-0.5` | Center path |
-| `floor_door_key_01` | `doorKey` | Floor | `[46.8, 0.0, -187.6]` | `+1.2` | Center path |
-| `table_first_aid_01` | `first_aid` | Table | `[44.8, 0.936, -185.35]` | `+0.1` | Flush on desk |
-| `table_ammo_box_01` | `ammo_box` | Table | `[44.5, 0.936, -185.25]` | `-0.3` | Flush on desk |
-| `table_almond_can_01` | `almond_can` | Table | `[44.2, 0.936, -185.25]` | `+0.6` | Flush on desk |
-| `table_sanity_pill_01` | `sanity_pill` | Table | `[44.4, 0.936, -185.45]` | `+0.5` | Flush on desk |
-| `table_battery_01` | `aa_battery` | Table | `[44.1, 0.936, -185.45]` | `+0.9` | Flush on desk |
-| `table_door_key_01` | `doorKey` | Table | `[44.7, 0.936, -185.15]` | `-1.1` | Flush on desk |
-| `shelf_ammo_crate_tier1` | `ammo_crate` | Shelf T1 | `[44.5, 0.243, -189.50]` | `+1.5708` | Flush on T1 |
-| `shelf_ammo_box_tier2` | `ammo_box` | Shelf T2 | `[44.3, 0.715, -189.50]` | `+0.2` | Flush on T2 |
-| `shelf_almond_can_tier2` | `almond_can` | Shelf T2 | `[44.7, 0.715, -189.50]` | `-0.4` | Flush on T2 |
-| `shelf_sanity_pill_tier2` | `sanity_pill` | Shelf T2 | `[44.5, 0.715, -189.50]` | `-0.6` | Flush on T2 |
-| `shelf_battery_tier3` | `aa_battery` | Shelf T3 | `[44.3, 1.188, -189.50]` | `+0.7` | Flush on T3 |
-| `shelf_door_key_tier3` | `doorKey` | Shelf T3 | `[44.5, 1.188, -189.50]` | `-0.3` | Flush on T3 |
-| `shelf_almond_can_tier3` | `almond_can` | Shelf T3 | `[44.7, 1.188, -189.50]` | `+0.5` | Flush on T3 |
-| `shelf_first_aid_tier4` | `first_aid` | Shelf T4 | `[44.5, 1.643, -189.50]` | `+1.5708` | Flush on T4 |
+| `prop_table_01` | `table` | Floor | `[44.5, 0.0, -185.35]` | `-1.5708` ($-90^\circ$) | $14.7\text{ cm}$ North wall clearance. Flush on carpet ($Y=0.000$). |
+| `prop_shelf_01` | `metal_shelf` | Floor | `[44.5, 0.0, -189.50]` | `+1.5708` ($+90^\circ$) | $15.7\text{ cm}$ South wall clearance. Flush on carpet ($Y=0.000$). |
+| `prop_vending_01` | `vending_almond` | Floor | `[41.5, 0.0, -185.45]` | `0.0` ($0^\circ$) | $16.2\text{ cm}$ North wall clearance. Flush on carpet ($Y=0.000$). |
+| `prop_crate_01` | `ammo_crate` | Floor | `[42.5, 0.0, -189.40]` | `+0.2` ($+11^\circ$) | $30.6\text{ cm}$ South wall clearance. Flush on carpet ($Y=0.000$). |
+| `floor_first_aid_01` | `first_aid` | Floor | `[43.7, 0.0, -188.90]` | `+0.3` | South perimeter floor. Flush on carpet ($Y=0.000$, $\Delta Y=0.0000$). |
+| `floor_ammo_crate_01` | `ammo_crate` | Floor | `[42.8, 0.0, -188.80]` | `-0.2` | South perimeter floor. Flush on carpet ($Y=0.000$, $\Delta Y=0.0000$). |
+| `floor_ammo_box_01` | `ammo_box` | Floor | `[43.3, 0.0, -188.70]` | `+0.5` | South perimeter floor. Flush on carpet ($Y=0.000$, $\Delta Y=0.0000$). |
+| `floor_almond_can_01` | `almond_can` | Floor | `[41.8, 0.0, -186.20]` | `+0.4` | Beside Almond Water vending machine. Flush ($Y=0.000$, $\Delta Y=0.0000$). |
+| `floor_energy_drink_01` | `energy_drink` | Floor | `[42.2, 0.0, -186.10]` | `+0.8` | North perimeter floor. Flush on carpet ($Y=0.000$, $\Delta Y=0.0000$). |
+| `floor_sanity_pill_01` | `sanity_pill` | Floor | `[42.6, 0.0, -186.00]` | `-0.5` | North perimeter floor. Flush on carpet ($Y=0.000$, $\Delta Y=0.0000$). |
+| `floor_door_key_01` | `doorKey` | Floor | `[43.1, 0.0, -186.00]` | `+1.2` | North perimeter floor. Flush on carpet ($Y=0.000$, $\Delta Y=0.0000$). |
+| `table_first_aid_01` | `first_aid` | Table | `[44.75, 0.936, -185.45]` | `+0.1` | Flush on desk top ($Y=0.936\text{m}$, $\Delta Y=0.0000$). |
+| `table_ammo_box_01` | `ammo_box` | Table | `[44.35, 0.936, -185.45]` | `-0.3` | Flush on desk top ($Y=0.936\text{m}$, $\Delta Y=0.0000$). |
+| `table_almond_can_01` | `almond_can` | Table | `[44.00, 0.936, -185.45]` | `+0.6` | Flush on desk top ($Y=0.936\text{m}$, $\Delta Y=0.0000$). |
+| `table_battery_01` | `aa_battery` | Table | `[43.70, 0.936, -185.45]` | `+0.9` | Flush on desk top ($Y=0.936\text{m}$, $\Delta Y=0.0000$). |
+| `table_sanity_pill_01` | `sanity_pill` | Table | `[44.55, 0.936, -185.20]` | `+0.5` | Flush on desk top ($Y=0.936\text{m}$, $\Delta Y=0.0000$). |
+| `table_door_key_01` | `doorKey` | Table | `[44.15, 0.936, -185.20]` | `-1.1` | Flush on desk top ($Y=0.936\text{m}$, $\Delta Y=0.0000$). |
+| `shelf_ammo_crate_tier1` | `ammo_crate` | Shelf T1 | `[44.5, 0.243, -189.50]` | `0.0` ($0^\circ$) | Aligned along shelf ($X$). Fits $0.405\text{m}$ depth without overhang. Flush on T1 ($Y=0.243$). |
+| `shelf_ammo_box_tier2` | `ammo_box` | Shelf T2 | `[44.3, 0.715, -189.50]` | `+0.2` | Flush on Tier 2 ($Y=0.715\text{m}$, $\Delta Y=0.0000$). |
+| `shelf_almond_can_tier2` | `almond_can` | Shelf T2 | `[44.7, 0.715, -189.50]` | `-0.4` | Flush on Tier 2 ($Y=0.715\text{m}$, $\Delta Y=0.0000$). |
+| `shelf_sanity_pill_tier2` | `sanity_pill` | Shelf T2 | `[44.5, 0.715, -189.50]` | `-0.6` | Flush on Tier 2 ($Y=0.715\text{m}$, $\Delta Y=0.0000$). |
+| `shelf_battery_tier3` | `aa_battery` | Shelf T3 | `[44.3, 1.188, -189.50]` | `+0.7` | Flush on Tier 3 ($Y=1.188\text{m}$, $\Delta Y=0.0000$). |
+| `shelf_door_key_tier3` | `doorKey` | Shelf T3 | `[44.5, 1.188, -189.50]` | `-0.3` | Flush on Tier 3 ($Y=1.188\text{m}$, $\Delta Y=0.0000$). |
+| `shelf_almond_can_tier3` | `almond_can` | Shelf T3 | `[44.7, 1.188, -189.50]` | `+0.5` | Flush on Tier 3 ($Y=1.188\text{m}$, $\Delta Y=0.0000$). |
+| `shelf_first_aid_tier4` | `first_aid` | Shelf T4 | `[44.5, 1.643, -189.50]` | `0.0` ($0^\circ$) | Aligned along shelf ($X$). Fits $0.405\text{m}$ depth without overhang. Flush on T4 ($Y=1.643$). |
+
+---
+
+## 7. Reusable Placement Engine Architecture
+
+The placement engine in `js/multiplayer/item_manager.js` resolves item positions in two phases rather than using hardcoded arbitrary offsets.
+
+### 7.1 Two-Phase Spawning
+1. **Pass 1 — Support Props**: Furniture items (`table`, `metal_shelf`, `vending_almond`, `ammo_crate`) are spawned first. Their world bounding boxes, support surfaces, and tier elevations are registered into a spatial lookup table.
+2. **Pass 2 — Supported Items**: Consumables and items referencing support anchors are evaluated against registered props.
+   - For `surface: "floor"`: Base height is computed via floor detection ($Y = 0.000$).
+   - For `surface: "table"`: The tabletop elevation ($Y = 0.936$) is queried from the referenced table prop's actual transformed bounds.
+   - For `surface: "shelf_tier"`: The exact tier elevation is retrieved from the shelf structure's tier height map ($T_1=0.243, T_2=0.715, T_3=1.188, T_4=1.643, T_5=2.097$).
+
+### 7.2 Floor Height Detection (`detectFloorHeight`)
+- Evaluates floor elevation at coordinate $(X, Z)$ using the scene collision ground plane.
+- In Level 0, carpet elevation is uniformly $Y = 0.000\text{ m}$.
+- Places the item wrapper group at $Y = \text{floorY}$, guaranteeing the model's base sits flush on the carpet with zero penetration and zero floating gap.
+
+### 7.3 Furniture Surface Detection (`detectFurnitureSurface`)
+- Queries the bounding box of the supporting furniture prop.
+- Validates horizontal containment: ensures $(X, Z)$ lies within the table or shelf tier boundary plus safe margin.
+- Returns the exact world $Y$ coordinate of the support surface.
+
+### 7.4 Collision and Intersection Validation
+- **Wall Intersection (`checkWallIntersection`)**: Evaluates the transformed bounding box against the Level 0 collision grid (`CollisionHandler.isPointInWall`). Checks corners and center points with a $0.05\text{m}$ buffer.
+- **Object Overlap (`checkObjectOverlap`)**: Evaluates the transformed AABB against all previously spawned items and props. Detects and flags physical intersections.
+- Every placed item records a `validation` object in `getPlacementTelemetry()`:
+  ```json
+  {
+    "isValid": true,
+    "wallIntersection": false,
+    "overlappingItems": []
+  }
+  ```
+
+---
+
+## 8. Developer Debug Bounding Box Visualizer
+
+To enable visual inspection of placements and immediate detection of floating or intersecting assets, `WorldItemManager` includes an interactive bounding box visualizer.
+
+### 8.1 Visual Components
+- **Support Planes**:
+  - **Cyan Plane**: Tabletop support surface at $Y = 0.936\text{m}$.
+  - **Yellow Planes**: Metal shelf tier levels ($Y = 0.243\text{m}, 0.715\text{m}, 1.188\text{m}, 1.643\text{m}$).
+- **Item Bounding Boxes**:
+  - **Green BoxHelper**: Valid placement resting on a support surface with zero wall/object intersections.
+  - **Red BoxHelper**: Invalid placement (intersecting a wall or colliding with another object).
+
+### 8.2 Developer Controls & Isolation
+- Debug visualization is created in an isolated `debugContainer` (`THREE.Group`) added to the scene.
+- **Hidden by Default**: `debugContainer.visible = false` during normal gameplay.
+- **Toggle Button**: Accessible in the developer rendering panel (`--dev-rendering` mode) via the `[Toggle Debug Bounds]` button (`#dev-toggle-bounds`) or programmatically via `window.itemManager.toggleDebugVisuals()`.
+
+---
+
+## 9. Global Tone-Mapping Exposure Audit (0.50 Baseline)
+
+### 9.1 Background & Purpose
+Prior to lighting stabilization, individual rendering subsystems exhibited varying brightness levels. To establish the characteristic sickly yellow fluorescent office atmosphere of Level 0 without over-darkening or washing out textures, a baseline `toneMappingExposure = 0.50` was established.
+
+### 9.2 Audit Across Rendering Paths
+
+| Rendering Path | Target Subsystem | Exposure Scope & Effect |
+|---|---|---|
+| **1. Level 0 Geometry** | PBR walls, carpet, ceiling panels | Tone-mapped by Three.js `ACESFilmicToneMapping`. At exposure `0.50`, fluorescent ceiling fixtures generate bright illumination while wallpaper normal maps ($0.40$) and carpet normal maps ($0.60$) retain texture depth without clipping. |
+| **2. Weapon Viewmodels** | First-person Pistol, Shotgun, Torch | Viewmodels reside in the camera view hierarchy of the WebGL scene. They share `renderer.toneMappingExposure = 0.50`, ensuring gunmetal finishes and torch reflector materials match the ambient room lighting naturally. |
+| **3. World Props & Items** | Desks, shelves, crates, cans, ammo boxes | All items in `WorldItemsContainer` use standard Three.js `MeshStandardMaterial`. They inherit the `0.50` exposure, resulting in realistic metallic reflections on brass cartridges, cans, and shelf struts. |
+| **4. Post-Processing Quad** | Fullscreen custom shader (`postShader`) | Post-processing pass samples `tDiffuse` (the tone-mapped 3D scene) to apply film grain (`0.0`), chromatic aberration (`0.0`), and subtle color grading. The shader itself operates on normalized color values and does not apply redundant tone mapping. |
+| **5. 2D DOM HUD** | Health, Sanity, Stamina, Compass, Reticle | Pure HTML/CSS DOM overlays rendered above the WebGL `<canvas>`. Completely independent and unaffected by WebGL tone mapping, preserving crisp icon graphics and readable typography. |
+
+### 9.3 Persistence & Configuration Lifecycle
+- **Initialization**: `main.js` sets `renderer.toneMappingExposure = 0.50` upon WebGLRenderer instantiation.
+- **Lighting Module Baseline**: `LIGHTING_DEFAULTS.exposure = 0.50` in `js/multiplayer/lighting.js`.
+- **Profile D ("Combined Optimum")**: Applying render configuration D explicitly maintains exposure at `0.50`.
+- **Reset Defaults**: Clicking "Reset Lighting" restores `renderer.toneMappingExposure = 0.50`.
+- **Developer Panel**: The slider is labeled "Global Tone-Mapping Exposure" with tooltip explaining its scene-wide scope. Range is $[0.10, 2.50]$ with default position $0.50$.
+- **Story Mode Isolation**: Single-player Story Mode uses its own independent renderer configuration in `js/engine.js` and is 100% unaffected.

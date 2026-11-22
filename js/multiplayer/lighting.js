@@ -24,7 +24,7 @@ const LIGHT_DECAY = 1.8;        // Realistic diffuse luminaire dispersion
 
 // Standard established Level 0 bright fluorescent D-profile defaults
 export const LIGHTING_DEFAULTS = {
-  exposure: 1.35,
+  exposure: 0.50,
   ambientIntensity: 0.9,
   hemiIntensity: 1.8,
   pointIntensity: 160.0,
@@ -39,7 +39,7 @@ export function getLightingConfig() {
 }
 
 export function setExposure(val) {
-  currentConfig.exposure = Math.max(0.1, Number(val) || 1.35);
+  currentConfig.exposure = Math.max(0.05, Number(val) || 0.50);
   if (savedRenderer) {
     savedRenderer.toneMappingExposure = currentConfig.exposure;
   }
