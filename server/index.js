@@ -44,11 +44,79 @@ const MIME_TYPES = {
   '.webm': 'video/webm'
 };
 
+// Server-side active layout revision lifecycle
+let activeDevLayout = {
+  iteration: 0,
+  filename: 'default',
+  data: null
+};
+
+function loadStartupLayout() {
+  const layoutDir = path.join(CLIENT_DIR, 'world-layouts/level0');
+  const latestPath = path.join(layoutDir, 'latest.json');
+  const defaultPath = path.join(CLIENT_DIR, 'assets/data/world_items.json');
+
+  let defaultData = null;
+  try {
+    if (fs.existsSync(defaultPath)) {
+      defaultData = JSON.parse(fs.readFileSync(defaultPath, 'utf8'));
+    }
+  } catch (err) {
+    console.error('[WORLD LAYOUT] Error reading default assets/data/world_items.json:', err.message);
+  }
+
+  if (!DEV_RENDERING) {
+    activeDevLayout = {
+      iteration: 0,
+      filename: 'default',
+      data: defaultData
+    };
+    console.log('[WORLD LAYOUT] Production mode active: using approved layout assets/data/world_items.json');
+    return;
+  }
+
+  // Developer mode: try to load and validate latest.json from disk
+  fs.mkdirSync(layoutDir, { recursive: true });
+
+  if (fs.existsSync(latestPath)) {
+    try {
+      const raw = fs.readFileSync(latestPath, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || parsed.level !== 'level0' || !Array.isArray(parsed.placements)) {
+        throw new Error('Schema validation failed: missing level0 or placements array.');
+      }
+      const iterNum = parseInt(parsed.iteration, 10) || 1;
+      const expectedFilename = `iteration_${String(iterNum).padStart(4, '0')}.json`;
+      activeDevLayout = {
+        iteration: iterNum,
+        filename: expectedFilename,
+        data: parsed
+      };
+      console.log(`[WORLD LAYOUT] Loaded development layout revision: ${expectedFilename} (${parsed.placements.length} items)`);
+      return;
+    } catch (err) {
+      console.warn(`[WORLD LAYOUT] Warning: latest.json missing or invalid (${err.message}), falling back to default assets/data/world_items.json`);
+    }
+  } else {
+    console.warn('[WORLD LAYOUT] Warning: latest.json not found on disk, falling back to default assets/data/world_items.json');
+  }
+
+  activeDevLayout = {
+    iteration: 0,
+    filename: 'default',
+    data: defaultData
+  };
+}
+
+// Initial layout load on server startup
+loadStartupLayout();
+
 // 1. Static HTTP File Server
 const server = http.createServer((req, res) => {
   // CORS & WebSocket upgrade headers
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -56,18 +124,374 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Normalize URL: strip optional /doom-zombies prefix
+  const rawUrl = req.url || '/';
+  const normUrl = rawUrl.replace(/^\/doom-zombies(?=\/|$)/, '') || '/';
+
   // Server-controlled developer configuration endpoint
-  if (req.url === '/__config' && req.method === 'GET') {
+  if ((normUrl === '/__config' || req.url === '/__config') && req.method === 'GET') {
+    const configPayload = JSON.stringify({
+      renderingDevTools: DEV_RENDERING,
+      latestLayout: (DEV_RENDERING && activeDevLayout && activeDevLayout.filename !== 'default') ? {
+        iteration: activeDevLayout.iteration,
+        file: activeDevLayout.filename
+      } : null
+    });
     res.writeHead(200, {
       'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(configPayload),
       'Cache-Control': 'no-cache, no-store, must-revalidate'
     });
-    res.end(JSON.stringify({ renderingDevTools: DEV_RENDERING }));
+    res.end(configPayload);
+    return;
+  }
+
+  // Developer World Placement Layout Endpoints (Only enabled when --dev-rendering is active)
+  if (normUrl.startsWith('/api/developer/world-layout/')) {
+    const layoutUrl = new URL(normUrl, `http://${req.headers.host || 'localhost'}`);
+    const subpath = layoutUrl.pathname.replace('/api/developer/world-layout/', '').replace(/\/+$/, '');
+
+    if (!DEV_RENDERING) {
+      const errBody = JSON.stringify({ error: 'Developer tools are disabled on this server.' });
+      res.writeHead(403, {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(errBody)
+      });
+      res.end(errBody);
+      return;
+    }
+
+    const layoutDir = path.join(CLIENT_DIR, 'world-layouts/level0');
+    fs.mkdirSync(layoutDir, { recursive: true });
+
+    if (subpath === 'list' && req.method === 'GET') {
+      const files = fs.readdirSync(layoutDir);
+      const iterations = [];
+      let latestFile = null;
+
+      for (const f of files) {
+        const match = f.match(/^iteration_(\d+)\.json$/);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          const stats = fs.statSync(path.join(layoutDir, f));
+          iterations.push({
+            iteration: num,
+            filename: f,
+            size: stats.size,
+            mtime: stats.mtime.toISOString()
+          });
+        }
+      }
+      iterations.sort((a, b) => a.iteration - b.iteration);
+      if (activeDevLayout && activeDevLayout.filename !== 'default') {
+        latestFile = activeDevLayout.filename;
+      } else if (iterations.length > 0) {
+        latestFile = iterations[iterations.length - 1].filename;
+      }
+
+      const listBody = JSON.stringify({ iterations, latest: latestFile, count: iterations.length });
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(listBody),
+        'Cache-Control': 'no-cache'
+      });
+      res.end(listBody);
+      return;
+    }
+
+    if (subpath === 'load' && req.method === 'GET') {
+      const iterParam = layoutUrl.searchParams.get('iteration');
+      const fileParam = layoutUrl.searchParams.get('file');
+
+      let targetFile = null;
+      if (fileParam) {
+        targetFile = path.basename(fileParam);
+      } else if (iterParam) {
+        const num = parseInt(iterParam, 10);
+        targetFile = `iteration_${String(num).padStart(4, '0')}.json`;
+      }
+
+      // If no target file is requested, return current activeDevLayout data if in memory
+      if (!targetFile) {
+        if (activeDevLayout && activeDevLayout.data) {
+          const content = JSON.stringify(activeDevLayout.data, null, 2);
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(content),
+            'Cache-Control': 'no-cache'
+          });
+          res.end(content);
+          return;
+        }
+        targetFile = 'latest.json';
+      }
+
+      const filePath = path.join(layoutDir, targetFile);
+      if (fs.existsSync(filePath)) {
+        try {
+          const content = fs.readFileSync(filePath, 'utf8');
+          // Validate valid JSON before serving
+          JSON.parse(content);
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(content),
+            'Cache-Control': 'no-cache'
+          });
+          res.end(content);
+          return;
+        } catch (err) {
+          console.warn(`[WORLD LAYOUT] Corrupt layout file ${targetFile}:`, err.message);
+        }
+      }
+
+      // Fallback: Default layout
+      const defaultPath = path.join(CLIENT_DIR, 'assets/data/world_items.json');
+      if (fs.existsSync(defaultPath)) {
+        const content = fs.readFileSync(defaultPath, 'utf8');
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(content),
+          'Cache-Control': 'no-cache'
+        });
+        res.end(content);
+        return;
+      }
+
+      const errBody = JSON.stringify({ error: `Layout ${targetFile || 'default'} not found.` });
+      res.writeHead(404, {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(errBody)
+      });
+      res.end(errBody);
+      return;
+    }
+
+    if (subpath === 'export' && req.method === 'POST') {
+      const chunks = [];
+      req.on('data', chunk => chunks.push(chunk));
+      req.on('end', () => {
+        try {
+          const rawBody = Buffer.concat(chunks).toString('utf8');
+          if (!rawBody || !rawBody.trim()) {
+            throw new Error('Export payload is empty.');
+          }
+
+          let payload;
+          try {
+            payload = JSON.parse(rawBody);
+          } catch (jsonErr) {
+            throw new Error(`Invalid JSON syntax in export body: ${jsonErr.message}`);
+          }
+
+          // 1. Strict Schema Validation before touching filesystem
+          if (!payload || typeof payload !== 'object') {
+            throw new Error('Payload must be a JSON object.');
+          }
+          if (payload.level !== 'level0') {
+            throw new Error('Invalid or missing level identifier (expected "level0").');
+          }
+          if (!Array.isArray(payload.placements)) {
+            throw new Error('Placements must be an array.');
+          }
+          const invalidPlacements = [];
+          for (let i = 0; i < payload.placements.length; i++) {
+            const p = payload.placements[i];
+            if (!p || typeof p !== 'object') {
+              throw new Error(`Placement item at index ${i} is not an object.`);
+            }
+            if (!p.id || typeof p.id !== 'string') {
+              throw new Error(`Placement item at index ${i} missing valid string id.`);
+            }
+            if (!p.type || typeof p.type !== 'string') {
+              throw new Error(`Placement '${p.id}' missing item type.`);
+            }
+            if (!Array.isArray(p.position) || p.position.length !== 3 || p.position.some(n => typeof n !== 'number' || !isFinite(n))) {
+              throw new Error(`Placement '${p.id}' has invalid numeric position [x, y, z].`);
+            }
+
+            // Developer-authoritative validation check:
+            // Warnings and developer-approved/overridden items are accepted.
+            // Items with status === 'invalid' without developer approval are flagged.
+            const v = p.validation;
+            const isApproved = v && (v.status === 'overridden' || v.developerApproved === true);
+            if (v && v.status === 'invalid' && !isApproved) {
+              invalidPlacements.push({
+                id: p.id,
+                type: p.type,
+                reason: v.failureReason || v.wallReason || 'Collision or boundary violation detected'
+              });
+            }
+          }
+
+          // If un-overridden invalid placements exist and developer did not specify forceExport, reject with HTTP 400 JSON
+          if (invalidPlacements.length > 0 && !payload.forceExport) {
+            console.warn(`[WORLD EDITOR] Export rejected: ${invalidPlacements.length} un-overridden invalid placements exist.`);
+            const errRes = JSON.stringify({
+              error: `Validation failed: layout contains ${invalidPlacements.length} un-overridden invalid placement(s).`,
+              invalidCount: invalidPlacements.length,
+              invalidPlacements
+            });
+            res.writeHead(400, {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(errRes)
+            });
+            res.end(errRes);
+            return;
+          }
+
+          if (invalidPlacements.length > 0 && payload.forceExport) {
+            console.log(`[WORLD EDITOR] Force-export accepted by developer override (${invalidPlacements.length} un-overridden invalid items).`);
+          }
+
+          // 2. Scan world-layouts/level0/ for next iteration number
+          const existing = fs.readdirSync(layoutDir);
+          let maxIter = 0;
+          for (const f of existing) {
+            const match = f.match(/^iteration_(\d+)\.json$/);
+            if (match) {
+              const num = parseInt(match[1], 10);
+              if (num > maxIter) maxIter = num;
+            }
+          }
+          const nextIter = maxIter + 1;
+          const filename = `iteration_${String(nextIter).padStart(4, '0')}.json`;
+          const filePath = path.join(layoutDir, filename);
+          const latestPath = path.join(layoutDir, 'latest.json');
+          const latestTmpPath = path.join(layoutDir, 'latest.json.tmp');
+
+          // 3. Construct Complete Normalized Layout Document
+          const layoutDoc = {
+            schemaVersion: '1.0.0',
+            level: 'level0',
+            iteration: nextIter,
+            createdAt: new Date().toISOString(),
+            author: payload.author || 'developer',
+            description: payload.description || `Level 0 World Layout Iteration ${nextIter}`,
+            catalog: (payload.catalog && Object.keys(payload.catalog).length > 0) ? payload.catalog : (activeDevLayout?.data?.catalog || {}),
+            placements: payload.placements.map(p => ({
+              id: p.id,
+              type: p.type,
+              category: p.category || (payload.catalog?.[p.type]?.category) || 'prop',
+              placementMode: p.placementMode || 'fixed',
+              position: [
+                +p.position[0].toFixed(4),
+                +p.position[1].toFixed(4),
+                +p.position[2].toFixed(4)
+              ],
+              rotation: [
+                +(p.rotation?.[0] || 0).toFixed(4),
+                +(p.rotation?.[1] || 0).toFixed(4),
+                +(p.rotation?.[2] || 0).toFixed(4)
+              ],
+              scale: [
+                +(p.scale?.[0] || 1).toFixed(4),
+                +(p.scale?.[1] || 1).toFixed(4),
+                +(p.scale?.[2] || 1).toFixed(4)
+              ],
+              anchor: p.anchor || { surface: p.surfaceType || 'floor' },
+              tags: Array.isArray(p.tags) ? p.tags : ['collidable'],
+              validation: p.validation ? {
+                status: p.validation.status || 'valid',
+                developerApproved: !!p.validation.developerApproved,
+                originalStatus: p.validation.originalStatus || null,
+                reason: p.validation.reason || p.validation.failureReason || null
+              } : { status: 'valid', developerApproved: false }
+            })),
+            spawnGroups: Array.isArray(payload.spawnGroups) ? payload.spawnGroups : [
+              {
+                id: 'sg_hallway_consumables_01',
+                name: 'Hallway Floor Consumables Pool',
+                eligibleTypes: ['almond_can', 'energy_drink', 'sanity_pill', 'aa_battery'],
+                candidatePoints: [
+                  [41.8, 0.0, -186.2],
+                  [42.2, 0.0, -186.1],
+                  [42.6, 0.0, -186.0],
+                  [43.1, 0.0, -186.0],
+                  [43.3, 0.0, -188.7]
+                ],
+                minCount: 2,
+                maxCount: 4,
+                surface: 'floor',
+                probability: 0.85,
+                tags: ['consumable', 'random_loot']
+              },
+              {
+                id: 'sg_tabletop_supplies_01',
+                name: 'Office Tabletop Medical & Ammo Pool',
+                eligibleTypes: ['first_aid', 'ammo_box', 'sanity_pill', 'doorKey'],
+                candidatePoints: [
+                  [44.75, 0.936, -185.45],
+                  [44.35, 0.936, -185.45],
+                  [44.00, 0.936, -185.45],
+                  [44.55, 0.936, -185.20],
+                  [44.15, 0.936, -185.20]
+                ],
+                minCount: 2,
+                maxCount: 3,
+                surface: 'table',
+                supportProp: 'prop_table_01',
+                probability: 1.0,
+                tags: ['high_tier_loot', 'loot_surface']
+              }
+            ]
+          };
+
+          const jsonStr = JSON.stringify(layoutDoc, null, 2);
+          // 4. Save immutable numbered iteration file
+          fs.writeFileSync(filePath, jsonStr, 'utf8');
+
+          // 5. Atomically update latest.json via temp file rename
+          fs.writeFileSync(latestTmpPath, jsonStr, 'utf8');
+          fs.renameSync(latestTmpPath, latestPath);
+
+          // 6. Update in-memory activeDevLayout so subsequent room creations use it
+          activeDevLayout = {
+            iteration: nextIter,
+            filename,
+            data: layoutDoc
+          };
+
+          console.log(`[WORLD EDITOR] Exported iteration ${nextIter} (${layoutDoc.placements.length} items) -> ${filePath}`);
+
+          const resPayload = JSON.stringify({
+            success: true,
+            iteration: nextIter,
+            filename,
+            itemCount: layoutDoc.placements.length,
+            spawnGroupCount: layoutDoc.spawnGroups.length,
+            path: `world-layouts/level0/${filename}`,
+            forced: invalidPlacements.length > 0 && !!payload.forceExport
+          });
+
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(resPayload)
+          });
+          res.end(resPayload);
+        } catch (err) {
+          console.error('[WORLD EDITOR] Export failed:', err.message);
+          const errRes = JSON.stringify({ error: err.message });
+          res.writeHead(400, {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(errRes)
+          });
+          res.end(errRes);
+        }
+      });
+      return;
+    }
+
+    const notFoundBody = JSON.stringify({ error: 'Endpoint not found.' });
+    res.writeHead(404, {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(notFoundBody)
+    });
+    res.end(notFoundBody);
     return;
   }
 
   // API endpoints for automated verification and screenshots
-  if (req.url === '/api/log' && req.method === 'POST') {
+  if (normUrl === '/api/log' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
@@ -78,7 +502,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (req.url === '/api/screenshot' && req.method === 'POST') {
+  if (normUrl === '/api/screenshot' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
@@ -98,7 +522,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (req.url === '/api/telemetry' && req.method === 'POST') {
+  if (normUrl === '/api/telemetry' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
@@ -116,8 +540,19 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Intercept any unmatched /api/* route before falling through to static files
+  if (normUrl.startsWith('/api/')) {
+    const apiNotFound = JSON.stringify({ error: `API route not found: ${normUrl}` });
+    res.writeHead(404, {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(apiNotFound)
+    });
+    res.end(apiNotFound);
+    return;
+  }
+
   // Sanitize and resolve URL
-  let parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  let parsedUrl = new URL(normUrl, `http://${req.headers.host || 'localhost'}`);
   let pathname = parsedUrl.pathname;
   if (pathname === '/' || pathname === '') {
     pathname = '/multiplayer.html';
@@ -189,7 +624,11 @@ wss.on('connection', (ws, req) => {
 
     switch (type) {
       case MSG_TYPES.CREATE_ROOM: {
-        const res = roomManager.createRoom(ws, payload?.roomCode);
+        const defaultRev = (DEV_RENDERING && activeDevLayout && activeDevLayout.filename) ? activeDevLayout.filename : 'default';
+        const requestedRev = (typeof payload?.layoutRevision === 'string' && payload.layoutRevision.trim())
+          ? payload.layoutRevision.trim()
+          : defaultRev;
+        const res = roomManager.createRoom(ws, payload?.roomCode, requestedRev);
         if (res.error) {
           send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error });
         } else {
@@ -198,7 +637,8 @@ wss.on('connection', (ws, req) => {
             playerId: res.player.id,
             slot: res.player.slot,
             spawn: res.spawn,
-            totalPlayers: res.totalPlayers
+            totalPlayers: res.totalPlayers,
+            layoutRevision: res.layoutRevision
           });
         }
         break;
@@ -216,7 +656,8 @@ wss.on('connection', (ws, req) => {
             slot: res.player.slot,
             spawn: res.spawn,
             existingPlayers: res.existingPlayers,
-            totalPlayers: res.totalPlayers
+            totalPlayers: res.totalPlayers,
+            layoutRevision: res.layoutRevision
           });
 
           // Notify existing players in room about new arrival

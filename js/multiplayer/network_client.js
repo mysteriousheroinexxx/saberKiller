@@ -155,8 +155,8 @@ export class NetworkClient {
     return true;
   }
 
-  createRoom(roomCode = null) {
-    return this.send(MSG_TYPES.CREATE_ROOM, { roomCode });
+  createRoom(roomCode = null, layoutRevision = null) {
+    return this.send(MSG_TYPES.CREATE_ROOM, { roomCode, layoutRevision });
   }
 
   joinRoom(roomCode) {

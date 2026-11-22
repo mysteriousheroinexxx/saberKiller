@@ -539,11 +539,11 @@
     <div class="dev-section-label">LIGHTING ADJUSTMENT [DEV]</div>
     <div class="dev-slider-group">
       <div class="dev-slider-row">
-        <div class="dev-slider-header">
-          <span>Overall Brightness / Exposure</span>
-          <span class="val" id="dev-val-exposure">1.35</span>
+        <div class="dev-slider-header" title="Global tone-mapping exposure applied by Three.js ACESFilmic tone mapper to all 3D scene rendering (level geometry, weapons, world props). Does not affect 2D HTML HUD.">
+          <span title="Global tone-mapping exposure applied by Three.js ACESFilmic tone mapper to all 3D scene rendering (level geometry, weapons, world props). Does not affect 2D HTML HUD.">Global Tone-Mapping Exposure</span>
+          <span class="val" id="dev-val-exposure">0.50</span>
         </div>
-        <input type="range" class="dev-slider" id="dev-slide-exposure" min="0.5" max="2.5" step="0.05" value="1.35">
+        <input type="range" class="dev-slider" id="dev-slide-exposure" min="0.10" max="2.50" step="0.05" value="0.50" title="Global tone-mapping exposure applied by Three.js ACESFilmic tone mapper to all 3D scene rendering (level geometry, weapons, world props). Does not affect 2D HTML HUD.">
       </div>
 
       <div class="dev-slider-row">
@@ -576,6 +576,12 @@
       </div>
 
       <button class="dev-view-btn" id="dev-reset-lighting" style="width:100%; margin-top:6px;">Reset Lighting (Default D)</button>
+    </div>
+
+    <div class="dev-section-label">WORLD ITEMS PLACEMENT [DEV]</div>
+    <div style="display: flex; gap: 4px; margin-bottom: 8px;">
+      <button class="dev-view-btn" id="dev-toggle-bounds" style="flex:1;">Bounds [OFF]</button>
+      <button class="dev-view-btn" id="dev-open-editor" style="flex:1; background: rgba(212, 175, 55, 0.25); border-color: #d4af37; color: #edece6; font-weight: 600;">World Editor</button>
     </div>
 
     <div class="dev-section-label">SANITY SIMULATION [DEV]</div>
@@ -654,6 +660,7 @@
   <!-- Three.js r147 Vendored Engine & Loaders -->
   <script src="vendor/three.min.js"></script>
   <script src="vendor/GLTFLoader.js"></script>
+  <script src="vendor/TransformControls.js"></script>
   <!-- Isolated Multiplayer Client Module -->
   <script type="module" src="js/multiplayer/main.js"></script>
 </body>

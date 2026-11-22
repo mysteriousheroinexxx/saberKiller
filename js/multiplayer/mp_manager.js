@@ -94,8 +94,8 @@ export class MPManager {
     this.network.connect(serverUrl);
   }
 
-  createRoom(roomCode = null) {
-    this.network.createRoom(roomCode);
+  createRoom(roomCode = null, layoutRevision = null) {
+    this.network.createRoom(roomCode, layoutRevision);
   }
 
   joinRoom(roomCode) {
