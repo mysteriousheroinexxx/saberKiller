@@ -274,6 +274,9 @@ async function init() {
     }
   });
 
+  window.mpManager = mpManager;
+  window.localPlayer = mpManager.localPlayer;
+
   if (sanityHUD && mpManager.localPlayer) {
     sanityHUD.setPlayer(mpManager.localPlayer);
   }
@@ -374,10 +377,14 @@ async function init() {
   // Initialize Reusable Interaction Framework
   interactionManager = new InteractionManager(camera, scene, itemManager, {
     maxDistance: 2.1,
-    onInteract: (target) => {
+    onInteract: (target, requestId) => {
       if (target.isPickup) {
-        console.log(`[INTERACTION] Requesting pickup for item: ${target.id} (${target.type})`);
-        mpManager.network.requestItemPickup(target.id);
+        console.log(`[STAGE 3/19] [CLIENT] Pickup request created: target=${target.id} (${target.type})`);
+        console.log(`[STAGE 4/19] [CLIENT] Request ID assigned: ${requestId} for item: ${target.id}`);
+        const pPos = mpManager.localPlayer ? mpManager.localPlayer.pos : null;
+        const clientPos = pPos ? { x: +pPos.x.toFixed(3), y: +(pPos.y || 0).toFixed(3), z: +pPos.z.toFixed(3) } : null;
+        console.log(`[STAGE 5/19] [CLIENT] Request transmitted through WebSocket: reqId=${requestId}, item=${target.id}`);
+        mpManager.network.requestItemPickup(target.id, requestId, clientPos);
       }
     },
     onDiagnosticsChange: (diag) => {
@@ -1100,7 +1107,17 @@ function initDevComparisonUI() {
     if (reqEl) reqEl.textContent = diag.lastRequest || 'NONE';
     if (serverEl) {
       serverEl.textContent = diag.serverResult || 'NONE';
-      serverEl.style.color = (diag.serverResult && diag.serverResult.startsWith('ACCEPTED')) ? '#00ff88' : ((diag.serverResult && diag.serverResult.startsWith('REJECTED')) ? '#ff6b6b' : '#edece6');
+      if (diag.serverResult && diag.serverResult.startsWith('ACCEPTED')) {
+        serverEl.style.color = '#00ff88';
+      } else if (diag.serverResult && diag.serverResult.startsWith('REJECTED')) {
+        serverEl.style.color = '#ff6b6b';
+      } else if (diag.serverResult && (diag.serverResult.startsWith('TIMEOUT') || diag.serverResult.startsWith('DISCONNECTED'))) {
+        serverEl.style.color = '#ffaa00';
+      } else if (diag.serverResult && diag.serverResult.startsWith('PENDING')) {
+        serverEl.style.color = '#ffd700';
+      } else {
+        serverEl.style.color = '#edece6';
+      }
     }
     if (invEl) invEl.textContent = diag.inventoryResult || '0 / 12 slots';
     if (rejEl) {

@@ -755,27 +755,66 @@ wss.on('connection', (ws, req) => {
       }
 
       case MSG_TYPES.ITEM_PICKUP_REQUEST: {
+        const requestId = payload?.requestId || `req_${Date.now()}`;
         const itemId = payload?.itemId;
-        console.log(`[SERVER PICKUP] Request for item '${itemId}' from socket`);
-        const res = roomManager.handlePickupRequest(ws, itemId);
+        const clientPos = payload?.clientPosition;
+
+        const session = roomManager.getPlayer(ws);
+        const playerId = session ? session.player.id : 'unknown';
+        const roomCode = session ? session.room.code : 'unknown';
+
+        console.log(`[STAGE 6/19] [SERVER] Pickup request received: reqId=${requestId}, player=${playerId}, room=${roomCode}, item=${itemId}`);
+        console.log(`[STAGE 7/19] [SERVER] Request ID parsed: ${requestId}`);
+        console.log(`[STAGE 8/19] [SERVER] Player and room resolved: player=${playerId}, room=${roomCode}`);
+        console.log(`[STAGE 9/19] [SERVER] Item ID resolved: ${itemId}`);
+
+        console.log(`[STAGE 10/19] [SERVER] Validation executing for item '${itemId}' by player '${playerId}'...`);
+        const res = roomManager.handlePickupRequest(ws, itemId, clientPos);
+
         if (res.error) {
-          console.log(`[SERVER PICKUP] Rejected item '${itemId}': ${res.error}`);
+          console.log(`[STAGE 12/19] [SERVER] Pickup REJECTED: reqId=${requestId}, item='${itemId}', reason='${res.error}'`);
+          const rejectPayload = {
+            requestId,
+            success: false,
+            itemId,
+            playerId: res.player ? res.player.id : playerId,
+            roomCode: res.room ? res.room.code : roomCode,
+            reason: res.error
+          };
+          console.log(`[STAGE 13/19] [SERVER] Transmitting rejection response to client:`, rejectPayload);
+          send(ws, MSG_TYPES.ITEM_PICKUP_RESPONSE, rejectPayload);
           send(ws, MSG_TYPES.PICKUP_REJECTED, {
+            requestId,
             itemId,
             reason: res.error
           });
         } else {
-          console.log(`[SERVER PICKUP] Approved item '${res.item.id}' for player '${res.player.id}'`);
-          // Broadcast ITEM_COLLECTED to all players in the room
+          console.log(`[STAGE 11/19] [SERVER] Inventory update executed for player '${res.player.id}', added '${res.item.type}'`);
+          console.log(`[STAGE 12/19] [SERVER] Pickup ACCEPTED: reqId=${requestId}, item='${res.item.id}', player='${res.player.id}'`);
+
+          const acceptPayload = {
+            requestId,
+            success: true,
+            itemId: res.item.id,
+            itemType: res.item.type,
+            playerId: res.player.id,
+            roomCode: res.room.code
+          };
+          console.log(`[STAGE 13/19] [SERVER] Transmitting success response to client:`, acceptPayload);
+          send(ws, MSG_TYPES.ITEM_PICKUP_RESPONSE, acceptPayload);
+
+          console.log(`[STAGE 14/19] [SERVER] Broadcasting world-item removal to room ${res.room.code} for item ${res.item.id}`);
           for (const [_, p] of res.room.players) {
             send(p.ws, MSG_TYPES.ITEM_COLLECTED, {
+              requestId,
               itemId: res.item.id,
               itemType: res.item.type,
               collectedBy: res.player.id
             });
           }
-          // Send INVENTORY_UPDATE to collector
+
           send(ws, MSG_TYPES.INVENTORY_UPDATE, {
+            requestId,
             inventory: res.inventory,
             addedItem: {
               id: res.item.id,

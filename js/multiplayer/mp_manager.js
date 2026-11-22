@@ -36,6 +36,11 @@ export class MPManager {
 
   _bindNetworkEvents() {
     this.network.onStatusChange = (status) => {
+      if (status && status.status === 'disconnected') {
+        if (window.interactionManager) {
+          window.interactionManager.handleDisconnect();
+        }
+      }
       if (this.ui.onStatusChange) this.ui.onStatusChange(status);
     };
 
@@ -91,13 +96,20 @@ export class MPManager {
       }
     };
 
+    this.network.onItemPickupResponse = (payload) => {
+      if (window.interactionManager) {
+        window.interactionManager.handlePickupResponse(payload);
+      }
+      if (this.ui.onItemPickupResponse) this.ui.onItemPickupResponse(payload);
+    };
+
     this.network.onItemCollected = (payload) => {
       if (this.itemManager && payload.itemId) {
         this.itemManager.hideItem(payload.itemId);
       }
       if (window.interactionManager) {
         window.interactionManager.clearTargetIfId(payload.itemId);
-        window.interactionManager.recordServerResponse('ITEM_COLLECTED', payload);
+        window.interactionManager.handleItemCollected(payload);
       }
       if (this.ui.onItemCollected) this.ui.onItemCollected(payload);
     };
@@ -114,7 +126,7 @@ export class MPManager {
 
     this.network.onPickupRejected = (payload) => {
       if (window.interactionManager) {
-        window.interactionManager.recordServerResponse('PICKUP_REJECTED', payload);
+        window.interactionManager.handlePickupRejected(payload);
       }
       if (this.ui.onPickupRejected) this.ui.onPickupRejected(payload);
     };

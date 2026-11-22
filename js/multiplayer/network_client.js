@@ -11,6 +11,7 @@ export const MSG_TYPES = {
   HEARTBEAT: 'HEARTBEAT',
   // Interaction & Inventory packet types
   ITEM_PICKUP_REQUEST: 'ITEM_PICKUP_REQUEST',
+  ITEM_PICKUP_RESPONSE: 'ITEM_PICKUP_RESPONSE',
   ITEM_COLLECTED: 'ITEM_COLLECTED',
   INVENTORY_UPDATE: 'INVENTORY_UPDATE',
   PICKUP_REJECTED: 'PICKUP_REJECTED',
@@ -33,6 +34,7 @@ export class NetworkClient {
     this.onPlayerLeft = null;
     this.onPlayerUpdate = null;
     this.onError = null;
+    this.onItemPickupResponse = null;
     this.onItemCollected = null;
     this.onInventoryUpdate = null;
     this.onPickupRejected = null;
@@ -151,6 +153,10 @@ export class NetworkClient {
         // Pong received, connection is healthy
         break;
 
+      case MSG_TYPES.ITEM_PICKUP_RESPONSE:
+        if (this.onItemPickupResponse) this.onItemPickupResponse(payload);
+        break;
+
       case MSG_TYPES.ITEM_COLLECTED:
         if (this.onItemCollected) this.onItemCollected(payload);
         break;
@@ -189,8 +195,16 @@ export class NetworkClient {
     return this.send(MSG_TYPES.JOIN_ROOM, { roomCode });
   }
 
-  requestItemPickup(itemId) {
-    return this.send(MSG_TYPES.ITEM_PICKUP_REQUEST, { itemId });
+  requestItemPickup(itemId, requestId = null, clientPosition = null) {
+    if (!requestId) {
+      requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    }
+    const payload = { itemId, requestId };
+    if (clientPosition) {
+      payload.clientPosition = clientPosition;
+    }
+    const sent = this.send(MSG_TYPES.ITEM_PICKUP_REQUEST, payload);
+    return { sent, requestId };
   }
 
   sendUpdate(x, y, z, yaw, pitch, weapon = 0) {

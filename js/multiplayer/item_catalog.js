@@ -34,7 +34,7 @@ export const ITEM_DEFINITIONS = {
 
   almond_can: {
     id: 'almond_can',
-    name: 'Almond Water Can',
+    name: 'Almond Water',
     category: ITEM_CATEGORIES.CONSUMABLE,
     modelUrl: 'assets/items/almond_can.glb',
     iconUrl: 'assets/ui/icons/item_almond_can.svg',
@@ -71,7 +71,7 @@ export const ITEM_DEFINITIONS = {
 
   energy_drink: {
     id: 'energy_drink',
-    name: 'Almond Water Energy Drink',
+    name: 'Energy Drink',
     category: ITEM_CATEGORIES.CONSUMABLE,
     modelUrl: 'assets/items/energy_drink.glb',
     iconUrl: 'assets/ui/icons/item_energy_drink.svg',

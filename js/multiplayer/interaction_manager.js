@@ -28,6 +28,13 @@ export class InteractionManager {
     this._lastKeyDownTime = 0;
     this.enabled = true;
 
+    // Request lifecycle management
+    this.isPending = false;
+    this.pendingRequestId = null;
+    this.pendingTargetId = null;
+    this.pendingTimeout = null;
+    this.completedRequests = new Set();
+
     // Interaction callbacks
     this.onInteract = options.onInteract || null;
     this.onHover = options.onHover || null;
@@ -141,6 +148,7 @@ export class InteractionManager {
       // 3. Multi-layout E-key detection (code, key, and keyCode)
       if (isInteractionKey(e)) {
         const now = Date.now();
+        console.log(`[STAGE 2/19] [CLIENT] E key received: code=${e.code || 'n/a'}, key=${e.key || 'n/a'}`);
         // Allow trigger if not currently held OR >300ms safeguard against dropped keyup events
         if (!this.eKeyPressed || (now - this._lastKeyDownTime > 300)) {
           this.eKeyPressed = true;
@@ -188,7 +196,7 @@ export class InteractionManager {
   }
 
   /**
-   * Performs single-action interaction on current target
+   * Performs single-action interaction on current target with complete request lifecycle management
    */
   triggerInteraction() {
     if (!this.enabled) {
@@ -209,17 +217,154 @@ export class InteractionManager {
       return;
     }
 
+    // Prevent accidental duplicate interaction requests while one is pending
+    if (this.isPending) {
+      console.warn(`[InteractionManager] Duplicate interaction ignored: request ${this.pendingRequestId} is already pending`);
+      this.diagnostics.serverResult = `PENDING (Request ${this.pendingRequestId} in flight, ignoring duplicate)`;
+      this._notifyDiagnostics();
+      return;
+    }
+
     const target = this.currentTarget;
-    this.diagnostics.lastRequest = `PICKUP_REQUEST sent (${target.id}) at ${new Date().toLocaleTimeString()}`;
-    this.diagnostics.serverResult = 'PENDING (Awaiting server response...)';
+    const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    this.isPending = true;
+    this.pendingRequestId = requestId;
+    this.pendingTargetId = target.id;
+
+    // Safety timeout: clear pending after 3000ms if no server acknowledgement
+    if (this.pendingTimeout) clearTimeout(this.pendingTimeout);
+    this.pendingTimeout = setTimeout(() => {
+      if (this.isPending && this.pendingRequestId === requestId) {
+        console.warn(`[InteractionManager] Request ${requestId} for '${target.id}' timed out after 3000ms`);
+        this.isPending = false;
+        this.pendingRequestId = null;
+        this.pendingTargetId = null;
+        this.diagnostics.serverResult = 'TIMEOUT (No response from server after 3s)';
+        this.diagnostics.lastRejection = 'Request timed out after 3000ms';
+        this._notifyDiagnostics();
+      }
+    }, 3000);
+
+    this.diagnostics.lastRequest = `PICKUP_REQUEST sent (${target.id}, reqId=${requestId}) at ${new Date().toLocaleTimeString()}`;
+    this.diagnostics.serverResult = `PENDING (Awaiting server response for ${requestId}...)`;
     this._notifyDiagnostics();
 
     if (typeof this.onInteract === 'function') {
       try {
-        this.onInteract(target);
+        this.onInteract(target, requestId);
       } catch (err) {
         console.error('[InteractionManager] Error executing onInteract:', err);
       }
+    }
+  }
+
+  /**
+   * Handles explicit server acknowledgement (ITEM_PICKUP_RESPONSE)
+   */
+  handlePickupResponse(payload) {
+    if (!payload) return;
+    const { requestId, success, itemId, reason } = payload;
+    console.log(`[STAGE 15/19] [CLIENT] Response received: reqId=${requestId}, success=${success}, item=${itemId}`);
+
+    // Ignore duplicate acknowledgements
+    if (requestId && this.completedRequests.has(requestId)) {
+      console.log(`[InteractionManager] Ignoring duplicate acknowledgement for completed request: ${requestId}`);
+      return;
+    }
+
+    // Match acknowledgements against original request IDs (or pending target)
+    const matches = (!this.pendingRequestId) || (this.pendingRequestId === requestId) || (this.pendingTargetId === itemId);
+    if (!matches) {
+      console.warn(`[InteractionManager] Unmatched response received (expected reqId=${this.pendingRequestId}, got ${requestId})`);
+      return;
+    }
+
+    console.log(`[STAGE 16/19] [CLIENT] Request ID matched: expected=${this.pendingRequestId}, received=${requestId}`);
+
+    if (this.pendingTimeout) {
+      clearTimeout(this.pendingTimeout);
+      this.pendingTimeout = null;
+    }
+    this.isPending = false;
+    this.pendingRequestId = null;
+    this.pendingTargetId = null;
+
+    if (requestId) {
+      this.completedRequests.add(requestId);
+      if (this.completedRequests.size > 50) {
+        const oldest = this.completedRequests.values().next().value;
+        this.completedRequests.delete(oldest);
+      }
+    }
+
+    console.log(`[STAGE 17/19] [CLIENT] ${success ? 'Success' : 'Rejection'} processed for item: ${itemId}`);
+    console.log(`[STAGE 18/19] [CLIENT] Pending indicator cleared`);
+
+    const timeStr = new Date().toLocaleTimeString();
+    if (success) {
+      this.diagnostics.serverResult = `ACCEPTED — ${itemId} (${payload.itemType || 'item'}) at ${timeStr}`;
+      this.diagnostics.lastRejection = 'NONE';
+      this.clearTargetIfId(itemId);
+    } else {
+      this.diagnostics.serverResult = `REJECTED — ${reason || 'Server rejection'} at ${timeStr}`;
+      this.diagnostics.lastRejection = reason || 'Server rejection';
+    }
+    this._notifyDiagnostics();
+  }
+
+  /**
+   * Handles room-wide item collection broadcast (ITEM_COLLECTED)
+   */
+  handleItemCollected(payload) {
+    if (!payload || !payload.itemId) return;
+    if (this.itemManager) {
+      this.itemManager.hideItem(payload.itemId);
+    }
+    this.clearTargetIfId(payload.itemId);
+
+    if (this.isPending && (this.pendingRequestId === payload.requestId || this.pendingTargetId === payload.itemId)) {
+      this.handlePickupResponse({
+        requestId: payload.requestId || this.pendingRequestId,
+        success: true,
+        itemId: payload.itemId,
+        itemType: payload.itemType
+      });
+    }
+
+    console.log(`[STAGE 19/19] [CLIENT] Inventory and world state updated: item=${payload.itemId} hidden`);
+  }
+
+  /**
+   * Handles server pickup rejection notification (PICKUP_REJECTED)
+   */
+  handlePickupRejected(payload) {
+    if (!payload) return;
+    if (this.isPending && (this.pendingRequestId === payload.requestId || this.pendingTargetId === payload.itemId)) {
+      this.handlePickupResponse({
+        requestId: payload.requestId || this.pendingRequestId,
+        success: false,
+        itemId: payload.itemId,
+        reason: payload.reason
+      });
+    }
+  }
+
+  /**
+   * Handles disconnection event: immediately clear pending state with diagnostic notice
+   */
+  handleDisconnect() {
+    if (this.isPending) {
+      console.warn(`[InteractionManager] Disconnected while request ${this.pendingRequestId} was pending`);
+      if (this.pendingTimeout) {
+        clearTimeout(this.pendingTimeout);
+        this.pendingTimeout = null;
+      }
+      this.isPending = false;
+      this.pendingRequestId = null;
+      this.pendingTargetId = null;
+      this.diagnostics.serverResult = 'DISCONNECTED (Server connection lost while pending)';
+      this.diagnostics.lastRejection = 'Connection closed';
+      this._notifyDiagnostics();
     }
   }
 
@@ -229,16 +374,14 @@ export class InteractionManager {
   recordServerResponse(type, payload) {
     const timeStr = new Date().toLocaleTimeString();
     if (type === 'ITEM_COLLECTED') {
-      this.diagnostics.serverResult = `ACCEPTED — ${payload.itemId} (${payload.itemType || 'item'}) at ${timeStr}`;
-      this.diagnostics.lastRejection = 'NONE';
+      this.handleItemCollected(payload);
     } else if (type === 'PICKUP_REJECTED') {
-      this.diagnostics.serverResult = `REJECTED — ${payload.reason || 'Server rejection'} at ${timeStr}`;
-      this.diagnostics.lastRejection = payload.reason || 'Server rejection';
+      this.handlePickupRejected(payload);
     } else if (type === 'INVENTORY_UPDATE') {
       const occupied = payload?.inventory?.slots ? payload.inventory.slots.filter(s => s !== null).length : 0;
       this.diagnostics.inventoryResult = `${occupied} / 12 slots (updated at ${timeStr})`;
+      this._notifyDiagnostics();
     }
-    this._notifyDiagnostics();
   }
 
   /**
@@ -376,6 +519,8 @@ export class InteractionManager {
 
     this.currentTarget = target;
     this._updatePrompt(target);
+
+    console.log(`[STAGE 1/19] [CLIENT] Interaction target selected: id=${target.id}, type=${target.type}, dist=${target.distance.toFixed(2)}m`);
 
     this.diagnostics.targetId = target.id;
     this.diagnostics.targetType = target.type;

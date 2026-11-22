@@ -1,5 +1,5 @@
 // Saber Killer Room & Player Session Manager
-import { MAX_PLAYERS_PER_ROOM } from './protocol.js';
+import { MAX_PLAYERS_PER_ROOM, isValidNumber } from './protocol.js';
 import { InventoryController } from '../js/multiplayer/inventory_controller.js';
 import { isPickupItem } from '../js/multiplayer/item_catalog.js';
 
@@ -154,7 +154,7 @@ export class RoomManager {
   /**
    * Authoritative pickup validation and atomic claiming
    */
-  handlePickupRequest(ws, itemId) {
+  handlePickupRequest(ws, itemId, clientPosition = null) {
     const meta = this.clientToRoom.get(ws);
     if (!meta) return { error: 'Client not associated with any active room session' };
 
@@ -165,24 +165,38 @@ export class RoomManager {
     if (!player) return { error: `Player ${meta.playerId} not found in room` };
 
     if (!itemId || typeof itemId !== 'string') {
-      return { error: 'Invalid or missing item ID' };
+      return { error: 'Invalid or missing item ID', room, player };
     }
 
     const item = room.worldItems.get(itemId);
     if (!item) {
-      return { error: `Item '${itemId}' does not exist in room layout` };
+      return { error: `Item '${itemId}' does not exist in room layout`, room, player };
     }
 
     if (!item.isPickup) {
-      return { error: `Object '${itemId}' (${item.type}) is not a collectible pickup` };
+      return { error: `Object '${itemId}' (${item.type}) is not a collectible pickup`, room, player };
     }
 
     if (!item.available) {
-      return { error: `Item '${itemId}' has already been collected by player ${item.collectedBy}` };
+      return { error: `Item '${itemId}' has already been collected by player ${item.collectedBy}`, room, player };
     }
 
     // Server-side proximity check
-    const pPos = player.position || player.spawn;
+    let pPos = player.position || player.spawn;
+    if (clientPosition && isValidNumber(clientPosition.x) && isValidNumber(clientPosition.z)) {
+      const sDx = clientPosition.x - pPos.x;
+      const sDz = clientPosition.z - pPos.z;
+      const discrepancy = Math.sqrt(sDx * sDx + sDz * sDz);
+      if (discrepancy < 2.5) {
+        // Safe to use client position for interaction verification
+        pPos = {
+          x: clientPosition.x,
+          y: (typeof clientPosition.y === 'number') ? clientPosition.y : pPos.y,
+          z: clientPosition.z
+        };
+      }
+    }
+
     const iPos = item.position;
     console.log(`[HANDLE PICKUP] player ${player.id} pPos:`, pPos, 'itemPos:', iPos);
     const dx = pPos.x - iPos[0];
@@ -198,13 +212,13 @@ export class RoomManager {
     // Initial interaction distance is 2.1m. With network tolerance: 2.6m
     const MAX_PICKUP_DIST = 2.6;
     if (dist > MAX_PICKUP_DIST) {
-      return { error: `Player too far from item (${dist.toFixed(2)}m > 2.1m limit)` };
+      return { error: `Player too far from item (${dist.toFixed(2)}m > 2.1m limit)`, room, player };
     }
 
     // Add item to player's authoritative inventory
     const addResult = player.inventory.addItem(item.type, 1);
     if (!addResult.success) {
-      return { error: addResult.reason || 'Player inventory is full' };
+      return { error: addResult.reason || 'Player inventory is full', room, player };
     }
 
     // Atomically claim item
