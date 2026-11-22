@@ -258,13 +258,21 @@ export class WorldPlacementEditor {
       </div>
       <button class="ed-action-btn" id="ed-btn-revert" style="width:100%; margin-bottom: 12px;">Revert to Last Valid</button>
 
-      <!-- Placement Validation Status -->
+      <!-- Placement Validation Status & Overrides -->
       <div style="font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 4px;">Validation Status</div>
       <div id="ed-val-badge" style="padding: 6px 10px; border-radius: 3px; font-size: 11px; font-weight: 600; text-align: center; text-transform: uppercase; letter-spacing: 1px; background: rgba(0, 255, 136, 0.15); border: 1px solid #00ff88; color: #00ff88; margin-bottom: 4px;">
         NO SELECTION
       </div>
-      <div id="ed-val-reason" style="font-size: 10px; color: #9c9a92; font-family: monospace; min-height: 24px;">
+      <div id="ed-val-reason" style="font-size: 10px; color: #9c9a92; font-family: monospace; min-height: 24px; margin-bottom: 6px;">
         Select an object to inspect clearance & support.
+      </div>
+      <div id="ed-override-container" style="display: none; flex-direction: column; gap: 4px; margin-bottom: 10px;">
+        <button id="ed-btn-force-accept" class="ed-action-btn" style="background: rgba(0, 229, 255, 0.2); border-color: #00e5ff; color: #00e5ff; font-weight: 600; font-size: 10px; text-transform: uppercase;">
+          Force Accept Placement
+        </button>
+        <button id="ed-btn-remove-override" class="ed-action-btn" style="display: none; background: rgba(255, 187, 0, 0.2); border-color: #ffbb00; color: #ffbb00; font-weight: 600; font-size: 10px; text-transform: uppercase;">
+          Remove Override
+        </button>
       </div>
     `;
 
@@ -442,6 +450,9 @@ export class WorldPlacementEditor {
       btnRevert: document.getElementById('ed-btn-revert'),
       valBadge: document.getElementById('ed-val-badge'),
       valReason: document.getElementById('ed-val-reason'),
+      overrideContainer: document.getElementById('ed-override-container'),
+      btnForceAccept: document.getElementById('ed-btn-force-accept'),
+      btnRemoveOverride: document.getElementById('ed-btn-remove-override'),
       statusMsg: document.getElementById('ed-status-msg')
     };
   }
@@ -543,6 +554,27 @@ export class WorldPlacementEditor {
     });
     this.ui.btnExport.addEventListener('click', () => this.exportIteration());
     this.ui.btnClose.addEventListener('click', () => this.close());
+
+    // Placement Override Controls: Force Accept & Remove Override
+    if (this.ui.btnForceAccept) {
+      this.ui.btnForceAccept.addEventListener('click', () => {
+        if (!this.selectedItem) return;
+        const val = this.selectedItem.validation;
+        const originalDiagnostic = val?.failureReason || val?.reason || 'Designer approved';
+        this.itemManager.setPlacementOverride(this.selectedItem.id, true, originalDiagnostic);
+        this._updateInspector();
+        this._setStatus(`Placement approved for '${this.selectedItem.id}' (DEVELOPER APPROVED)`);
+      });
+    }
+
+    if (this.ui.btnRemoveOverride) {
+      this.ui.btnRemoveOverride.addEventListener('click', () => {
+        if (!this.selectedItem) return;
+        this.itemManager.setPlacementOverride(this.selectedItem.id, false);
+        this._updateInspector();
+        this._setStatus(`Removed override for '${this.selectedItem.id}', automated validation restored`);
+      });
+    }
 
     // Mode Toggle Buttons (Navigate Mode vs Edit Mode)
     if (this.ui.btnModeNav) {
@@ -819,6 +851,9 @@ export class WorldPlacementEditor {
       this.ui.valBadge.style.borderColor = '#666';
       this.ui.valBadge.style.color = '#888';
       this.ui.valReason.textContent = 'Select an object to inspect clearance & support.';
+      if (this.ui.overrideContainer) {
+        this.ui.overrideContainer.style.display = 'none';
+      }
       return;
     }
 
@@ -837,19 +872,57 @@ export class WorldPlacementEditor {
     this.ui.rotY.value = ((obj.rotation.y * 180) / Math.PI).toFixed(1);
     this.ui.rotZ.value = ((obj.rotation.z * 180) / Math.PI).toFixed(1);
 
-    const val = item.validation || { isValid: true };
-    if (val.isValid) {
+    const val = item.validation || { isValid: true, status: 'valid' };
+    const status = val.status || (val.isValid ? 'valid' : 'invalid');
+
+    if (this.ui.overrideContainer) {
+      this.ui.overrideContainer.style.display = 'flex';
+    }
+
+    if (status === 'overridden' || val.developerApproved) {
+      this.ui.valBadge.textContent = 'DEVELOPER APPROVED';
+      this.ui.valBadge.style.background = 'rgba(0, 229, 255, 0.2)';
+      this.ui.valBadge.style.borderColor = '#00e5ff';
+      this.ui.valBadge.style.color = '#00e5ff';
+      const orig = val.originalStatus ? `[Original: ${val.originalStatus.toUpperCase()}] ` : '';
+      const reason = val.reason || 'Placement approved by designer override.';
+      this.ui.valReason.innerHTML = `<span style="color:#00e5ff; font-weight:600;">&#10003; Approved by Designer</span><br><span style="color:#aaa;">${orig}${reason}</span>`;
+      if (this.ui.btnForceAccept) this.ui.btnForceAccept.style.display = 'none';
+      if (this.ui.btnRemoveOverride) this.ui.btnRemoveOverride.style.display = 'block';
+    } else if (status === 'valid') {
       this.ui.valBadge.textContent = 'VALID PLACEMENT';
       this.ui.valBadge.style.background = 'rgba(0, 255, 136, 0.15)';
       this.ui.valBadge.style.borderColor = '#00ff88';
       this.ui.valBadge.style.color = '#00ff88';
-      this.ui.valReason.textContent = 'Surface contact & boundary clearances confirmed.';
+      const clrText = (val.clearance !== undefined && isFinite(val.clearance))
+        ? `Surface contact & clearance confirmed (${(val.clearance * 100).toFixed(1)}cm).`
+        : 'Surface contact & boundary clearances confirmed.';
+      this.ui.valReason.textContent = clrText;
+      if (this.ui.btnForceAccept) this.ui.btnForceAccept.style.display = 'none';
+      if (this.ui.btnRemoveOverride) this.ui.btnRemoveOverride.style.display = 'none';
+    } else if (status === 'warning') {
+      this.ui.valBadge.textContent = 'PLACEMENT WARNING';
+      this.ui.valBadge.style.background = 'rgba(255, 187, 0, 0.2)';
+      this.ui.valBadge.style.borderColor = '#ffbb00';
+      this.ui.valBadge.style.color = '#ffbb00';
+      this.ui.valReason.textContent = val.reason || val.warningReason || 'Proximity or support edge warning detected.';
+      if (this.ui.btnForceAccept) {
+        this.ui.btnForceAccept.style.display = 'block';
+        this.ui.btnForceAccept.textContent = 'Force Accept Placement';
+      }
+      if (this.ui.btnRemoveOverride) this.ui.btnRemoveOverride.style.display = 'none';
     } else {
+      // Invalid
       this.ui.valBadge.textContent = 'INVALID PLACEMENT';
       this.ui.valBadge.style.background = 'rgba(255, 34, 68, 0.25)';
       this.ui.valBadge.style.borderColor = '#ff2244';
       this.ui.valBadge.style.color = '#ff4466';
-      this.ui.valReason.textContent = val.failureReason || 'Collision or boundary violation detected!';
+      this.ui.valReason.textContent = val.failureReason || val.reason || 'Collision or boundary violation detected!';
+      if (this.ui.btnForceAccept) {
+        this.ui.btnForceAccept.style.display = 'block';
+        this.ui.btnForceAccept.textContent = 'Force Accept Placement';
+      }
+      if (this.ui.btnRemoveOverride) this.ui.btnRemoveOverride.style.display = 'none';
     }
   }
 
@@ -907,13 +980,37 @@ export class WorldPlacementEditor {
     }
   }
 
-  async exportIteration() {
+  async exportIteration(forceExport = false) {
     try {
+      // Check for un-overridden invalid items
+      const invalidItems = this.itemManager.items.filter(item => {
+        const val = item.validation;
+        const isApproved = item.override || (val && (val.status === 'overridden' || val.developerApproved));
+        return val && val.status === 'invalid' && !isApproved;
+      });
+
+      if (invalidItems.length > 0 && !forceExport) {
+        const itemSummaries = invalidItems.map(i => `• ${i.id} (${i.type}): ${i.validation?.failureReason || i.validation?.reason || 'Invalid'}`).join('\n');
+        const confirmMsg = `Export Validation Notice:\n${invalidItems.length} item(s) have un-overridden invalid placements:\n\n${itemSummaries}\n\nAutomated validation advises. The developer decides.\nDo you want to EXPORT ANYWAY?`;
+        const userChoice = (typeof window !== 'undefined' && typeof window.confirm === 'function')
+          ? window.confirm(confirmMsg)
+          : true;
+        if (!userChoice) {
+          this._setStatus('Export cancelled by developer.');
+          return;
+        }
+        forceExport = true;
+      }
+
       const exportDoc = this.itemManager.exportLayoutData(
         `Visual placement layout via Editor at ${new Date().toLocaleTimeString()}`,
         'developer'
       );
-      this._setStatus('Exporting layout iteration...');
+      if (forceExport) {
+        exportDoc.forceExport = true;
+      }
+
+      this._setStatus(forceExport ? 'Force-exporting layout iteration...' : 'Exporting layout iteration...');
 
       const res = await fetch('/api/developer/world-layout/export', {
         method: 'POST',
@@ -940,7 +1037,8 @@ export class WorldPlacementEditor {
       if (this.ui.layoutSelect) {
         this.ui.layoutSelect.value = result.filename;
       }
-      this._setStatus(`Exported ${result.filename} (${result.itemCount} items)`);
+      const forcedNotice = result.forced ? ' [FORCED OVERRIDE]' : '';
+      this._setStatus(`Exported ${result.filename} (${result.itemCount} items)${forcedNotice}`);
     } catch (err) {
       console.error('[WorldEditor] Export error:', err);
       this._setStatus(`Export failed: ${err.message}`);

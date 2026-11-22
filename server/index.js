@@ -116,7 +116,7 @@ const server = http.createServer((req, res) => {
   // CORS & WebSocket upgrade headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -124,8 +124,12 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Normalize URL: strip optional /doom-zombies prefix
+  const rawUrl = req.url || '/';
+  const normUrl = rawUrl.replace(/^\/doom-zombies(?=\/|$)/, '') || '/';
+
   // Server-controlled developer configuration endpoint
-  if (req.url === '/__config' && req.method === 'GET') {
+  if ((normUrl === '/__config' || req.url === '/__config') && req.method === 'GET') {
     const configPayload = JSON.stringify({
       renderingDevTools: DEV_RENDERING,
       latestLayout: (DEV_RENDERING && activeDevLayout && activeDevLayout.filename !== 'default') ? {
@@ -143,8 +147,8 @@ const server = http.createServer((req, res) => {
   }
 
   // Developer World Placement Layout Endpoints (Only enabled when --dev-rendering is active)
-  if (req.url.startsWith('/api/developer/world-layout/')) {
-    const layoutUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  if (normUrl.startsWith('/api/developer/world-layout/')) {
+    const layoutUrl = new URL(normUrl, `http://${req.headers.host || 'localhost'}`);
     const subpath = layoutUrl.pathname.replace('/api/developer/world-layout/', '').replace(/\/+$/, '');
 
     if (!DEV_RENDERING) {
@@ -289,6 +293,7 @@ const server = http.createServer((req, res) => {
           if (!Array.isArray(payload.placements)) {
             throw new Error('Placements must be an array.');
           }
+          const invalidPlacements = [];
           for (let i = 0; i < payload.placements.length; i++) {
             const p = payload.placements[i];
             if (!p || typeof p !== 'object') {
@@ -303,6 +308,39 @@ const server = http.createServer((req, res) => {
             if (!Array.isArray(p.position) || p.position.length !== 3 || p.position.some(n => typeof n !== 'number' || !isFinite(n))) {
               throw new Error(`Placement '${p.id}' has invalid numeric position [x, y, z].`);
             }
+
+            // Developer-authoritative validation check:
+            // Warnings and developer-approved/overridden items are accepted.
+            // Items with status === 'invalid' without developer approval are flagged.
+            const v = p.validation;
+            const isApproved = v && (v.status === 'overridden' || v.developerApproved === true);
+            if (v && v.status === 'invalid' && !isApproved) {
+              invalidPlacements.push({
+                id: p.id,
+                type: p.type,
+                reason: v.failureReason || v.wallReason || 'Collision or boundary violation detected'
+              });
+            }
+          }
+
+          // If un-overridden invalid placements exist and developer did not specify forceExport, reject with HTTP 400 JSON
+          if (invalidPlacements.length > 0 && !payload.forceExport) {
+            console.warn(`[WORLD EDITOR] Export rejected: ${invalidPlacements.length} un-overridden invalid placements exist.`);
+            const errRes = JSON.stringify({
+              error: `Validation failed: layout contains ${invalidPlacements.length} un-overridden invalid placement(s).`,
+              invalidCount: invalidPlacements.length,
+              invalidPlacements
+            });
+            res.writeHead(400, {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(errRes)
+            });
+            res.end(errRes);
+            return;
+          }
+
+          if (invalidPlacements.length > 0 && payload.forceExport) {
+            console.log(`[WORLD EDITOR] Force-export accepted by developer override (${invalidPlacements.length} un-overridden invalid items).`);
           }
 
           // 2. Scan world-layouts/level0/ for next iteration number
@@ -329,7 +367,7 @@ const server = http.createServer((req, res) => {
             createdAt: new Date().toISOString(),
             author: payload.author || 'developer',
             description: payload.description || `Level 0 World Layout Iteration ${nextIter}`,
-            catalog: payload.catalog || {},
+            catalog: (payload.catalog && Object.keys(payload.catalog).length > 0) ? payload.catalog : (activeDevLayout?.data?.catalog || {}),
             placements: payload.placements.map(p => ({
               id: p.id,
               type: p.type,
@@ -351,7 +389,13 @@ const server = http.createServer((req, res) => {
                 +(p.scale?.[2] || 1).toFixed(4)
               ],
               anchor: p.anchor || { surface: p.surfaceType || 'floor' },
-              tags: Array.isArray(p.tags) ? p.tags : ['collidable']
+              tags: Array.isArray(p.tags) ? p.tags : ['collidable'],
+              validation: p.validation ? {
+                status: p.validation.status || 'valid',
+                developerApproved: !!p.validation.developerApproved,
+                originalStatus: p.validation.originalStatus || null,
+                reason: p.validation.reason || p.validation.failureReason || null
+              } : { status: 'valid', developerApproved: false }
             })),
             spawnGroups: Array.isArray(payload.spawnGroups) ? payload.spawnGroups : [
               {
@@ -415,7 +459,8 @@ const server = http.createServer((req, res) => {
             filename,
             itemCount: layoutDoc.placements.length,
             spawnGroupCount: layoutDoc.spawnGroups.length,
-            path: `world-layouts/level0/${filename}`
+            path: `world-layouts/level0/${filename}`,
+            forced: invalidPlacements.length > 0 && !!payload.forceExport
           });
 
           res.writeHead(200, {
@@ -446,7 +491,7 @@ const server = http.createServer((req, res) => {
   }
 
   // API endpoints for automated verification and screenshots
-  if (req.url === '/api/log' && req.method === 'POST') {
+  if (normUrl === '/api/log' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
@@ -457,7 +502,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (req.url === '/api/screenshot' && req.method === 'POST') {
+  if (normUrl === '/api/screenshot' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
@@ -477,7 +522,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (req.url === '/api/telemetry' && req.method === 'POST') {
+  if (normUrl === '/api/telemetry' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
@@ -495,8 +540,19 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Intercept any unmatched /api/* route before falling through to static files
+  if (normUrl.startsWith('/api/')) {
+    const apiNotFound = JSON.stringify({ error: `API route not found: ${normUrl}` });
+    res.writeHead(404, {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(apiNotFound)
+    });
+    res.end(apiNotFound);
+    return;
+  }
+
   // Sanitize and resolve URL
-  let parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  let parsedUrl = new URL(normUrl, `http://${req.headers.host || 'localhost'}`);
   let pathname = parsedUrl.pathname;
   if (pathname === '/' || pathname === '') {
     pathname = '/multiplayer.html';

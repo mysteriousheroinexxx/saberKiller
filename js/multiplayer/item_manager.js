@@ -34,10 +34,113 @@ export class WorldItemManager {
     this.propMap = new Map(); // propId -> wrapper
     this.isLoaded = false;
     this.debugVisualsActive = false;
+
+    // Obstacle geometry cache for high-precision narrow-phase collision (SAT)
+    this.obstacles = [];
+    this.obstaclesLoaded = false;
   }
 
   setCollisionHandler(ch) {
     this.collisionHandler = ch;
+  }
+
+  /**
+   * Initializes physical level obstacle bounds from map JSON (walls & pillars)
+   */
+  async initObstacles(map = null) {
+    if (this.obstaclesLoaded && this.obstacles.length > 0) return;
+    try {
+      let mapData = map;
+      if (!mapData) {
+        const res = await fetch('assets/level0/level0_map.json');
+        mapData = await res.json();
+      }
+      this._buildObstaclesFromMap(mapData);
+      this.obstaclesLoaded = true;
+    } catch (e) {
+      console.warn('[WorldItemManager] Failed to load obstacles from level0_map.json:', e);
+    }
+  }
+
+  _buildObstaclesFromMap(map) {
+    this.obstacles = [];
+    if (!map) return;
+
+    // 1. Level 0 Walls (BoxGeometry 10.0 x 4.0 x 0.8 translated by [0, 2.0, 0])
+    const walls = map.walls || [];
+    for (let i = 0; i < walls.length; i++) {
+      const w = walls[i];
+      const cx = w[0], cy = (w[1] || 0) + 2.0, cz = w[2];
+      const rotY = w[3] || 0;
+      const hx = 5.0, hy = 2.0, hz = 0.4;
+      const cos = Math.cos(rotY);
+      const sin = Math.sin(rotY);
+      const corners = [
+        { x: cx - hx * cos + hz * sin, z: cz - hx * sin - hz * cos },
+        { x: cx + hx * cos + hz * sin, z: cz + hx * sin - hz * cos },
+        { x: cx + hx * cos - hz * sin, z: cz + hx * sin + hz * cos },
+        { x: cx - hx * cos - hz * sin, z: cz - hx * sin + hz * cos }
+      ];
+      const axes = [
+        { x: cos, z: sin },
+        { x: -sin, z: cos }
+      ];
+      const xs = corners.map(c => c.x);
+      const zs = corners.map(c => c.z);
+      this.obstacles.push({
+        id: `Wall #${i}`,
+        type: 'wall',
+        cx, cy, cz,
+        minY: (w[1] || 0),
+        maxY: (w[1] || 0) + 4.0,
+        corners,
+        axes,
+        aabb: {
+          minX: Math.min(...xs),
+          maxX: Math.max(...xs),
+          minZ: Math.min(...zs),
+          maxZ: Math.max(...zs),
+          minY: (w[1] || 0),
+          maxY: (w[1] || 0) + 4.0
+        }
+      });
+    }
+
+    // 2. Level 0 Pillars (BoxGeometry 2.0 x 4.0 x 2.0 translated by [0, 2.0, 0])
+    const pillars = map.pillars || [];
+    for (let i = 0; i < pillars.length; i++) {
+      const p = pillars[i];
+      const cx = p[0], cy = (p[1] || 0) + 2.0, cz = p[2];
+      const hx = 1.0, hy = 2.0, hz = 1.0;
+      const corners = [
+        { x: cx - hx, z: cz - hz },
+        { x: cx + hx, z: cz - hz },
+        { x: cx + hx, z: cz + hz },
+        { x: cx - hx, z: cz + hz }
+      ];
+      const axes = [
+        { x: 1, z: 0 },
+        { x: 0, z: 1 }
+      ];
+      this.obstacles.push({
+        id: `Pillar #${i}`,
+        type: 'pillar',
+        cx, cy, cz,
+        minY: (p[1] || 0),
+        maxY: (p[1] || 0) + 4.0,
+        corners,
+        axes,
+        aabb: {
+          minX: cx - hx,
+          maxX: cx + hx,
+          minZ: cz - hz,
+          maxZ: cz + hz,
+          minY: (p[1] || 0),
+          maxY: (p[1] || 0) + 4.0
+        }
+      });
+    }
+    console.log(`[WorldItemManager] Cached ${this.obstacles.length} narrow-phase obstacle geometries for Level 0`);
   }
 
   /**
@@ -181,34 +284,279 @@ export class WorldItemManager {
   }
 
   /**
-   * Checks whether a 3D bounding box intersects Level 0 wall boundaries
-   * Level 0 Hallway North Wall is at Z = -184.86, South Wall is at Z = -189.86
+   * Computes exact 2D Oriented Bounding Box (OBB) on XZ plane for an item or prop
    */
-  checkWallIntersection(box) {
-    const NORTH_WALL_Z = -184.86;
-    const SOUTH_WALL_Z = -189.86;
-    const WALL_TOLERANCE = 0.02; // 2cm boundary tolerance
+  _getItemOBB(obj, box) {
+    obj.updateMatrixWorld(true);
+    const pos = obj.position;
+    const rotY = obj.rotation.y || 0;
+    const scale = obj.scale || { x: 1, y: 1, z: 1 };
+    const modelSize = obj.userData?.modelSize;
 
-    // North wall is at Z = -184.86; box.max.z penetrating past North wall means box.max.z > NORTH_WALL_Z
-    // South wall is at Z = -189.86; box.min.z penetrating past South wall means box.min.z < SOUTH_WALL_Z
-    if (box.max.z > (NORTH_WALL_Z + WALL_TOLERANCE) || box.min.z < (SOUTH_WALL_Z - WALL_TOLERANCE)) {
-      return {
-        intersects: true,
-        reason: box.max.z > (NORTH_WALL_Z + WALL_TOLERANCE) ? 'North Wall Penetration' : 'South Wall Penetration'
-      };
+    let hx, hz;
+    if (modelSize) {
+      hx = (modelSize.x * scale.x) / 2;
+      hz = (modelSize.z * scale.z) / 2;
+    } else {
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      hx = size.x / 2;
+      hz = size.z / 2;
     }
 
-    if (this.collisionHandler && typeof this.collisionHandler.isWall === 'function' && typeof this.collisionHandler.cellOfX === 'function') {
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-      const c = this.collisionHandler.cellOfX(center.x);
-      const r = this.collisionHandler.cellOfZ(center.z);
-      if (this.collisionHandler.isWall(c, r)) {
-        return { intersects: true, reason: `Grid Cell Wall (${c}, ${r})` };
+    const cos = Math.cos(rotY);
+    const sin = Math.sin(rotY);
+    const cx = pos.x;
+    const cz = pos.z;
+
+    const corners = [
+      { x: cx - hx * cos + hz * sin, z: cz - hx * sin - hz * cos },
+      { x: cx + hx * cos + hz * sin, z: cz + hx * sin - hz * cos },
+      { x: cx + hx * cos - hz * sin, z: cz + hx * sin + hz * cos },
+      { x: cx - hx * cos - hz * sin, z: cz - hx * sin + hz * cos }
+    ];
+    const axes = [
+      { x: cos, z: sin },
+      { x: -sin, z: cos }
+    ];
+
+    return {
+      cx, cz,
+      minY: box.min.y,
+      maxY: box.max.y,
+      corners,
+      axes,
+      hx, hz, rotY
+    };
+  }
+
+  /**
+   * Separating Axis Theorem (SAT) evaluation for two 2D oriented bounding boxes on XZ plane
+   */
+  _testOBBSAT2D(boxA, boxB) {
+    const axes = [boxA.axes[0], boxA.axes[1], boxB.axes[0], boxB.axes[1]];
+    let minOverlap = Infinity;
+    let isSeparated = false;
+    let maxClearance = 0;
+
+    for (let i = 0; i < axes.length; i++) {
+      const axis = axes[i];
+      let minA = Infinity, maxA = -Infinity;
+      for (let j = 0; j < boxA.corners.length; j++) {
+        const dot = boxA.corners[j].x * axis.x + boxA.corners[j].z * axis.z;
+        if (dot < minA) minA = dot;
+        if (dot > maxA) maxA = dot;
+      }
+
+      let minB = Infinity, maxB = -Infinity;
+      for (let j = 0; j < boxB.corners.length; j++) {
+        const dot = boxB.corners[j].x * axis.x + boxB.corners[j].z * axis.z;
+        if (dot < minB) minB = dot;
+        if (dot > maxB) maxB = dot;
+      }
+
+      const overlap = Math.min(maxA, maxB) - Math.max(minA, minB);
+      if (overlap <= 0) {
+        isSeparated = true;
+        const clearance = Math.max(minA - maxB, minB - maxA);
+        if (clearance > maxClearance) {
+          maxClearance = clearance;
+        }
+      } else {
+        if (overlap < minOverlap) {
+          minOverlap = overlap;
+        }
       }
     }
 
-    return { intersects: false, reason: null };
+    if (isSeparated) {
+      return { intersects: false, clearance: maxClearance, penetration: 0 };
+    } else {
+      return { intersects: true, clearance: 0, penetration: minOverlap };
+    }
+  }
+
+  /**
+   * Checks whether an object collides with Level 0 architectural geometry (walls and pillars)
+   * Separates broad-phase candidate filtering from narrow-phase 2D SAT evaluation.
+   * Tolerances:
+   * - <= 0.01m (1cm): Contact tolerance (touching, valid)
+   * - < 0.08m (8cm): Proximity warning (close to wall, advisory only)
+   * - > 0.02m (2cm): Confirmed penetration (invalid)
+   */
+  checkWallIntersection(box, obj = null) {
+    if (!this.obstacles || this.obstacles.length === 0) {
+      return { status: 'valid', intersects: false, reason: null, clearance: Infinity, penetration: 0 };
+    }
+
+    // 1. Broad Phase: Candidate filtering using expanded 2D AABB
+    const BROAD_PHASE_MARGIN = 0.25; // 25cm candidate radius
+    const itemMinX = box.min.x - BROAD_PHASE_MARGIN;
+    const itemMaxX = box.max.x + BROAD_PHASE_MARGIN;
+    const itemMinZ = box.min.z - BROAD_PHASE_MARGIN;
+    const itemMaxZ = box.max.z + BROAD_PHASE_MARGIN;
+    const itemMinY = box.min.y;
+    const itemMaxY = box.max.y;
+
+    const candidateObstacles = [];
+    for (let i = 0; i < this.obstacles.length; i++) {
+      const obs = this.obstacles[i];
+      // Vertical range check
+      if (itemMaxY < obs.minY || itemMinY > obs.maxY) continue;
+      // Horizontal AABB check
+      if (itemMaxX < obs.aabb.minX || itemMinX > obs.aabb.maxX ||
+          itemMaxZ < obs.aabb.minZ || itemMinZ > obs.aabb.maxZ) continue;
+
+      candidateObstacles.push(obs);
+    }
+
+    // If broad phase detects no obstacles within candidate margin, return immediately as VALID
+    if (candidateObstacles.length === 0) {
+      return { status: 'valid', intersects: false, reason: null, clearance: BROAD_PHASE_MARGIN, penetration: 0 };
+    }
+
+    // 2. Narrow Phase: Precise Oriented Bounding Box (OBB) evaluation using SAT
+    const itemOBB = obj ? this._getItemOBB(obj, box) : {
+      corners: [
+        { x: box.min.x, z: box.min.z },
+        { x: box.max.x, z: box.min.z },
+        { x: box.max.x, z: box.max.z },
+        { x: box.min.x, z: box.max.z }
+      ],
+      axes: [
+        { x: 1, z: 0 },
+        { x: 0, z: 1 }
+      ]
+    };
+
+    let confirmedInvalid = null;
+    let closestWarning = null;
+    let minOverallClearance = Infinity;
+
+    const CONTACT_TOLERANCE = 0.01;      // <= 1cm touching tolerance
+    const PENETRATION_TOLERANCE = 0.02;  // > 2cm confirmed penetration
+    const PROXIMITY_WARNING = 0.08;      // < 8cm proximity warning
+
+    for (const obs of candidateObstacles) {
+      const sat = this._testOBBSAT2D(itemOBB, obs);
+      if (sat.intersects) {
+        if (sat.penetration > PENETRATION_TOLERANCE) {
+          if (!confirmedInvalid || sat.penetration > confirmedInvalid.penetration) {
+            confirmedInvalid = {
+              status: 'invalid',
+              intersects: true,
+              obstacleId: obs.id,
+              penetration: sat.penetration,
+              clearance: 0,
+              reason: `Wall penetration: ${(sat.penetration * 100).toFixed(1)}cm into ${obs.id}`
+            };
+          }
+        } else if (sat.penetration > CONTACT_TOLERANCE) {
+          if (!closestWarning) {
+            closestWarning = {
+              status: 'warning',
+              intersects: false,
+              obstacleId: obs.id,
+              penetration: sat.penetration,
+              clearance: 0,
+              reason: `Touching wall face (${obs.id})`
+            };
+          }
+        }
+      } else {
+        if (sat.clearance < minOverallClearance) {
+          minOverallClearance = sat.clearance;
+        }
+        if (sat.clearance < PROXIMITY_WARNING) {
+          if (!closestWarning || sat.clearance < closestWarning.clearance) {
+            closestWarning = {
+              status: 'warning',
+              intersects: false,
+              obstacleId: obs.id,
+              penetration: 0,
+              clearance: sat.clearance,
+              reason: `Close to wall (${(sat.clearance * 100).toFixed(1)}cm clearance to ${obs.id})`
+            };
+          }
+        }
+      }
+    }
+
+    if (confirmedInvalid) {
+      return confirmedInvalid;
+    }
+    if (closestWarning) {
+      return closestWarning;
+    }
+    return {
+      status: 'valid',
+      intersects: false,
+      reason: null,
+      clearance: minOverallClearance,
+      penetration: 0
+    };
+  }
+
+  /**
+   * Checks whether an item resting on furniture stays reliably on the support plane
+   * Categories:
+   * - VALID: Footprint fully contained on support surface
+   * - WARNING: Minor overhang <= 5cm, support contact still solid
+   * - INVALID: Significant overhang > 12cm or center of mass completely off surface
+   */
+  checkSupportBounds(box, item) {
+    const surfaceType = item.anchor?.surface || item.surfaceType || 'floor';
+    if (surfaceType === 'floor') {
+      return { status: 'valid', isSupported: true, reason: null, overhang: 0 };
+    }
+
+    let surf = null;
+    if (surfaceType === 'table') {
+      const propId = item.anchor?.supportProp || 'prop_table_01';
+      surf = this.detectFurnitureSurface(propId, 'table');
+    } else if (surfaceType === 'shelf_tier') {
+      const propId = item.anchor?.supportProp || 'prop_shelf_01';
+      const tier = item.anchor?.tier || item.shelfTier || 1;
+      surf = this.detectFurnitureSurface(propId, 'shelf_tier', tier);
+    }
+
+    if (!surf || !surf.bounds || !surf.isValidSupport) {
+      return { status: 'invalid', isSupported: false, reason: 'Missing Support Furniture', overhang: 0 };
+    }
+
+    const b = surf.bounds;
+    const OVERHANG_WARNING = 0.05; // 5cm overhang warning threshold
+    const OVERHANG_INVALID = 0.12; // 12cm overhang confirmed invalid
+
+    const leftOverhang = b.minX - box.min.x;
+    const rightOverhang = box.max.x - b.maxX;
+    const frontOverhang = b.minZ - box.min.z;
+    const backOverhang = box.max.z - b.maxZ;
+    const maxOverhang = Math.max(0, leftOverhang, rightOverhang, frontOverhang, backOverhang);
+
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    const centerOffSurface = (center.x < b.minX || center.x > b.maxX || center.z < b.minZ || center.z > b.maxZ);
+
+    if (centerOffSurface || maxOverhang > OVERHANG_INVALID) {
+      return {
+        status: 'invalid',
+        isSupported: false,
+        reason: `Off Support Surface Bounds (${(maxOverhang * 100).toFixed(1)}cm overhang)`,
+        overhang: maxOverhang
+      };
+    }
+
+    if (maxOverhang > 0.01) {
+      return {
+        status: 'warning',
+        isSupported: true,
+        reason: `Near support edge (${(maxOverhang * 100).toFixed(1)}cm overhang)`,
+        overhang: maxOverhang
+      };
+    }
+
+    return { status: 'valid', isSupported: true, reason: null, overhang: 0 };
   }
 
   /**
@@ -218,6 +566,9 @@ export class WorldItemManager {
     const currentItem = this.getItemById(currentItemId);
     const isCurrentProp = (currentCategory || currentItem?.category) === 'prop';
     const supportProp = currentSupportProp || currentItem?.anchor?.supportProp;
+
+    let maxOverlapDepth = 0;
+    let collidingId = null;
 
     for (const other of this.items) {
       if (other.id === currentItemId) continue;
@@ -233,10 +584,139 @@ export class WorldItemManager {
       other.object.updateMatrixWorld(true);
       const otherBox = new THREE.Box3().setFromObject(other.object);
       if (itemBox.intersectsBox(otherBox)) {
-        return { overlaps: true, otherId: other.id };
+        // Calculate 3D penetration depth
+        const overlapX = Math.min(itemBox.max.x, otherBox.max.x) - Math.max(itemBox.min.x, otherBox.min.x);
+        const overlapY = Math.min(itemBox.max.y, otherBox.max.y) - Math.max(itemBox.min.y, otherBox.min.y);
+        const overlapZ = Math.min(itemBox.max.z, otherBox.max.z) - Math.max(itemBox.min.z, otherBox.min.z);
+        const depth = Math.min(overlapX, overlapY, overlapZ);
+
+        // Contact tolerance: <= 1cm touching is allowed
+        if (depth > 0.02) {
+          return {
+            status: 'invalid',
+            overlaps: true,
+            otherId: other.id,
+            depth,
+            reason: `Intersects Object (${other.id}) by ${(depth * 100).toFixed(1)}cm`
+          };
+        } else if (depth > 0.005) {
+          maxOverlapDepth = depth;
+          collidingId = other.id;
+        }
       }
     }
-    return { overlaps: false, otherId: null };
+
+    if (collidingId) {
+      return {
+        status: 'warning',
+        overlaps: false,
+        otherId: collidingId,
+        depth: maxOverlapDepth,
+        reason: `Touching adjacent item (${collidingId})`
+      };
+    }
+    return { status: 'valid', overlaps: false, otherId: null, depth: 0, reason: null };
+  }
+
+  /**
+   * Harmonizes automated validation results with developer-authoritative overrides
+   */
+  evaluatePlacementStatus(item, wallCheck, supportCheck, overlapCheck) {
+    const isOverridden = item.override === true || item.validation?.developerApproved === true;
+
+    // Determine auto-status before override
+    let autoStatus = 'valid';
+    let autoReason = null;
+
+    if (wallCheck.status === 'invalid') {
+      autoStatus = 'invalid';
+      autoReason = wallCheck.reason;
+    } else if (supportCheck.status === 'invalid') {
+      autoStatus = 'invalid';
+      autoReason = supportCheck.reason;
+    } else if (overlapCheck.status === 'invalid') {
+      autoStatus = 'invalid';
+      autoReason = overlapCheck.reason;
+    } else if (wallCheck.status === 'warning') {
+      autoStatus = 'warning';
+      autoReason = wallCheck.reason;
+    } else if (supportCheck.status === 'warning') {
+      autoStatus = 'warning';
+      autoReason = supportCheck.reason;
+    } else if (overlapCheck.status === 'warning') {
+      autoStatus = 'warning';
+      autoReason = overlapCheck.reason;
+    }
+
+    if (isOverridden) {
+      return {
+        status: 'overridden',
+        isValid: true,
+        developerApproved: true,
+        originalStatus: autoStatus,
+        reason: autoReason || 'Developer approved placement',
+        failureReason: null,
+        wallCheck,
+        supportCheck,
+        overlapCheck
+      };
+    }
+
+    return {
+      status: autoStatus,
+      isValid: autoStatus !== 'invalid',
+      developerApproved: false,
+      originalStatus: autoStatus,
+      reason: autoReason,
+      failureReason: autoStatus === 'invalid' ? autoReason : null,
+      warningReason: autoStatus === 'warning' ? autoReason : null,
+      wallCheck,
+      supportCheck,
+      overlapCheck
+    };
+  }
+
+  /**
+   * Developer-authoritative override toggle for placement validation
+   */
+  setPlacementOverride(id, approved, reason = null) {
+    const item = this.getItemById(id);
+    if (!item) return null;
+
+    item.override = !!approved;
+    if (approved) {
+      const prevVal = item.validation || {};
+      item.validation = {
+        ...prevVal,
+        status: 'overridden',
+        isValid: true,
+        developerApproved: true,
+        originalStatus: prevVal.status || 'invalid',
+        reason: reason || prevVal.failureReason || prevVal.reason || 'Developer approved placement',
+        failureReason: null
+      };
+    } else {
+      item.override = false;
+      if (item.validation) {
+        item.validation.developerApproved = false;
+      }
+      this.updateItemTransform(id, item.object.position, item.object.rotation, item.object.scale);
+    }
+
+    if (item.userData) {
+      item.userData.validation = item.validation;
+    }
+
+    const helper = this.debugContainer.getObjectByName(`debug_box_${item.id}`);
+    if (helper && helper.material) {
+      let color = 0x00ff88;
+      if (item.validation.status === 'overridden' || item.validation.developerApproved) color = 0x00e5ff;
+      else if (item.validation.status === 'invalid') color = 0xff2244;
+      else if (item.validation.status === 'warning') color = 0xffbb00;
+      helper.material.color.setHex(color);
+    }
+
+    return item.validation;
   }
 
   /**
@@ -261,7 +741,9 @@ export class WorldItemManager {
       this.catalog = data.catalog || {};
       const placements = data.placements || [];
 
-      // 1. Preload all unique model URLs
+      // 1. Preload all unique model URLs and initialize obstacle geometries
+      await this.initObstacles();
+
       const uniqueUrls = new Set();
       for (const key of Object.keys(this.catalog)) {
         if (this.catalog[key].modelUrl) {
@@ -359,33 +841,23 @@ export class WorldItemManager {
     wrapper.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(wrapper);
 
-    // Wall intersection check
-    const wallCheck = this.checkWallIntersection(box);
+    // 1. Wall intersection check with broad-phase + narrow-phase SAT
+    const wallCheck = this.checkWallIntersection(box, wrapper);
 
-    // Support bounds perimeter check
-    if (detectedSurface && detectedSurface.bounds) {
-      const b = detectedSurface.bounds;
-      const margin = 0.05;
-      isSupported = (box.min.x >= b.minX - margin &&
-                     box.max.x <= b.maxX + margin &&
-                     box.min.z >= b.minZ - margin &&
-                     box.max.z <= b.maxZ + margin);
-    }
+    // 2. Support bounds check
+    const supportCheck = this.checkSupportBounds(box, { anchor, surfaceType, shelfTier: p.shelfTier || anchor.tier });
 
-    // Overlap check
+    // 3. Overlap check
     const overlapCheck = this.checkObjectOverlap(box, p.id, def.category, anchor.supportProp);
 
-    const isValid = !wallCheck.intersects && isSupported && !overlapCheck.overlaps;
-
-    const validation = {
-      isValid,
-      wallIntersection: wallCheck.intersects,
-      wallReason: wallCheck.reason,
-      objectOverlap: overlapCheck.overlaps,
-      overlapId: overlapCheck.otherId,
-      isSupported,
-      detectedSurfaceY: targetY
-    };
+    // 4. Harmonize validation with developer-authoritative overrides
+    const isOverridden = !!(p.validation?.developerApproved || p.validation?.status === 'overridden');
+    const validation = this.evaluatePlacementStatus(
+      { override: isOverridden, validation: p.validation },
+      wallCheck,
+      supportCheck,
+      overlapCheck
+    );
 
     wrapper.userData = {
       ...wrapper.userData,
@@ -411,6 +883,7 @@ export class WorldItemManager {
       shelfTier: p.shelfTier || anchor.tier || null,
       anchor,
       definition: def,
+      override: isOverridden,
       userData: wrapper.userData,
       object: wrapper,
       validation
@@ -475,14 +948,21 @@ export class WorldItemManager {
       }
     }
 
-    // 2. Draw Item Bounding Boxes (Green = Valid, Red = Invalid / Intersecting)
+    // 2. Draw Item Bounding Boxes (Green = Valid, Amber = Warning, Red = Invalid, Cyan = Developer Approved)
     for (const item of this.items) {
       const obj = item.object;
       obj.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(obj);
 
-      const isValid = item.validation?.isValid !== false;
-      const color = isValid ? 0x00ff88 : 0xff2244;
+      let color = 0x00ff88; // Default valid green
+      const v = item.validation;
+      if (item.override || (v && (v.status === 'overridden' || v.developerApproved))) {
+        color = 0x00e5ff; // Cyan: Developer Approved
+      } else if (v && v.status === 'invalid') {
+        color = 0xff2244; // Red: Invalid collision or boundary violation
+      } else if (v && v.status === 'warning') {
+        color = 0xffbb00; // Amber: Proximity or support edge warning
+      }
 
       const helper = new THREE.Box3Helper(box, color);
       helper.name = `debug_box_${item.id}`;
@@ -691,60 +1171,17 @@ export class WorldItemManager {
     obj.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(obj);
 
-    // Wall intersection check
-    const wallCheck = this.checkWallIntersection(box);
+    // 1. Wall intersection check with broad-phase + narrow-phase SAT
+    const wallCheck = this.checkWallIntersection(box, obj);
 
-    // Furniture support boundary check
-    let isSupported = true;
-    let detectedSurfaceY = obj.position.y;
-    const surfaceType = item.anchor?.surface || item.surfaceType || 'floor';
+    // 2. Support bounds check
+    const supportCheck = this.checkSupportBounds(box, item);
 
-    if (surfaceType === 'table') {
-      const propId = item.anchor?.supportProp || 'prop_table_01';
-      const surf = this.detectFurnitureSurface(propId, 'table');
-      if (surf && surf.bounds) {
-        const b = surf.bounds;
-        const margin = 0.05;
-        isSupported = (box.min.x >= b.minX - margin &&
-                       box.max.x <= b.maxX + margin &&
-                       box.min.z >= b.minZ - margin &&
-                       box.max.z <= b.maxZ + margin);
-        detectedSurfaceY = surf.surfaceY;
-      }
-    } else if (surfaceType === 'shelf_tier') {
-      const propId = item.anchor?.supportProp || 'prop_shelf_01';
-      const tier = item.anchor?.tier || item.shelfTier || 1;
-      const surf = this.detectFurnitureSurface(propId, 'shelf_tier', tier);
-      if (surf && surf.bounds) {
-        const b = surf.bounds;
-        const margin = 0.05;
-        isSupported = (box.min.x >= b.minX - margin &&
-                       box.max.x <= b.maxX + margin &&
-                       box.min.z >= b.minZ - margin &&
-                       box.max.z <= b.maxZ + margin);
-        detectedSurfaceY = surf.surfaceY;
-      }
-    }
-
-    // Overlap check
+    // 3. Overlap check
     const overlapCheck = this.checkObjectOverlap(box, item.id, item.category, item.anchor?.supportProp);
 
-    const isValid = !wallCheck.intersects && isSupported && !overlapCheck.overlaps;
-    let failureReason = null;
-    if (wallCheck.intersects) failureReason = wallCheck.reason;
-    else if (!isSupported) failureReason = 'Off Support Surface Bounds';
-    else if (overlapCheck.overlaps) failureReason = `Intersects Object (${overlapCheck.otherId})`;
-
-    item.validation = {
-      isValid,
-      wallIntersection: wallCheck.intersects,
-      wallReason: wallCheck.reason,
-      objectOverlap: overlapCheck.overlaps,
-      overlapId: overlapCheck.otherId,
-      isSupported,
-      detectedSurfaceY,
-      failureReason
-    };
+    // 4. Harmonize validation with developer-authoritative overrides
+    item.validation = this.evaluatePlacementStatus(item, wallCheck, supportCheck, overlapCheck);
     if (item.userData) {
       item.userData.validation = item.validation;
     }
@@ -754,7 +1191,15 @@ export class WorldItemManager {
     if (helper && helper.box) {
       helper.box.copy(box);
       if (helper.material && helper.material.color) {
-        helper.material.color.setHex(isValid ? 0x00ff88 : 0xff2244);
+        let color = 0x00ff88;
+        if (item.override || item.validation.status === 'overridden' || item.validation.developerApproved) {
+          color = 0x00e5ff;
+        } else if (item.validation.status === 'invalid') {
+          color = 0xff2244;
+        } else if (item.validation.status === 'warning') {
+          color = 0xffbb00;
+        }
+        helper.material.color.setHex(color);
       }
     }
 
@@ -880,7 +1325,13 @@ export class WorldItemManager {
           +obj.scale.z.toFixed(4)
         ],
         anchor: item.anchor || { surface: item.surfaceType || 'floor' },
-        tags: item.tags || (item.category === 'prop' ? ['furniture', 'obstacle'] : ['consumable', 'pickup'])
+        tags: item.tags || (item.category === 'prop' ? ['furniture', 'obstacle'] : ['consumable', 'pickup']),
+        validation: item.validation ? {
+          status: item.validation.status || 'valid',
+          developerApproved: !!item.validation.developerApproved,
+          originalStatus: item.validation.originalStatus || null,
+          reason: item.validation.reason || item.validation.failureReason || null
+        } : { status: 'valid', developerApproved: false }
       };
     });
 

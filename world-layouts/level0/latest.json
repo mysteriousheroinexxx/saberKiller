@@ -1,10 +1,10 @@
 {
   "schemaVersion": "1.0.0",
   "level": "level0",
-  "iteration": 6,
-  "createdAt": "2026-11-22T17:11:26.750Z",
+  "iteration": 7,
+  "createdAt": "2026-11-22T18:05:47.908Z",
   "author": "developer",
-  "description": "Visual placement layout via Editor at 10:41:26 PM",
+  "description": "Level 0 World Layout Iteration 7 with verified physical clearance & developer overrides",
   "catalog": {
     "table": {
       "name": "Office Table",
@@ -132,13 +132,13 @@
       "category": "prop",
       "placementMode": "fixed",
       "position": [
-        43,
+        44.5,
         0,
-        -186
+        -185.35
       ],
       "rotation": [
         0,
-        -1.2,
+        -1.5708,
         0
       ],
       "scale": [
@@ -152,7 +152,13 @@
       "tags": [
         "furniture",
         "obstacle"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "prop_shelf_01",
@@ -180,7 +186,13 @@
       "tags": [
         "furniture",
         "obstacle"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "prop_vending_01",
@@ -190,7 +202,7 @@
       "position": [
         41.5,
         0,
-        -185.8
+        -185.45
       ],
       "rotation": [
         0,
@@ -208,35 +220,13 @@
       "tags": [
         "furniture",
         "obstacle"
-      ]
-    },
-    {
-      "id": "vending_almond_01",
-      "type": "vending_almond",
-      "category": "prop",
-      "placementMode": "fixed",
-      "position": [
-        41.2,
-        0,
-        -185.6
       ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ],
-      "anchor": {
-        "surface": "floor"
-      },
-      "tags": [
-        "furniture",
-        "obstacle"
-      ]
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "prop_crate_01",
@@ -264,7 +254,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "floor_first_aid_01",
@@ -272,9 +268,9 @@
       "category": "medical",
       "placementMode": "fixed",
       "position": [
-        43.7,
+        45.75,
         0,
-        -188.9
+        -189.5
       ],
       "rotation": [
         0,
@@ -292,7 +288,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "overridden",
+        "developerApproved": true,
+        "originalStatus": "invalid",
+        "reason": "Wall penetration: 21.7cm into Wall #704"
+      }
     },
     {
       "id": "floor_ammo_crate_01",
@@ -320,7 +322,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "floor_ammo_box_01",
@@ -348,7 +356,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "floor_almond_can_01",
@@ -376,7 +390,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "floor_energy_drink_01",
@@ -404,7 +424,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "floor_sanity_pill_01",
@@ -432,7 +458,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "floor_door_key_01",
@@ -440,9 +472,9 @@
       "category": "key",
       "placementMode": "fixed",
       "position": [
-        43.1,
+        45,
         0,
-        -186
+        -189.5
       ],
       "rotation": [
         0,
@@ -460,7 +492,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "table_first_aid_01",
@@ -489,7 +527,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "table_ammo_box_01",
@@ -518,7 +562,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "table_almond_can_01",
@@ -547,7 +597,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "table_battery_01",
@@ -576,7 +632,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "table_sanity_pill_01",
@@ -605,7 +667,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "table_door_key_01",
@@ -634,7 +702,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "shelf_ammo_crate_tier1",
@@ -664,7 +738,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "shelf_ammo_box_tier2",
@@ -694,7 +774,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "shelf_almond_can_tier2",
@@ -724,7 +810,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "shelf_sanity_pill_tier2",
@@ -754,7 +846,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "shelf_battery_tier3",
@@ -784,7 +882,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "shelf_door_key_tier3",
@@ -814,7 +918,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "shelf_almond_can_tier3",
@@ -844,7 +954,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
+      ],
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     },
     {
       "id": "shelf_first_aid_tier4",
@@ -874,35 +990,13 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
-    },
-    {
-      "id": "almond_can_01",
-      "type": "almond_can",
-      "category": "consumable",
-      "placementMode": "fixed",
-      "position": [
-        44.4,
-        0,
-        -189.5
       ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ],
-      "anchor": {
-        "surface": "floor"
-      },
-      "tags": [
-        "consumable",
-        "pickup"
-      ]
+      "validation": {
+        "status": "valid",
+        "developerApproved": false,
+        "originalStatus": "valid",
+        "reason": null
+      }
     }
   ],
   "spawnGroups": [
