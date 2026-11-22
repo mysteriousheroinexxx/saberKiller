@@ -7,6 +7,11 @@
   <style>
     @font-face {
       font-family: 'Rubik';
+      src: url('assets/ui/fonts/Rubik-Light.ttf') format('truetype');
+      font-weight: 300;
+    }
+    @font-face {
+      font-family: 'Rubik';
       src: url('assets/ui/fonts/Rubik-Regular.ttf') format('truetype');
       font-weight: 400;
     }
@@ -14,6 +19,11 @@
       font-family: 'Rubik';
       src: url('assets/ui/fonts/Rubik-Medium.ttf') format('truetype');
       font-weight: 500;
+    }
+    @font-face {
+      font-family: 'Rubik';
+      src: url('assets/ui/fonts/Rubik-Bold.ttf') format('truetype');
+      font-weight: 700;
     }
 
     * {
@@ -203,19 +213,12 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 12px;
-      height: 12px;
-    }
-    #crosshair::before, #crosshair::after {
-      content: '';
-      position: absolute;
-      background: rgba(237, 236, 230, 0.75);
-    }
-    #crosshair::before {
-      top: 5px; left: 0; width: 12px; height: 2px;
-    }
-    #crosshair::after {
-      top: 0; left: 5px; width: 2px; height: 12px;
+      width: 6px;
+      height: 6px;
+      background: url('assets/ui/icons/crosshair_smaller.png') no-repeat center center;
+      background-size: contain;
+      opacity: 0.45;
+      pointer-events: none;
     }
 
     #controls-hint {
@@ -274,6 +277,8 @@
       top: 14px;
       right: 14px;
       width: 320px;
+      max-height: calc(100vh - 28px);
+      overflow-y: auto;
       background: rgba(16, 15, 14, 0.94);
       backdrop-filter: blur(10px);
       border: 1px solid rgba(212, 175, 55, 0.45);
@@ -424,6 +429,64 @@
     .dev-shortcuts-hint b {
       color: #b5b3aa;
     }
+
+    .dev-slider-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .dev-slider-row {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .dev-slider-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #b5b3aa;
+    }
+    .dev-slider-header span.val {
+      color: #edece6;
+      font-family: monospace;
+    }
+    .dev-slider {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(156, 154, 146, 0.3);
+      outline: none;
+      margin: 2px 0;
+    }
+    .dev-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #d4af37;
+      cursor: pointer;
+    }
+    .dev-color-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 2px;
+      font-size: 10px;
+      color: #b5b3aa;
+    }
+    .dev-color-input {
+      -webkit-appearance: none;
+      border: 1px solid rgba(156, 154, 146, 0.3);
+      width: 36px;
+      height: 20px;
+      border-radius: 2px;
+      background: none;
+      cursor: pointer;
+      padding: 0;
+    }
   </style>
 </head>
 <body>
@@ -473,8 +536,77 @@
       <div class="dev-readout-row"><span>Carpet Normal:</span><span class="dev-readout-val" id="readout-carpet-norm">0.60 (Tuned)</span></div>
     </div>
 
+    <div class="dev-section-label">LIGHTING ADJUSTMENT [DEV]</div>
+    <div class="dev-slider-group">
+      <div class="dev-slider-row">
+        <div class="dev-slider-header">
+          <span>Overall Brightness / Exposure</span>
+          <span class="val" id="dev-val-exposure">1.35</span>
+        </div>
+        <input type="range" class="dev-slider" id="dev-slide-exposure" min="0.5" max="2.5" step="0.05" value="1.35">
+      </div>
+
+      <div class="dev-slider-row">
+        <div class="dev-slider-header">
+          <span>Ambient GI Intensity</span>
+          <span class="val" id="dev-val-ambient">0.90</span>
+        </div>
+        <input type="range" class="dev-slider" id="dev-slide-ambient" min="0.0" max="3.0" step="0.05" value="0.90">
+      </div>
+
+      <div class="dev-slider-row">
+        <div class="dev-slider-header">
+          <span>Key Fluorescent Intensity</span>
+          <span class="val" id="dev-val-point">160</span>
+        </div>
+        <input type="range" class="dev-slider" id="dev-slide-point" min="10" max="350" step="5" value="160">
+      </div>
+
+      <div class="dev-slider-row">
+        <div class="dev-slider-header">
+          <span>Player Fill Intensity</span>
+          <span class="val" id="dev-val-player-fill">3.50</span>
+        </div>
+        <input type="range" class="dev-slider" id="dev-slide-player-fill" min="0.0" max="8.0" step="0.25" value="3.50">
+      </div>
+
+      <div class="dev-color-row">
+        <span>Lighting Tint: <span class="val" id="dev-val-color" style="color: #edece6; font-family: monospace;">#fdf7a8</span></span>
+        <input type="color" class="dev-color-input" id="dev-color-tint" value="#fdf7a8">
+      </div>
+
+      <button class="dev-view-btn" id="dev-reset-lighting" style="width:100%; margin-top:6px;">Reset Lighting (Default D)</button>
+    </div>
+
+    <div class="dev-section-label">SANITY SIMULATION [DEV]</div>
+    <div style="display: flex; gap: 4px; margin-bottom: 6px;">
+      <button class="dev-view-btn" id="dev-sanity-100" style="flex:1;">100%</button>
+      <button class="dev-view-btn" id="dev-sanity-50" style="flex:1;">50%</button>
+      <button class="dev-view-btn" id="dev-sanity-8" style="flex:1;">8% (Panic)</button>
+      <button class="dev-view-btn" id="dev-sanity-0" style="flex:1;">0% (Void)</button>
+    </div>
+    <div style="display: flex; gap: 4px; margin-bottom: 10px;">
+      <button class="dev-view-btn" id="dev-sanity-pause" style="flex:1;">Pause / Resume</button>
+      <button class="dev-view-btn" id="dev-sanity-regen" style="flex:1;">Rapid Regen</button>
+    </div>
+
+    <div class="dev-section-label">SURVIVAL RESOURCES [DEV]</div>
+    <div style="display: flex; gap: 4px; margin-bottom: 6px;">
+      <button class="dev-view-btn" id="dev-hp-down" style="flex:1;">HP -25</button>
+      <button class="dev-view-btn" id="dev-hp-up" style="flex:1;">HP +25</button>
+      <button class="dev-view-btn" id="dev-stamina-drain" style="flex:1;">Sprint Drain</button>
+      <button class="dev-view-btn" id="dev-stamina-full" style="flex:1;">Stamina Full</button>
+    </div>
+    <div style="display: flex; gap: 4px; margin-bottom: 10px;">
+      <button class="dev-view-btn" id="dev-item-pistol" style="flex:1;">Pistol [1]</button>
+      <button class="dev-view-btn" id="dev-item-shotgun" style="flex:1;">Shotgun [2]</button>
+      <button class="dev-view-btn" id="dev-item-torch" style="flex:1;">Torch [3]</button>
+      <button class="dev-view-btn" id="dev-item-fire" style="flex:1;">Fire</button>
+      <button class="dev-view-btn" id="dev-item-reload" style="flex:1;">Reload [R]</button>
+    </div>
+
     <div class="dev-shortcuts-hint">
-      Keys: <b>1-4</b> Profile &middot; <b>N/W/C</b> View &middot; <b>H/F2</b> Toggle Panel
+      Keys: <b>1-4</b> Profile &middot; <b>N/W/C</b> View &middot; <b>[ / ]</b> Drain/Heal &middot; <b>H/F2</b> Panel
     </div>
   </div>
 

@@ -4,11 +4,33 @@
 import { initLevel0Env, enterLevel0Env, updateLevel0Env, getCollisionHandler } from '../levels/level0_env.js';
 import { MPManager } from './mp_manager.js';
 import { RemotePlayer, preloadPlayerAssets } from './remote_player.js';
+import {
+  initMultiplayerLighting,
+  setMapLights,
+  updateMultiplayerLighting,
+  setExposure,
+  setAmbientIntensity,
+  setPointIntensity,
+  setLightColor,
+  setPlayerLightIntensity,
+  resetLighting,
+  getLightingConfig,
+  LIGHTING_DEFAULTS
+} from './lighting.js';
+import { SanityController, SANITY_STATE, SANITY_EVENTS } from './sanity_controller.js';
+import { SanityHUD } from './sanity_hud.js';
 
 let scene, camera, renderer, mpManager, playerLight;
 let lastTime = performance.now();
 let isGameActive = false;
 let isEnvReady = false;
+
+// Survival Mode Sanity System
+let sanityController = null;
+let sanityHUD = null;
+let currentSanityVig = 0.0;
+let currentSanityDesat = 0.0;
+let currentBlackout = 0.0;
 
 // Post-processing pipeline (matching Level 0 authentic grading)
 let postScene, postCam, postRenderTarget, postMat;
@@ -28,9 +50,12 @@ function initPostProcessing(w, h) {
       tDiffuse: { value: null },
       uResolution: { value: new THREE.Vector2(w, h) },
       uSaturation: { value: 1.25 },
-      uVignette: { value: 0.95 },
+      uVignette: { value: 0.45 },
       uGrain: { value: 0.0 },
-      uFringe: { value: 0.0 }
+      uFringe: { value: 0.0 },
+      uSanityVignette: { value: 0.0 },
+      uSanityDesat: { value: 0.0 },
+      uBlackout: { value: 0.0 }
     },
     vertexShader: `
       varying vec2 vUv;
@@ -46,6 +71,9 @@ function initPostProcessing(w, h) {
       uniform float uVignette;
       uniform float uGrain;
       uniform float uFringe;
+      uniform float uSanityVignette;
+      uniform float uSanityDesat;
+      uniform float uBlackout;
       varying vec2 vUv;
 
       float rand(vec2 co) {
@@ -73,16 +101,21 @@ function initPostProcessing(w, h) {
         tint = mix(tint, highGrad, smoothstep(0.45, 0.85, luma));
         col *= tint;
 
-        // Saturation boost
-        col = mix(vec3(luma), col, uSaturation);
+        // Saturation boost with mild paranoia desaturation
+        float finalSat = max(0.0, uSaturation - uSanityDesat);
+        col = mix(vec3(luma), col, finalSat);
 
-        // Vignette falloff
-        float vig = smoothstep(0.75, 0.22, dist * uVignette);
+        // Vignette falloff with progressive sanity constriction
+        float totalVig = uVignette + uSanityVignette;
+        float vig = smoothstep(0.75, 0.22, dist * totalVig);
         col *= vig;
 
         // Fine grain
         float noise = (rand(uv + fract(gl_FragCoord.xy * 0.13)) - 0.5) * uGrain;
         col += noise;
+
+        // Visual Blackout (gradual collapse at zero sanity)
+        col = mix(col, vec3(0.0), clamp(uBlackout, 0.0, 1.0));
 
         gl_FragColor = vec4(col, 1.0);
       }
@@ -137,12 +170,25 @@ async function init() {
 
   initPostProcessing(window.innerWidth, window.innerHeight);
 
-  // Ambient fill light for Backrooms Level 0
-  const ambLight = new THREE.AmbientLight(0xfff5d0, 0.2);
-  scene.add(ambLight);
+  // 2b. Initialize Survival Mode Sanity Controller and authentic Budget-Backrooms HUD
+  sanityController = new SanityController();
+  sanityHUD = new SanityHUD(sanityController, document.body);
 
-  // Player localized PointLight
-  playerLight = new THREE.PointLight(0xffe8a0, 1.2, 16, 2.0);
+  sanityController.onSanityDepleted = (payload) => {
+    console.warn('[SURVIVAL] Sanity depleted to 0%!', payload);
+  };
+
+  window.scene = scene;
+  window.camera = camera;
+  window.renderer = renderer;
+  window.postMat = postMat;
+  window.survivalSanity = sanityController;
+  window.survivalHUD = sanityHUD;
+  window.sanityController = sanityController;
+
+  // Player localized PointLight (provides subtle local camera presence)
+  playerLight = new THREE.PointLight(0xfff5aa, 3.5, 20, 1.5);
+  playerLight.name = 'MP_LocalPlayerLight';
   playerLight.position.set(48.69, 1.62, -187.65);
   scene.add(playerLight);
 
@@ -178,6 +224,7 @@ async function init() {
       isGameActive = true;
       if (lobbyPanel) lobbyPanel.style.display = 'none';
       if (hudOverlay) hudOverlay.style.display = 'block';
+      if (sanityHUD) sanityHUD.setVisible(true);
       if (roomInfoEl) roomInfoEl.textContent = `ROOM: ${payload.roomCode}`;
       if (countEl) countEl.textContent = `PLAYERS: ${payload.totalPlayers || 1} / 2`;
       mpManager.localPlayer.requestPointerLock(renderer.domElement);
@@ -195,6 +242,10 @@ async function init() {
       showError(err);
     }
   });
+
+  if (sanityHUD && mpManager.localPlayer) {
+    sanityHUD.setPlayer(mpManager.localPlayer);
+  }
 
   // 5. Connect button actions
   btnCreate.addEventListener('click', () => {
@@ -242,6 +293,19 @@ async function init() {
     if (ch) {
       mpManager.setCollisionHandler(ch);
     }
+
+    // Initialize dedicated multiplayer Backrooms Level 0 lighting
+    fetch('assets/level0/level0_map.json')
+      .then(r => r.json())
+      .then(map => {
+        if (map.lights) {
+          setMapLights(map.lights);
+          updateMultiplayerLighting(0.016, camera.position, mpManager?.remotePlayers);
+        }
+      })
+      .catch(err => console.warn('[MP LIGHTING] Failed to load level0_map.json:', err));
+
+    initMultiplayerLighting(scene, renderer, playerLight);
 
     // Apply default Configuration D immediately to environment materials
     applyRenderConfig('combined');
@@ -296,12 +360,21 @@ async function init() {
     runVerificationSuite(verify);
   }
 
-  // Expose to window for testing & debugging
+  // Expose additional multiplayer state to window
   window.mpManager = mpManager;
-  window.scene = scene;
-  window.camera = camera;
-  window.renderer = renderer;
-  window.postMat = postMat;
+  window.localPlayer = mpManager.localPlayer;
+  window.multiplayerLighting = {
+    setExposure,
+    setAmbientIntensity,
+    setPointIntensity,
+    setLightColor,
+    setPlayerLightIntensity,
+    resetLighting,
+    getLightingConfig,
+    LIGHTING_DEFAULTS
+  };
+  window.survivalHUD = sanityHUD;
+  window.sanityHUD = sanityHUD;
   window.applyRenderConfig = applyRenderConfig;
   window.switchView = switchView;
   window.RENDER_CONFIGS = RENDER_CONFIGS;
@@ -324,7 +397,7 @@ export const RENDER_CONFIGS = {
     name: 'A — Original (Baseline)',
     grain: 0.085,
     fringe: 0.0035,
-    vignette: 0.95,
+    vignette: 0.45,
     saturation: 1.25,
     anisotropy: 1,
     wallNormalScale: 1.0,
@@ -336,7 +409,7 @@ export const RENDER_CONFIGS = {
     name: 'B — Clean Post-Processing',
     grain: 0.0,
     fringe: 0.0,
-    vignette: 0.95,
+    vignette: 0.45,
     saturation: 1.25,
     anisotropy: 1,
     wallNormalScale: 1.0,
@@ -348,7 +421,7 @@ export const RENDER_CONFIGS = {
     name: 'C — Texture Quality',
     grain: 0.085,
     fringe: 0.0035,
-    vignette: 0.95,
+    vignette: 0.45,
     saturation: 1.25,
     anisotropy: 16,
     wallNormalScale: 0.4,
@@ -360,7 +433,7 @@ export const RENDER_CONFIGS = {
     name: 'D — Combined Optimum',
     grain: 0.0,
     fringe: 0.0,
-    vignette: 0.95,
+    vignette: 0.45,
     saturation: 1.25,
     anisotropy: 16,
     wallNormalScale: 0.4,
@@ -376,6 +449,13 @@ export const VIEWPOINTS = {
     yaw: -Math.PI / 2,
     pitch: 0.04
   },
+  ceiling: {
+    key: 'ceiling',
+    name: 'Ceiling Fixture & Tiles',
+    pos: { x: 48.69, y: 1.62, z: -187.65 },
+    yaw: -Math.PI / 2,
+    pitch: 0.65
+  },
   wallpaper: {
     key: 'wallpaper',
     name: 'Wallpaper (Close-up)',
@@ -389,6 +469,20 @@ export const VIEWPOINTS = {
     pos: { x: 48.69, y: 1.62, z: -187.65 },
     yaw: -Math.PI / 2,
     pitch: -0.48
+  },
+  pillar_hall: {
+    key: 'pillar_hall',
+    name: 'Pillar Hall (Large Room)',
+    pos: { x: 75.70, y: 1.62, z: -181.40 },
+    yaw: 0.0,
+    pitch: 0.0
+  },
+  exit_corridor: {
+    key: 'exit_corridor',
+    name: 'Exit Corridor (Vista)',
+    pos: { x: 79.55, y: 1.62, z: 198.00 },
+    yaw: 0.0,
+    pitch: 0.0
   }
 };
 
@@ -490,7 +584,7 @@ export function switchView(viewKey) {
     playerLight.position.copy(camera.position);
   }
 
-  updateLevel0Env(0.016, camera.position, null, camera.rotation.y);
+  updateMultiplayerLighting(0.016, camera.position, mpManager?.remotePlayers);
   updateDevUI(currentProfileKey, currentViewKey);
   console.log(`[RENDER COMPARISON] Switched viewpoint to: ${vp.name}`);
 }
@@ -578,6 +672,100 @@ function initDevComparisonUI() {
     }
   });
 
+  // Lighting adjustment controls
+  const slideExposure = document.getElementById('dev-slide-exposure');
+  const valExposure = document.getElementById('dev-val-exposure');
+  const slideAmbient = document.getElementById('dev-slide-ambient');
+  const valAmbient = document.getElementById('dev-val-ambient');
+  const slidePoint = document.getElementById('dev-slide-point');
+  const valPoint = document.getElementById('dev-val-point');
+  const slidePlayerFill = document.getElementById('dev-slide-player-fill');
+  const valPlayerFill = document.getElementById('dev-val-player-fill');
+  const colorTint = document.getElementById('dev-color-tint');
+  const valColor = document.getElementById('dev-val-color');
+  const btnResetLighting = document.getElementById('dev-reset-lighting');
+
+  const curL = getLightingConfig();
+  if (slideExposure && valExposure) {
+    slideExposure.value = curL.exposure;
+    valExposure.textContent = Number(curL.exposure).toFixed(2);
+    slideExposure.addEventListener('input', (e) => {
+      setExposure(e.target.value);
+      valExposure.textContent = Number(e.target.value).toFixed(2);
+    });
+  }
+
+  if (slideAmbient && valAmbient) {
+    slideAmbient.value = curL.ambientIntensity;
+    valAmbient.textContent = Number(curL.ambientIntensity).toFixed(2);
+    slideAmbient.addEventListener('input', (e) => {
+      setAmbientIntensity(e.target.value);
+      valAmbient.textContent = Number(e.target.value).toFixed(2);
+    });
+  }
+
+  if (slidePoint && valPoint) {
+    slidePoint.value = curL.pointIntensity;
+    valPoint.textContent = Math.round(curL.pointIntensity);
+    slidePoint.addEventListener('input', (e) => {
+      setPointIntensity(e.target.value);
+      valPoint.textContent = Math.round(e.target.value);
+    });
+  }
+
+  if (slidePlayerFill && valPlayerFill) {
+    slidePlayerFill.value = curL.playerLightIntensity;
+    valPlayerFill.textContent = Number(curL.playerLightIntensity).toFixed(2);
+    slidePlayerFill.addEventListener('input', (e) => {
+      setPlayerLightIntensity(e.target.value);
+      valPlayerFill.textContent = Number(e.target.value).toFixed(2);
+    });
+  }
+
+  if (colorTint && valColor) {
+    colorTint.value = curL.lightColorHex;
+    valColor.textContent = curL.lightColorHex;
+    colorTint.addEventListener('input', (e) => {
+      setLightColor(e.target.value);
+      valColor.textContent = e.target.value;
+    });
+  }
+
+  if (btnResetLighting) {
+    btnResetLighting.addEventListener('click', () => {
+      const def = resetLighting();
+      if (slideExposure) slideExposure.value = def.exposure;
+      if (valExposure) valExposure.textContent = def.exposure.toFixed(2);
+      if (slideAmbient) slideAmbient.value = def.ambientIntensity;
+      if (valAmbient) valAmbient.textContent = def.ambientIntensity.toFixed(2);
+      if (slidePoint) slidePoint.value = def.pointIntensity;
+      if (valPoint) valPoint.textContent = Math.round(def.pointIntensity);
+      if (slidePlayerFill) slidePlayerFill.value = def.playerLightIntensity;
+      if (valPlayerFill) valPlayerFill.textContent = def.playerLightIntensity.toFixed(2);
+      if (colorTint) colorTint.value = def.lightColorHex;
+      if (valColor) valColor.textContent = def.lightColorHex;
+    });
+  }
+
+  // Sanity simulation test buttons
+  document.getElementById('dev-sanity-100')?.addEventListener('click', () => sanityController?.setSanity(100));
+  document.getElementById('dev-sanity-50')?.addEventListener('click', () => sanityController?.setSanity(50));
+  document.getElementById('dev-sanity-8')?.addEventListener('click', () => sanityController?.setSanity(8));
+  document.getElementById('dev-sanity-0')?.addEventListener('click', () => sanityController?.setSanity(0));
+  document.getElementById('dev-sanity-pause')?.addEventListener('click', () => sanityController?.togglePause());
+  document.getElementById('dev-sanity-regen')?.addEventListener('click', () => sanityController?.startRapidRegen());
+
+  // Survival resources dev test buttons
+  document.getElementById('dev-hp-down')?.addEventListener('click', () => mpManager?.localPlayer?.damage(25));
+  document.getElementById('dev-hp-up')?.addEventListener('click', () => mpManager?.localPlayer?.heal(25));
+  document.getElementById('dev-stamina-drain')?.addEventListener('click', () => mpManager?.localPlayer?.setStamina(0));
+  document.getElementById('dev-stamina-full')?.addEventListener('click', () => mpManager?.localPlayer?.setStamina(100));
+  document.getElementById('dev-item-pistol')?.addEventListener('click', () => mpManager?.localPlayer?.setWeapon(0));
+  document.getElementById('dev-item-shotgun')?.addEventListener('click', () => mpManager?.localPlayer?.setWeapon(1));
+  document.getElementById('dev-item-torch')?.addEventListener('click', () => mpManager?.localPlayer?.setWeapon(2));
+  document.getElementById('dev-item-fire')?.addEventListener('click', () => mpManager?.localPlayer?.fire());
+  document.getElementById('dev-item-reload')?.addEventListener('click', () => mpManager?.localPlayer?.startReload());
+
   // Keyboard shortcut listener
   window.addEventListener('keydown', (e) => {
     if (e.target && e.target.tagName === 'INPUT') return;
@@ -593,6 +781,15 @@ function initDevComparisonUI() {
       e.preventDefault();
       const isVisible = panel.style.display !== 'none';
       setPanelVisible(!isVisible);
+    }
+    // Sanity simulation test hotkeys
+    else if (sanityController) {
+      if (e.key === '[') sanityController.drainSanity(10, 'key_drain');
+      else if (e.key === ']') sanityController.restoreSanity(10);
+      else if (e.key === '\\') sanityController.togglePause();
+      else if (e.key === 'r' || e.key === 'R') sanityController.startRapidRegen();
+      else if (e.key === '0') sanityController.setSanity(0);
+      else if (e.key === '9') sanityController.setSanity(100);
     }
   });
 
@@ -802,6 +999,54 @@ async function runVerificationSuite(mode) {
     await fetch('/api/log', {
       method: 'POST',
       body: JSON.stringify({ status: 'TEST_C_PASSED' })
+    }).catch(() => {});
+  } else if (mode === 'lighting_before' || mode === 'lighting_after' || mode === 'before' || mode === 'after') {
+    // 6-viewpoint lighting comparison capture
+    await preloadPlayerAssets();
+
+    const peer = new RemotePlayer('peer_proxy', scene, {
+      x: 51.50,
+      y: 0.0,
+      z: -187.65,
+      yaw: Math.PI / 2, // Facing player
+      pitch: 0.0
+    });
+
+    // Ensure Configuration D is baseline
+    applyRenderConfig('combined');
+
+    const panel = document.getElementById('dev-comparison-panel');
+    if (panel) panel.style.display = 'none';
+
+    const cleanMode = mode.replace(/^lighting_/, '');
+    const views = ['normal', 'ceiling', 'wallpaper', 'carpet', 'pillar_hall', 'exit_corridor'];
+    for (const vKey of views) {
+      peer.group.visible = (vKey === 'normal');
+      switchView(vKey);
+      await wait(700);
+      renderScene();
+      const shot = renderer.domElement.toDataURL('image/png');
+      const label = `lighting_${cleanMode}_${vKey}`;
+      await fetch('/api/screenshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label, shot })
+      }).catch(() => {});
+    }
+
+    await fetch('/api/telemetry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client: `lighting_${cleanMode}`,
+        viewsCaptured: views,
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+
+    await fetch('/api/log', {
+      method: 'POST',
+      body: JSON.stringify({ status: `LIGHTING_${cleanMode.toUpperCase()}_COMPLETE` })
     }).catch(() => {});
   }
 }
@@ -1016,6 +1261,58 @@ async function runAutoTest(clientNum, roomCode, action) {
   console.log('[AUTOTEST MP] Telemetry completed:', telemetry);
 }
 
+function updateSanityVisualEffects(dt) {
+  if (!sanityController || !postMat) return;
+
+  const snap = sanityController.getSnapshot();
+  const sanity = snap.currentSanity;
+
+  let targetVig = 0.0;
+  let targetDesat = 0.0;
+  let targetBlackout = 0.0;
+
+  if (snap.state === SANITY_STATE.NORMAL) {
+    targetVig = 0.0;
+    targetDesat = 0.0;
+    targetBlackout = 0.0;
+  } else if (snap.state === SANITY_STATE.MILD_PARANOIA) {
+    // 80.0 down to 10.0: progressive, restrained visual distortion
+    const t = (80.0 - sanity) / 70.0;
+    targetVig = t * 0.35; // Adds up to 0.35 vignette (from 0.45 to 0.80)
+    targetDesat = t * 0.25; // Subtle desaturation (1.25 -> 1.00)
+    targetBlackout = 0.0;
+  } else if (snap.state === SANITY_STATE.PANIC) {
+    // 10.0 down to 0.0: stronger vignette and visual impairment
+    const t = (10.0 - sanity) / 10.0;
+    targetVig = 0.35 + t * 0.45; // Adds up to 0.80 vignette (from 0.80 to 1.25)
+    targetDesat = 0.25 + t * 0.35; // Further desaturation (1.00 -> 0.65)
+    targetBlackout = 0.0;
+  } else if (snap.state === SANITY_STATE.DEPLETED) {
+    // 0.0: gradual visual blackout
+    targetVig = 0.80;
+    targetDesat = 0.60;
+    targetBlackout = 1.0;
+  }
+
+  // Smooth interpolation without pops
+  const smoothRate = snap.state === SANITY_STATE.DEPLETED ? 1.8 : 4.0;
+  const blend = 1.0 - Math.exp(-dt * smoothRate);
+
+  currentSanityVig += (targetVig - currentSanityVig) * blend;
+  currentSanityDesat += (targetDesat - currentSanityDesat) * blend;
+  currentBlackout += (targetBlackout - currentBlackout) * blend;
+
+  if (postMat.uniforms.uSanityVignette) {
+    postMat.uniforms.uSanityVignette.value = currentSanityVig;
+  }
+  if (postMat.uniforms.uSanityDesat) {
+    postMat.uniforms.uSanityDesat.value = currentSanityDesat;
+  }
+  if (postMat.uniforms.uBlackout) {
+    postMat.uniforms.uBlackout.value = currentBlackout;
+  }
+}
+
 function renderScene() {
   if (postRenderTarget && postScene) {
     renderer.setRenderTarget(postRenderTarget);
@@ -1039,8 +1336,19 @@ function loop(timestamp) {
     if (playerLight && mpManager.localPlayer) {
       playerLight.position.set(mpManager.localPlayer.pos.x, 1.62, mpManager.localPlayer.pos.z);
     }
-    // Update Level 0 lighting and atmosphere
-    updateLevel0Env(dt, mpManager.localPlayer.pos, null, mpManager.localPlayer.yaw);
+    // Update dedicated multiplayer Backrooms Level 0 lighting
+    updateMultiplayerLighting(dt, mpManager.localPlayer.pos, mpManager.remotePlayers);
+  }
+
+  // Survival Mode Sanity Simulation and Visual Effects
+  if (sanityController) {
+    sanityController.update(dt);
+    updateSanityVisualEffects(dt);
+  }
+
+  // Update Survival Mode HUD (Health, Resources, Stamina)
+  if (sanityHUD && mpManager?.localPlayer) {
+    sanityHUD.updatePlayer(mpManager.localPlayer);
   }
 
   renderScene();
