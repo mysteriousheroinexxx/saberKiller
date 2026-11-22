@@ -579,8 +579,9 @@
     </div>
 
     <div class="dev-section-label">WORLD ITEMS PLACEMENT [DEV]</div>
-    <div style="margin-bottom: 8px;">
-      <button class="dev-view-btn" id="dev-toggle-bounds" style="width:100%;">Show Placement Bounds [OFF]</button>
+    <div style="display: flex; gap: 4px; margin-bottom: 8px;">
+      <button class="dev-view-btn" id="dev-toggle-bounds" style="flex:1;">Bounds [OFF]</button>
+      <button class="dev-view-btn" id="dev-open-editor" style="flex:1; background: rgba(212, 175, 55, 0.25); border-color: #d4af37; color: #edece6; font-weight: 600;">World Editor</button>
     </div>
 
     <div class="dev-section-label">SANITY SIMULATION [DEV]</div>
@@ -659,6 +660,7 @@
   <!-- Three.js r147 Vendored Engine & Loaders -->
   <script src="vendor/three.min.js"></script>
   <script src="vendor/GLTFLoader.js"></script>
+  <script src="vendor/TransformControls.js"></script>
   <!-- Isolated Multiplayer Client Module -->
   <script type="module" src="js/multiplayer/main.js"></script>
 </body>

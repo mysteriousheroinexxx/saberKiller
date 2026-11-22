@@ -16,6 +16,7 @@ export class LocalPlayerController {
     this.keys = {};
     this.mouseSensitivity = 0.0022;
     this.isPointerLocked = false;
+    this.isEditorActive = false;
 
     this.bob = 0;
     this.speed = 5.2;
@@ -75,6 +76,18 @@ export class LocalPlayerController {
     this.camera.rotation.order = 'YXZ';
     this.camera.rotation.y = this.yaw;
     this.camera.rotation.x = this.pitch;
+  }
+
+  setEditorActive(active) {
+    this.isEditorActive = !!active;
+    if (this.isEditorActive) {
+      if (this.isPointerLocked) {
+        try {
+          document.exitPointerLock();
+        } catch (e) {}
+      }
+      this.keys = {};
+    }
   }
 
   _buildLocalViewmodels() {
@@ -293,6 +306,9 @@ export class LocalPlayerController {
 
   _bindEvents() {
     this._onKeyDown = (e) => {
+      if (this.isEditorActive) {
+        return;
+      }
       // Allow regular typing in input/textarea elements without interference
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
         return;
@@ -356,12 +372,14 @@ export class LocalPlayerController {
     };
 
     this._onMouseDown = (e) => {
+      if (this.isEditorActive) return;
       if (this.isPointerLocked && e.button === 0) {
         this.fire();
       }
     };
 
     this._onWheel = (e) => {
+      if (this.isEditorActive) return;
       if (this.isPointerLocked) {
         e.preventDefault(); // Prevent page scrolling during weapon selection wheel
         if (e.deltaY > 0) {
@@ -401,6 +419,25 @@ export class LocalPlayerController {
   }
 
   update(dt) {
+    if (this.isEditorActive) {
+      // Suspend movement and firing, but maintain 20Hz network sync
+      this.updateTimer += dt;
+      if (this.updateTimer >= this.updateInterval) {
+        this.updateTimer = 0;
+        if (this.networkClient && this.networkClient.isConnected) {
+          this.networkClient.sendUpdate(
+            +this.pos.x.toFixed(3),
+            +this.pos.y.toFixed(3),
+            +this.pos.z.toFixed(3),
+            +this.yaw.toFixed(4),
+            +this.pitch.toFixed(4),
+            this.weapon
+          );
+        }
+      }
+      return;
+    }
+
     // 0. Update firing cooldown, reload, and battery
     if (this.cool > 0) this.cool = Math.max(0, this.cool - dt);
     if (this.reloadT > 0) {

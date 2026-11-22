@@ -212,12 +212,23 @@ export class WorldItemManager {
   }
 
   /**
-   * Checks for 3D AABB overlap with other placed items (excluding support furniture)
+   * Checks for 3D AABB overlap with other placed items (excluding supporting/supported furniture)
    */
-  checkObjectOverlap(itemBox, currentItemId) {
+  checkObjectOverlap(itemBox, currentItemId, currentCategory = null, currentSupportProp = null) {
+    const currentItem = this.getItemById(currentItemId);
+    const isCurrentProp = (currentCategory || currentItem?.category) === 'prop';
+    const supportProp = currentSupportProp || currentItem?.anchor?.supportProp;
+
     for (const other of this.items) {
       if (other.id === currentItemId) continue;
-      if (other.category === 'prop') continue;
+      // Do not flag overlap between a prop and items resting on top of it
+      if (isCurrentProp && other.anchor?.supportProp === currentItemId) continue;
+      // Do not flag overlap between a supported item and its supporting prop
+      if (supportProp === other.id) continue;
+      // If current item is a prop, only check collision against other props
+      if (isCurrentProp && other.category !== 'prop') continue;
+      // If current item is a consumable/item, don't flag against support furniture
+      if (!isCurrentProp && other.category === 'prop') continue;
 
       other.object.updateMatrixWorld(true);
       const otherBox = new THREE.Box3().setFromObject(other.object);
@@ -229,16 +240,24 @@ export class WorldItemManager {
   }
 
   /**
-   * Loads world items definition JSON and spawns all catalogued props and items
+   * Loads world items definition JSON (or object) and spawns all catalogued props and items
    */
-  async loadWorldItems(manifestUrl = 'assets/data/world_items.json') {
+  async loadWorldItems(manifestOrUrl = 'assets/data/world_items.json') {
     try {
-      console.log(`[WorldItemManager] Fetching placement manifest from: ${manifestUrl}`);
-      const res = await fetch(manifestUrl);
-      if (!res.ok) {
-        throw new Error(`HTTP error ${res.status} while fetching ${manifestUrl}`);
+      let data;
+      if (typeof manifestOrUrl === 'string') {
+        console.log(`[WorldItemManager] Fetching placement manifest from: ${manifestOrUrl}`);
+        const res = await fetch(manifestOrUrl);
+        if (!res.ok) {
+          throw new Error(`HTTP error ${res.status} while fetching ${manifestOrUrl}`);
+        }
+        data = await res.json();
+      } else if (manifestOrUrl && typeof manifestOrUrl === 'object') {
+        data = manifestOrUrl;
+      } else {
+        throw new Error('Invalid manifest parameter supplied to loadWorldItems');
       }
-      const data = await res.json();
+      this.currentManifest = data;
       this.catalog = data.catalog || {};
       const placements = data.placements || [];
 
@@ -354,7 +373,7 @@ export class WorldItemManager {
     }
 
     // Overlap check
-    const overlapCheck = this.checkObjectOverlap(box, p.id);
+    const overlapCheck = this.checkObjectOverlap(box, p.id, def.category, anchor.supportProp);
 
     const isValid = !wallCheck.intersects && isSupported && !overlapCheck.overlaps;
 
@@ -545,6 +564,371 @@ export class WorldItemManager {
    */
   getItemById(id) {
     return this.items.find(i => i.id === id) || null;
+  }
+
+  /**
+   * Dynamically adds a new placement instance to the scene
+   */
+  async addPlacement(type, position = [45.0, 0.0, -187.0], rotation = [0, 0, 0], anchor = { surface: 'floor' }, scale = [1, 1, 1], tags = null) {
+    const def = this.catalog[type];
+    if (!def) {
+      console.warn(`[WorldItemManager] Catalog missing definition for '${type}'`);
+      return null;
+    }
+
+    if (!this.templates.has(def.modelUrl)) {
+      await this.preloadTemplate(def.modelUrl);
+    }
+
+    const existingIds = new Set(this.items.map(i => i.id));
+    let count = 1;
+    let newId = `${type}_${String(count).padStart(2, '0')}`;
+    while (existingIds.has(newId)) {
+      count++;
+      newId = `${type}_${String(count).padStart(2, '0')}`;
+    }
+
+    const p = {
+      id: newId,
+      type,
+      position: [position[0] ?? position.x, position[1] ?? position.y, position[2] ?? position.z],
+      rotation: [rotation[0] ?? rotation.x, rotation[1] ?? rotation.y, rotation[2] ?? rotation.z],
+      scale: [scale[0] ?? scale.x ?? 1, scale[1] ?? scale.y ?? 1, scale[2] ?? scale.z ?? 1],
+      anchor,
+      tags: tags || (def.category === 'prop' ? ['furniture', 'obstacle'] : ['consumable', 'pickup'])
+    };
+
+    const itemEntry = this._instantiatePlacement(p);
+    if (this.debugVisualsActive) {
+      this.buildDebugVisuals();
+    }
+    return itemEntry;
+  }
+
+  /**
+   * Removes an existing placement by ID
+   */
+  removePlacement(id) {
+    const idx = this.items.findIndex(i => i.id === id);
+    if (idx === -1) return false;
+
+    const item = this.items[idx];
+    if (item.object) {
+      this.container.remove(item.object);
+      item.object.traverse(node => {
+        if (node.isMesh) {
+          if (node.geometry) node.geometry.dispose();
+          if (node.material) {
+            if (Array.isArray(node.material)) node.material.forEach(m => m.dispose());
+            else node.material.dispose();
+          }
+        }
+      });
+    }
+
+    this.items.splice(idx, 1);
+    if (this.propMap.has(id)) {
+      this.propMap.delete(id);
+    }
+
+    if (this.debugVisualsActive) {
+      this.buildDebugVisuals();
+    }
+    return true;
+  }
+
+  /**
+   * Duplicates an item placement with a slight position offset
+   */
+  async duplicatePlacement(id, offset = [0.4, 0, 0.4]) {
+    const item = this.getItemById(id);
+    if (!item) return null;
+
+    const obj = item.object;
+    const newPos = [
+      obj.position.x + (offset[0] || 0.4),
+      obj.position.y + (offset[1] || 0.0),
+      obj.position.z + (offset[2] || 0.4)
+    ];
+    const newRot = [obj.rotation.x, obj.rotation.y, obj.rotation.z];
+    const newScale = [obj.scale.x, obj.scale.y, obj.scale.z];
+    const newAnchor = item.anchor ? { ...item.anchor } : { surface: item.surfaceType || 'floor' };
+    const newTags = item.tags ? [...item.tags] : undefined;
+
+    return await this.addPlacement(item.type, newPos, newRot, newAnchor, newScale, newTags);
+  }
+
+  /**
+   * Updates an item's transform (position, rotation, scale) and recomputes real-time validation
+   */
+  updateItemTransform(id, position = null, rotation = null, scale = null) {
+    const item = this.getItemById(id);
+    if (!item) return null;
+
+    const obj = item.object;
+    if (position) {
+      obj.position.set(
+        position.x ?? position[0],
+        position.y ?? position[1],
+        position.z ?? position[2]
+      );
+    }
+    if (rotation) {
+      obj.rotation.set(
+        rotation.x ?? rotation[0],
+        rotation.y ?? rotation[1],
+        rotation.z ?? rotation[2]
+      );
+    }
+    if (scale) {
+      obj.scale.set(
+        scale.x ?? scale[0],
+        scale.y ?? scale[1],
+        scale.z ?? scale[2]
+      );
+    }
+
+    obj.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(obj);
+
+    // Wall intersection check
+    const wallCheck = this.checkWallIntersection(box);
+
+    // Furniture support boundary check
+    let isSupported = true;
+    let detectedSurfaceY = obj.position.y;
+    const surfaceType = item.anchor?.surface || item.surfaceType || 'floor';
+
+    if (surfaceType === 'table') {
+      const propId = item.anchor?.supportProp || 'prop_table_01';
+      const surf = this.detectFurnitureSurface(propId, 'table');
+      if (surf && surf.bounds) {
+        const b = surf.bounds;
+        const margin = 0.05;
+        isSupported = (box.min.x >= b.minX - margin &&
+                       box.max.x <= b.maxX + margin &&
+                       box.min.z >= b.minZ - margin &&
+                       box.max.z <= b.maxZ + margin);
+        detectedSurfaceY = surf.surfaceY;
+      }
+    } else if (surfaceType === 'shelf_tier') {
+      const propId = item.anchor?.supportProp || 'prop_shelf_01';
+      const tier = item.anchor?.tier || item.shelfTier || 1;
+      const surf = this.detectFurnitureSurface(propId, 'shelf_tier', tier);
+      if (surf && surf.bounds) {
+        const b = surf.bounds;
+        const margin = 0.05;
+        isSupported = (box.min.x >= b.minX - margin &&
+                       box.max.x <= b.maxX + margin &&
+                       box.min.z >= b.minZ - margin &&
+                       box.max.z <= b.maxZ + margin);
+        detectedSurfaceY = surf.surfaceY;
+      }
+    }
+
+    // Overlap check
+    const overlapCheck = this.checkObjectOverlap(box, item.id, item.category, item.anchor?.supportProp);
+
+    const isValid = !wallCheck.intersects && isSupported && !overlapCheck.overlaps;
+    let failureReason = null;
+    if (wallCheck.intersects) failureReason = wallCheck.reason;
+    else if (!isSupported) failureReason = 'Off Support Surface Bounds';
+    else if (overlapCheck.overlaps) failureReason = `Intersects Object (${overlapCheck.otherId})`;
+
+    item.validation = {
+      isValid,
+      wallIntersection: wallCheck.intersects,
+      wallReason: wallCheck.reason,
+      objectOverlap: overlapCheck.overlaps,
+      overlapId: overlapCheck.otherId,
+      isSupported,
+      detectedSurfaceY,
+      failureReason
+    };
+    if (item.userData) {
+      item.userData.validation = item.validation;
+    }
+
+    // Update bounding box wireframe if debug visual container exists
+    const helper = this.debugContainer.getObjectByName(`debug_box_${item.id}`);
+    if (helper && helper.box) {
+      helper.box.copy(box);
+      if (helper.material && helper.material.color) {
+        helper.material.color.setHex(isValid ? 0x00ff88 : 0xff2244);
+      }
+    }
+
+    // If item is a prop, rebuild debug visuals so support planes follow
+    if (item.category === 'prop' && this.debugVisualsActive) {
+      this.buildDebugVisuals();
+    }
+
+    return item.validation;
+  }
+
+  /**
+   * Snaps item height to floor level at its current horizontal coordinates
+   */
+  snapItemToFloor(id) {
+    const item = this.getItemById(id);
+    if (!item) return null;
+
+    const fy = this.detectFloorHeight(item.object.position.x, item.object.position.z);
+    item.object.position.y = fy;
+    item.anchor = { surface: 'floor' };
+    item.surfaceType = 'floor';
+    item.shelfTier = null;
+    return this.updateItemTransform(id, item.object.position, item.object.rotation);
+  }
+
+  /**
+   * Snaps item height to table surface
+   */
+  snapItemToTable(id, tableId = null) {
+    const item = this.getItemById(id);
+    if (!item) return null;
+
+    let targetPropId = tableId;
+    if (!targetPropId) {
+      let minDist = Infinity;
+      for (const [propId, propEntry] of this.propMap.entries()) {
+        if (propEntry.type === 'table') {
+          const d = Math.hypot(
+            propEntry.object.position.x - item.object.position.x,
+            propEntry.object.position.z - item.object.position.z
+          );
+          if (d < minDist) {
+            minDist = d;
+            targetPropId = propId;
+          }
+        }
+      }
+      targetPropId = targetPropId || 'prop_table_01';
+    }
+
+    const surf = this.detectFurnitureSurface(targetPropId, 'table');
+    if (surf && surf.isValidSupport) {
+      item.object.position.y = surf.surfaceY;
+    }
+    item.anchor = { surface: 'table', supportProp: targetPropId };
+    item.surfaceType = 'table';
+    item.shelfTier = null;
+    return this.updateItemTransform(id, item.object.position, item.object.rotation);
+  }
+
+  /**
+   * Snaps item height to shelf tier
+   */
+  snapItemToShelfTier(id, tierIndex = 1, shelfId = null) {
+    const item = this.getItemById(id);
+    if (!item) return null;
+
+    let targetPropId = shelfId;
+    if (!targetPropId) {
+      let minDist = Infinity;
+      for (const [propId, propEntry] of this.propMap.entries()) {
+        if (propEntry.type === 'metal_shelf') {
+          const d = Math.hypot(
+            propEntry.object.position.x - item.object.position.x,
+            propEntry.object.position.z - item.object.position.z
+          );
+          if (d < minDist) {
+            minDist = d;
+            targetPropId = propId;
+          }
+        }
+      }
+      targetPropId = targetPropId || 'prop_shelf_01';
+    }
+
+    const surf = this.detectFurnitureSurface(targetPropId, 'shelf_tier', tierIndex);
+    if (surf && surf.isValidSupport) {
+      item.object.position.y = surf.surfaceY;
+    }
+    item.anchor = { surface: 'shelf_tier', supportProp: targetPropId, tier: tierIndex };
+    item.surfaceType = 'shelf_tier';
+    item.shelfTier = tierIndex;
+    return this.updateItemTransform(id, item.object.position, item.object.rotation);
+  }
+
+  /**
+   * Exports full layout document conforming to the versioned layout schema
+   */
+  exportLayoutData(description = 'Level 0 Visual Placement Layout', author = 'developer') {
+    this.container.updateMatrixWorld(true);
+    const placements = this.items.map(item => {
+      const obj = item.object;
+      obj.updateMatrixWorld(true);
+      return {
+        id: item.id,
+        type: item.type,
+        category: item.category || (this.catalog[item.type]?.category) || 'prop',
+        placementMode: item.placementMode || 'fixed',
+        position: [
+          +obj.position.x.toFixed(4),
+          +obj.position.y.toFixed(4),
+          +obj.position.z.toFixed(4)
+        ],
+        rotation: [
+          +obj.rotation.x.toFixed(4),
+          +obj.rotation.y.toFixed(4),
+          +obj.rotation.z.toFixed(4)
+        ],
+        scale: [
+          +obj.scale.x.toFixed(4),
+          +obj.scale.y.toFixed(4),
+          +obj.scale.z.toFixed(4)
+        ],
+        anchor: item.anchor || { surface: item.surfaceType || 'floor' },
+        tags: item.tags || (item.category === 'prop' ? ['furniture', 'obstacle'] : ['consumable', 'pickup'])
+      };
+    });
+
+    return {
+      schemaVersion: '1.0.0',
+      level: 'level0',
+      author,
+      description,
+      catalog: this.catalog,
+      placements,
+      spawnGroups: [
+        {
+          id: 'sg_hallway_consumables_01',
+          name: 'Hallway Floor Consumables Pool',
+          eligibleTypes: ['almond_can', 'energy_drink', 'sanity_pill', 'aa_battery'],
+          candidatePoints: [
+            [41.8, 0.0, -186.2],
+            [42.2, 0.0, -186.1],
+            [42.6, 0.0, -186.0],
+            [43.1, 0.0, -186.0],
+            [43.3, 0.0, -188.7]
+          ],
+          minCount: 2,
+          maxCount: 4,
+          surface: 'floor',
+          probability: 0.85,
+          tags: ['consumable', 'random_loot']
+        },
+        {
+          id: 'sg_tabletop_supplies_01',
+          name: 'Office Tabletop Medical & Ammo Pool',
+          eligibleTypes: ['first_aid', 'ammo_box', 'sanity_pill', 'doorKey'],
+          candidatePoints: [
+            [44.75, 0.936, -185.45],
+            [44.35, 0.936, -185.45],
+            [44.00, 0.936, -185.45],
+            [44.55, 0.936, -185.20],
+            [44.15, 0.936, -185.20]
+          ],
+          minCount: 2,
+          maxCount: 3,
+          surface: 'table',
+          supportProp: 'prop_table_01',
+          probability: 1.0,
+          tags: ['high_tier_loot', 'loot_surface']
+        }
+      ]
+    };
   }
 
   /**

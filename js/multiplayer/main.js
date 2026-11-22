@@ -20,12 +20,14 @@ import {
 import { SanityController, SANITY_STATE, SANITY_EVENTS } from './sanity_controller.js';
 import { SanityHUD } from './sanity_hud.js';
 import { WorldItemManager } from './item_manager.js';
+import { WorldPlacementEditor } from './world_editor.js';
 
 let scene, camera, renderer, mpManager, playerLight;
 let lastTime = performance.now();
 let isGameActive = false;
 let isEnvReady = false;
 let itemManager = null;
+let worldEditor = null;
 
 // Survival Mode Sanity System
 let sanityController = null;
@@ -218,6 +220,8 @@ async function init() {
   }
 
   // 4. Initialize MPManager
+  const devToolsEnabled = await checkDevToolsConfig();
+
   mpManager = new MPManager(scene, camera, {
     onStatusChange: ({ status, message }) => {
       if (statusEl) statusEl.textContent = message;
@@ -229,7 +233,23 @@ async function init() {
       if (sanityHUD) sanityHUD.setVisible(true);
       if (roomInfoEl) roomInfoEl.textContent = `ROOM: ${payload.roomCode}`;
       if (countEl) countEl.textContent = `PLAYERS: ${payload.totalPlayers || 1} / 2`;
-      mpManager.localPlayer.requestPointerLock(renderer.domElement);
+
+      // Layout revision synchronization across room clients (dev mode)
+      if (devToolsEnabled && payload.layoutRevision && payload.layoutRevision !== 'default') {
+        console.log(`[ROOM LAYOUT SYNC] Synchronizing room ${payload.roomCode} to layout: ${payload.layoutRevision}`);
+        const revUrl = `/api/developer/world-layout/load?file=${encodeURIComponent(payload.layoutRevision)}`;
+        itemManager?.loadWorldItems(revUrl)
+          .then(() => {
+            if (worldEditor?.ui?.layoutSelect) {
+              worldEditor.ui.layoutSelect.value = payload.layoutRevision;
+            }
+          })
+          .catch(e => console.warn('[ROOM LAYOUT SYNC] Error:', e));
+      }
+
+      if (!mpManager.localPlayer.isEditorActive && (!worldEditor || !worldEditor.isOpen)) {
+        mpManager.localPlayer.requestPointerLock(renderer.domElement);
+      }
     },
     onPlayerJoined: (payload) => {
       if (countEl) countEl.textContent = `PLAYERS: 2 / 2`;
@@ -253,13 +273,17 @@ async function init() {
   btnCreate.addEventListener('click', () => {
     const srv = serverInput.value.trim();
     const customCode = roomInput.value.trim().toUpperCase() || null;
+    const layoutRev = (devToolsEnabled && worldEditor?.ui?.layoutSelect?.value && worldEditor.ui.layoutSelect.value !== 'default')
+      ? worldEditor.ui.layoutSelect.value
+      : null;
+
     if (!mpManager.network.isConnected) {
       mpManager.connect(srv);
       mpManager.network.ws.addEventListener('open', () => {
-        mpManager.createRoom(customCode);
+        mpManager.createRoom(customCode, layoutRev);
       }, { once: true });
     } else {
-      mpManager.createRoom(customCode);
+      mpManager.createRoom(customCode, layoutRev);
     }
   });
 
@@ -282,7 +306,7 @@ async function init() {
 
   // Click canvas to resume pointer lock
   renderer.domElement.addEventListener('click', () => {
-    if (isGameActive && mpManager) {
+    if (isGameActive && mpManager && !mpManager.localPlayer.isEditorActive && (!worldEditor || !worldEditor.isOpen)) {
       mpManager.localPlayer.requestPointerLock(renderer.domElement);
     }
   });
@@ -298,7 +322,7 @@ async function init() {
 
   // 6. Load Level 0 Environment
   statusEl.textContent = 'Loading Level 0 PBR Environment...';
-  initLevel0Env(scene, () => {
+  await initLevel0Env(scene, () => {
     enterLevel0Env(scene);
     const ch = getCollisionHandler();
     if (ch) {
@@ -324,15 +348,19 @@ async function init() {
     // Initialize world item placements with collision handler for intersection checks
     itemManager = new WorldItemManager(scene, ch);
     window.itemManager = itemManager;
-    itemManager.loadWorldItems('assets/data/world_items.json')
-      .then(() => {
-        console.log('[WORLD ITEMS] World items and props loaded successfully');
-      })
-      .catch(err => console.error('[WORLD ITEMS] Failed to load world items:', err));
-
-    isEnvReady = true;
-    statusEl.textContent = 'Ready to Connect';
   });
+
+  const initialLayout = devToolsEnabled ? '/api/developer/world-layout/load' : 'assets/data/world_items.json';
+  try {
+    await itemManager.loadWorldItems(initialLayout);
+    console.log(`[WORLD ITEMS] World items and props loaded successfully from ${initialLayout}`);
+  } catch (err) {
+    console.warn(`[WORLD ITEMS] Failed to load ${initialLayout}, falling back to default:`, err);
+    await itemManager.loadWorldItems('assets/data/world_items.json');
+  }
+
+  isEnvReady = true;
+  statusEl.textContent = 'Ready to Connect';
 
   // Auto-connect to local server on page load
   mpManager.connect(defaultWsHost);
@@ -361,17 +389,24 @@ async function init() {
     runAutoTest(autoClient, autoRoom, autoAction);
   }
 
-  // Check if developer rendering tools are permitted by the server
-  const devToolsEnabled = await checkDevToolsConfig();
-
+  // Developer rendering and world placement tools configuration
   if (devToolsEnabled) {
     console.log('[DEV TOOLS] Server enabled developer rendering panel (--dev-rendering).');
+    worldEditor = new WorldPlacementEditor({
+      scene,
+      camera,
+      renderer,
+      itemManager,
+      localPlayer: mpManager.localPlayer
+    });
+    window.worldEditor = worldEditor;
     initDevComparisonUI();
   } else {
     // If not enabled by server flag, completely remove dev panel elements and do not bind dev keys
     console.log('[DEV TOOLS] Developer tools disabled by server. Removing panel from DOM.');
     document.getElementById('dev-comparison-panel')?.remove();
     document.getElementById('dev-panel-toggle')?.remove();
+    document.getElementById('world-editor-overlay')?.remove();
   }
 
   // Check URL query parameters for verification suite
@@ -810,14 +845,23 @@ function initDevComparisonUI() {
     });
   }
 
-  // World items placement debug bounding box toggle
+  // World items placement debug bounding box and editor toggle
   const btnToggleBounds = document.getElementById('dev-toggle-bounds');
   if (btnToggleBounds) {
     btnToggleBounds.addEventListener('click', () => {
       if (itemManager) {
         const isVis = itemManager.toggleDebugVisuals();
-        btnToggleBounds.textContent = isVis ? 'Hide Placement Bounds [ON]' : 'Show Placement Bounds [OFF]';
+        btnToggleBounds.textContent = isVis ? 'Bounds [ON]' : 'Bounds [OFF]';
         btnToggleBounds.classList.toggle('active', isVis);
+      }
+    });
+  }
+
+  const btnOpenEditor = document.getElementById('dev-open-editor');
+  if (btnOpenEditor) {
+    btnOpenEditor.addEventListener('click', () => {
+      if (worldEditor) {
+        worldEditor.toggle();
       }
     });
   }
@@ -856,6 +900,9 @@ function initDevComparisonUI() {
       e.preventDefault();
       const isVisible = panel.style.display !== 'none';
       setPanelVisible(!isVisible);
+    } else if (e.key === 'F4') {
+      e.preventDefault();
+      if (worldEditor) worldEditor.toggle();
     }
     // Sanity simulation test hotkeys
     else if (sanityController) {

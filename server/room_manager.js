@@ -27,7 +27,7 @@ export class RoomManager {
     return 'ROOM' + Math.floor(Math.random() * 1000);
   }
 
-  createRoom(ws, customCode = null) {
+  createRoom(ws, customCode = null, layoutRevision = null) {
     const roomCode = (customCode && typeof customCode === 'string' && customCode.trim().length > 0)
       ? customCode.trim().toUpperCase()
       : this.generateRoomCode();
@@ -51,13 +51,14 @@ export class RoomManager {
     const room = {
       code: roomCode,
       createdAt: Date.now(),
+      layoutRevision: (typeof layoutRevision === 'string' && layoutRevision.trim()) ? layoutRevision.trim() : 'default',
       players: new Map([[playerId, player]])
     };
 
     this.rooms.set(roomCode, room);
     this.clientToRoom.set(ws, { roomCode, playerId });
 
-    return { roomCode, player, spawn, totalPlayers: 1 };
+    return { roomCode, player, spawn, totalPlayers: 1, layoutRevision: room.layoutRevision };
   }
 
   joinRoom(ws, roomCode) {
@@ -105,7 +106,8 @@ export class RoomManager {
       player,
       spawn,
       existingPlayers,
-      totalPlayers: room.players.size
+      totalPlayers: room.players.size,
+      layoutRevision: room.layoutRevision || 'default'
     };
   }
 

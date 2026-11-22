@@ -62,7 +62,238 @@ const server = http.createServer((req, res) => {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-cache, no-store, must-revalidate'
     });
-    res.end(JSON.stringify({ renderingDevTools: DEV_RENDERING }));
+    const layoutDir = path.join(CLIENT_DIR, 'world-layouts/level0');
+    let latestLayout = null;
+    const latestPath = path.join(layoutDir, 'latest.json');
+    if (fs.existsSync(latestPath)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(latestPath, 'utf8'));
+        latestLayout = {
+          iteration: data.iteration,
+          file: `iteration_${String(data.iteration).padStart(4, '0')}.json`
+        };
+      } catch (e) {}
+    }
+    res.end(JSON.stringify({
+      renderingDevTools: DEV_RENDERING,
+      latestLayout
+    }));
+    return;
+  }
+
+  // Developer World Placement Layout Endpoints (Only enabled when --dev-rendering is active)
+  if (req.url.startsWith('/api/developer/world-layout/')) {
+    const layoutUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const subpath = layoutUrl.pathname.replace('/api/developer/world-layout/', '');
+
+    if (!DEV_RENDERING) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Developer tools are disabled on this server.' }));
+      return;
+    }
+
+    const layoutDir = path.join(CLIENT_DIR, 'world-layouts/level0');
+    fs.mkdirSync(layoutDir, { recursive: true });
+
+    if (subpath === 'list' && req.method === 'GET') {
+      const files = fs.readdirSync(layoutDir);
+      const iterations = [];
+      let latestFile = null;
+
+      for (const f of files) {
+        const match = f.match(/^iteration_(\d+)\.json$/);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          const stats = fs.statSync(path.join(layoutDir, f));
+          iterations.push({
+            iteration: num,
+            filename: f,
+            size: stats.size,
+            mtime: stats.mtime.toISOString()
+          });
+        }
+      }
+      iterations.sort((a, b) => a.iteration - b.iteration);
+      if (fs.existsSync(path.join(layoutDir, 'latest.json'))) {
+        latestFile = iterations.length > 0 ? iterations[iterations.length - 1].filename : 'latest.json';
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+      res.end(JSON.stringify({ iterations, latest: latestFile, count: iterations.length }));
+      return;
+    }
+
+    if (subpath === 'load' && req.method === 'GET') {
+      const iterParam = layoutUrl.searchParams.get('iteration');
+      const fileParam = layoutUrl.searchParams.get('file');
+
+      let targetFile = 'latest.json';
+      if (fileParam) {
+        targetFile = path.basename(fileParam);
+      } else if (iterParam) {
+        const num = parseInt(iterParam, 10);
+        targetFile = `iteration_${String(num).padStart(4, '0')}.json`;
+      }
+
+      const filePath = path.join(layoutDir, targetFile);
+      if (fs.existsSync(filePath)) {
+        const content = fs.readFileSync(filePath, 'utf8');
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+        res.end(content);
+        return;
+      }
+
+      // Fallback: Default layout
+      const defaultPath = path.join(CLIENT_DIR, 'assets/data/world_items.json');
+      if (fs.existsSync(defaultPath)) {
+        const content = fs.readFileSync(defaultPath, 'utf8');
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+        res.end(content);
+        return;
+      }
+
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: `Layout ${targetFile} not found.` }));
+      return;
+    }
+
+    if (subpath === 'export' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const payload = JSON.parse(body);
+
+          // 1. Validate Schema
+          if (!payload || typeof payload !== 'object') {
+            throw new Error('Payload must be a JSON object.');
+          }
+          if (payload.level !== 'level0') {
+            throw new Error('Invalid or missing level identifier (expected "level0").');
+          }
+          if (!Array.isArray(payload.placements)) {
+            throw new Error('Placements must be an array.');
+          }
+          for (const p of payload.placements) {
+            if (!p.id || typeof p.id !== 'string') throw new Error('Placement item missing valid string id.');
+            if (!p.type || typeof p.type !== 'string') throw new Error(`Placement ${p.id} missing item type.`);
+            if (!Array.isArray(p.position) || p.position.length !== 3) throw new Error(`Placement ${p.id} invalid position.`);
+          }
+
+          // 2. Scan world-layouts/level0/ for next iteration number
+          const existing = fs.readdirSync(layoutDir);
+          let maxIter = 0;
+          for (const f of existing) {
+            const match = f.match(/^iteration_(\d+)\.json$/);
+            if (match) {
+              const num = parseInt(match[1], 10);
+              if (num > maxIter) maxIter = num;
+            }
+          }
+          const nextIter = maxIter + 1;
+          const filename = `iteration_${String(nextIter).padStart(4, '0')}.json`;
+          const filePath = path.join(layoutDir, filename);
+          const latestPath = path.join(layoutDir, 'latest.json');
+
+          // 3. Construct Complete Normalized Layout Document
+          const layoutDoc = {
+            schemaVersion: '1.0.0',
+            level: 'level0',
+            iteration: nextIter,
+            createdAt: new Date().toISOString(),
+            author: payload.author || 'developer',
+            description: payload.description || `Level 0 World Layout Iteration ${nextIter}`,
+            catalog: payload.catalog || {},
+            placements: payload.placements.map(p => ({
+              id: p.id,
+              type: p.type,
+              category: p.category || (payload.catalog?.[p.type]?.category) || 'prop',
+              placementMode: p.placementMode || 'fixed',
+              position: [
+                +p.position[0].toFixed(4),
+                +p.position[1].toFixed(4),
+                +p.position[2].toFixed(4)
+              ],
+              rotation: [
+                +(p.rotation?.[0] || 0).toFixed(4),
+                +(p.rotation?.[1] || 0).toFixed(4),
+                +(p.rotation?.[2] || 0).toFixed(4)
+              ],
+              scale: [
+                +(p.scale?.[0] || 1).toFixed(4),
+                +(p.scale?.[1] || 1).toFixed(4),
+                +(p.scale?.[2] || 1).toFixed(4)
+              ],
+              anchor: p.anchor || { surface: p.surfaceType || 'floor' },
+              tags: Array.isArray(p.tags) ? p.tags : ['collidable']
+            })),
+            spawnGroups: Array.isArray(payload.spawnGroups) ? payload.spawnGroups : [
+              {
+                id: 'sg_hallway_consumables_01',
+                name: 'Hallway Floor Consumables Pool',
+                eligibleTypes: ['almond_can', 'energy_drink', 'sanity_pill', 'aa_battery'],
+                candidatePoints: [
+                  [41.8, 0.0, -186.2],
+                  [42.2, 0.0, -186.1],
+                  [42.6, 0.0, -186.0],
+                  [43.1, 0.0, -186.0],
+                  [43.3, 0.0, -188.7]
+                ],
+                minCount: 2,
+                maxCount: 4,
+                surface: 'floor',
+                probability: 0.85,
+                tags: ['consumable', 'random_loot']
+              },
+              {
+                id: 'sg_tabletop_supplies_01',
+                name: 'Office Tabletop Medical & Ammo Pool',
+                eligibleTypes: ['first_aid', 'ammo_box', 'sanity_pill', 'doorKey'],
+                candidatePoints: [
+                  [44.75, 0.936, -185.45],
+                  [44.35, 0.936, -185.45],
+                  [44.00, 0.936, -185.45],
+                  [44.55, 0.936, -185.20],
+                  [44.15, 0.936, -185.20]
+                ],
+                minCount: 2,
+                maxCount: 3,
+                surface: 'table',
+                supportProp: 'prop_table_01',
+                probability: 1.0,
+                tags: ['high_tier_loot', 'loot_surface']
+              }
+            ]
+          };
+
+          const jsonStr = JSON.stringify(layoutDoc, null, 2);
+          // Write immutable numbered iteration
+          fs.writeFileSync(filePath, jsonStr, 'utf8');
+          // Atomically update latest.json
+          fs.writeFileSync(latestPath, jsonStr, 'utf8');
+
+          console.log(`[WORLD EDITOR] Exported iteration ${nextIter} (${layoutDoc.placements.length} items) -> ${filePath}`);
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: true,
+            iteration: nextIter,
+            filename,
+            itemCount: layoutDoc.placements.length,
+            spawnGroupCount: layoutDoc.spawnGroups.length,
+            path: `world-layouts/level0/${filename}`
+          }));
+        } catch (err) {
+          console.error('[WORLD EDITOR] Export failed:', err.message);
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Endpoint not found.' }));
     return;
   }
 
@@ -189,7 +420,7 @@ wss.on('connection', (ws, req) => {
 
     switch (type) {
       case MSG_TYPES.CREATE_ROOM: {
-        const res = roomManager.createRoom(ws, payload?.roomCode);
+        const res = roomManager.createRoom(ws, payload?.roomCode, payload?.layoutRevision);
         if (res.error) {
           send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error });
         } else {
@@ -198,7 +429,8 @@ wss.on('connection', (ws, req) => {
             playerId: res.player.id,
             slot: res.player.slot,
             spawn: res.spawn,
-            totalPlayers: res.totalPlayers
+            totalPlayers: res.totalPlayers,
+            layoutRevision: res.layoutRevision
           });
         }
         break;
@@ -216,7 +448,8 @@ wss.on('connection', (ws, req) => {
             slot: res.player.slot,
             spawn: res.spawn,
             existingPlayers: res.existingPlayers,
-            totalPlayers: res.totalPlayers
+            totalPlayers: res.totalPlayers,
+            layoutRevision: res.layoutRevision
           });
 
           // Notify existing players in room about new arrival
