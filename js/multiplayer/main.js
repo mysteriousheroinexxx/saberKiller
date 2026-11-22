@@ -19,11 +19,13 @@ import {
 } from './lighting.js';
 import { SanityController, SANITY_STATE, SANITY_EVENTS } from './sanity_controller.js';
 import { SanityHUD } from './sanity_hud.js';
+import { WorldItemManager } from './item_manager.js';
 
 let scene, camera, renderer, mpManager, playerLight;
 let lastTime = performance.now();
 let isGameActive = false;
 let isEnvReady = false;
+let itemManager = null;
 
 // Survival Mode Sanity System
 let sanityController = null;
@@ -310,6 +312,15 @@ async function init() {
     // Apply default Configuration D immediately to environment materials
     applyRenderConfig('combined');
 
+    // Initialize world item placements (Stage 4 data-driven prototype)
+    itemManager = new WorldItemManager(scene);
+    window.itemManager = itemManager;
+    itemManager.loadWorldItems('assets/data/world_items.json')
+      .then(() => {
+        console.log('[WORLD ITEMS] World items and props loaded successfully');
+      })
+      .catch(err => console.error('[WORLD ITEMS] Failed to load world items:', err));
+
     isEnvReady = true;
     statusEl.textContent = 'Ready to Connect';
   });
@@ -379,6 +390,7 @@ async function init() {
   window.switchView = switchView;
   window.RENDER_CONFIGS = RENDER_CONFIGS;
   window.VIEWPOINTS = VIEWPOINTS;
+  window.itemManager = itemManager;
 
   // 7. Render Loop
   requestAnimationFrame(loop);
@@ -483,6 +495,34 @@ export const VIEWPOINTS = {
     pos: { x: 79.55, y: 1.62, z: 198.00 },
     yaw: 0.0,
     pitch: 0.0
+  },
+  items_overview: {
+    key: 'items_overview',
+    name: 'World Items Overview (Hallway)',
+    pos: { x: 48.0, y: 1.50, z: -187.6 },
+    yaw: -Math.PI / 2,
+    pitch: -0.22
+  },
+  items_table: {
+    key: 'items_table',
+    name: 'Items on Table (Close-up)',
+    pos: { x: 45.4, y: 1.30, z: -186.2 },
+    yaw: -Math.PI / 2,
+    pitch: -0.35
+  },
+  items_shelf: {
+    key: 'items_shelf',
+    name: 'Items on Metal Shelf (Close-up)',
+    pos: { x: 45.4, y: 1.30, z: -189.1 },
+    yaw: -Math.PI / 2,
+    pitch: -0.15
+  },
+  items_floor: {
+    key: 'items_floor',
+    name: 'Items on Carpet Floor (Close-up)',
+    pos: { x: 47.5, y: 1.20, z: -187.6 },
+    yaw: -Math.PI / 2,
+    pitch: -0.65
   }
 };
 
