@@ -44,11 +44,79 @@ const MIME_TYPES = {
   '.webm': 'video/webm'
 };
 
+// Server-side active layout revision lifecycle
+let activeDevLayout = {
+  iteration: 0,
+  filename: 'default',
+  data: null
+};
+
+function loadStartupLayout() {
+  const layoutDir = path.join(CLIENT_DIR, 'world-layouts/level0');
+  const latestPath = path.join(layoutDir, 'latest.json');
+  const defaultPath = path.join(CLIENT_DIR, 'assets/data/world_items.json');
+
+  let defaultData = null;
+  try {
+    if (fs.existsSync(defaultPath)) {
+      defaultData = JSON.parse(fs.readFileSync(defaultPath, 'utf8'));
+    }
+  } catch (err) {
+    console.error('[WORLD LAYOUT] Error reading default assets/data/world_items.json:', err.message);
+  }
+
+  if (!DEV_RENDERING) {
+    activeDevLayout = {
+      iteration: 0,
+      filename: 'default',
+      data: defaultData
+    };
+    console.log('[WORLD LAYOUT] Production mode active: using approved layout assets/data/world_items.json');
+    return;
+  }
+
+  // Developer mode: try to load and validate latest.json from disk
+  fs.mkdirSync(layoutDir, { recursive: true });
+
+  if (fs.existsSync(latestPath)) {
+    try {
+      const raw = fs.readFileSync(latestPath, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || parsed.level !== 'level0' || !Array.isArray(parsed.placements)) {
+        throw new Error('Schema validation failed: missing level0 or placements array.');
+      }
+      const iterNum = parseInt(parsed.iteration, 10) || 1;
+      const expectedFilename = `iteration_${String(iterNum).padStart(4, '0')}.json`;
+      activeDevLayout = {
+        iteration: iterNum,
+        filename: expectedFilename,
+        data: parsed
+      };
+      console.log(`[WORLD LAYOUT] Loaded development layout revision: ${expectedFilename} (${parsed.placements.length} items)`);
+      return;
+    } catch (err) {
+      console.warn(`[WORLD LAYOUT] Warning: latest.json missing or invalid (${err.message}), falling back to default assets/data/world_items.json`);
+    }
+  } else {
+    console.warn('[WORLD LAYOUT] Warning: latest.json not found on disk, falling back to default assets/data/world_items.json');
+  }
+
+  activeDevLayout = {
+    iteration: 0,
+    filename: 'default',
+    data: defaultData
+  };
+}
+
+// Initial layout load on server startup
+loadStartupLayout();
+
 // 1. Static HTTP File Server
 const server = http.createServer((req, res) => {
   // CORS & WebSocket upgrade headers
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -58,37 +126,34 @@ const server = http.createServer((req, res) => {
 
   // Server-controlled developer configuration endpoint
   if (req.url === '/__config' && req.method === 'GET') {
+    const configPayload = JSON.stringify({
+      renderingDevTools: DEV_RENDERING,
+      latestLayout: (DEV_RENDERING && activeDevLayout && activeDevLayout.filename !== 'default') ? {
+        iteration: activeDevLayout.iteration,
+        file: activeDevLayout.filename
+      } : null
+    });
     res.writeHead(200, {
       'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(configPayload),
       'Cache-Control': 'no-cache, no-store, must-revalidate'
     });
-    const layoutDir = path.join(CLIENT_DIR, 'world-layouts/level0');
-    let latestLayout = null;
-    const latestPath = path.join(layoutDir, 'latest.json');
-    if (fs.existsSync(latestPath)) {
-      try {
-        const data = JSON.parse(fs.readFileSync(latestPath, 'utf8'));
-        latestLayout = {
-          iteration: data.iteration,
-          file: `iteration_${String(data.iteration).padStart(4, '0')}.json`
-        };
-      } catch (e) {}
-    }
-    res.end(JSON.stringify({
-      renderingDevTools: DEV_RENDERING,
-      latestLayout
-    }));
+    res.end(configPayload);
     return;
   }
 
   // Developer World Placement Layout Endpoints (Only enabled when --dev-rendering is active)
   if (req.url.startsWith('/api/developer/world-layout/')) {
     const layoutUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    const subpath = layoutUrl.pathname.replace('/api/developer/world-layout/', '');
+    const subpath = layoutUrl.pathname.replace('/api/developer/world-layout/', '').replace(/\/+$/, '');
 
     if (!DEV_RENDERING) {
-      res.writeHead(403, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Developer tools are disabled on this server.' }));
+      const errBody = JSON.stringify({ error: 'Developer tools are disabled on this server.' });
+      res.writeHead(403, {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(errBody)
+      });
+      res.end(errBody);
       return;
     }
 
@@ -114,12 +179,19 @@ const server = http.createServer((req, res) => {
         }
       }
       iterations.sort((a, b) => a.iteration - b.iteration);
-      if (fs.existsSync(path.join(layoutDir, 'latest.json'))) {
-        latestFile = iterations.length > 0 ? iterations[iterations.length - 1].filename : 'latest.json';
+      if (activeDevLayout && activeDevLayout.filename !== 'default') {
+        latestFile = activeDevLayout.filename;
+      } else if (iterations.length > 0) {
+        latestFile = iterations[iterations.length - 1].filename;
       }
 
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
-      res.end(JSON.stringify({ iterations, latest: latestFile, count: iterations.length }));
+      const listBody = JSON.stringify({ iterations, latest: latestFile, count: iterations.length });
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(listBody),
+        'Cache-Control': 'no-cache'
+      });
+      res.end(listBody);
       return;
     }
 
@@ -127,7 +199,7 @@ const server = http.createServer((req, res) => {
       const iterParam = layoutUrl.searchParams.get('iteration');
       const fileParam = layoutUrl.searchParams.get('file');
 
-      let targetFile = 'latest.json';
+      let targetFile = null;
       if (fileParam) {
         targetFile = path.basename(fileParam);
       } else if (iterParam) {
@@ -135,36 +207,79 @@ const server = http.createServer((req, res) => {
         targetFile = `iteration_${String(num).padStart(4, '0')}.json`;
       }
 
+      // If no target file is requested, return current activeDevLayout data if in memory
+      if (!targetFile) {
+        if (activeDevLayout && activeDevLayout.data) {
+          const content = JSON.stringify(activeDevLayout.data, null, 2);
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(content),
+            'Cache-Control': 'no-cache'
+          });
+          res.end(content);
+          return;
+        }
+        targetFile = 'latest.json';
+      }
+
       const filePath = path.join(layoutDir, targetFile);
       if (fs.existsSync(filePath)) {
-        const content = fs.readFileSync(filePath, 'utf8');
-        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
-        res.end(content);
-        return;
+        try {
+          const content = fs.readFileSync(filePath, 'utf8');
+          // Validate valid JSON before serving
+          JSON.parse(content);
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(content),
+            'Cache-Control': 'no-cache'
+          });
+          res.end(content);
+          return;
+        } catch (err) {
+          console.warn(`[WORLD LAYOUT] Corrupt layout file ${targetFile}:`, err.message);
+        }
       }
 
       // Fallback: Default layout
       const defaultPath = path.join(CLIENT_DIR, 'assets/data/world_items.json');
       if (fs.existsSync(defaultPath)) {
         const content = fs.readFileSync(defaultPath, 'utf8');
-        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(content),
+          'Cache-Control': 'no-cache'
+        });
         res.end(content);
         return;
       }
 
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: `Layout ${targetFile} not found.` }));
+      const errBody = JSON.stringify({ error: `Layout ${targetFile || 'default'} not found.` });
+      res.writeHead(404, {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(errBody)
+      });
+      res.end(errBody);
       return;
     }
 
     if (subpath === 'export' && req.method === 'POST') {
-      let body = '';
-      req.on('data', chunk => body += chunk);
+      const chunks = [];
+      req.on('data', chunk => chunks.push(chunk));
       req.on('end', () => {
         try {
-          const payload = JSON.parse(body);
+          const rawBody = Buffer.concat(chunks).toString('utf8');
+          if (!rawBody || !rawBody.trim()) {
+            throw new Error('Export payload is empty.');
+          }
 
-          // 1. Validate Schema
+          let payload;
+          try {
+            payload = JSON.parse(rawBody);
+          } catch (jsonErr) {
+            throw new Error(`Invalid JSON syntax in export body: ${jsonErr.message}`);
+          }
+
+          // 1. Strict Schema Validation before touching filesystem
           if (!payload || typeof payload !== 'object') {
             throw new Error('Payload must be a JSON object.');
           }
@@ -174,10 +289,20 @@ const server = http.createServer((req, res) => {
           if (!Array.isArray(payload.placements)) {
             throw new Error('Placements must be an array.');
           }
-          for (const p of payload.placements) {
-            if (!p.id || typeof p.id !== 'string') throw new Error('Placement item missing valid string id.');
-            if (!p.type || typeof p.type !== 'string') throw new Error(`Placement ${p.id} missing item type.`);
-            if (!Array.isArray(p.position) || p.position.length !== 3) throw new Error(`Placement ${p.id} invalid position.`);
+          for (let i = 0; i < payload.placements.length; i++) {
+            const p = payload.placements[i];
+            if (!p || typeof p !== 'object') {
+              throw new Error(`Placement item at index ${i} is not an object.`);
+            }
+            if (!p.id || typeof p.id !== 'string') {
+              throw new Error(`Placement item at index ${i} missing valid string id.`);
+            }
+            if (!p.type || typeof p.type !== 'string') {
+              throw new Error(`Placement '${p.id}' missing item type.`);
+            }
+            if (!Array.isArray(p.position) || p.position.length !== 3 || p.position.some(n => typeof n !== 'number' || !isFinite(n))) {
+              throw new Error(`Placement '${p.id}' has invalid numeric position [x, y, z].`);
+            }
           }
 
           // 2. Scan world-layouts/level0/ for next iteration number
@@ -194,6 +319,7 @@ const server = http.createServer((req, res) => {
           const filename = `iteration_${String(nextIter).padStart(4, '0')}.json`;
           const filePath = path.join(layoutDir, filename);
           const latestPath = path.join(layoutDir, 'latest.json');
+          const latestTmpPath = path.join(layoutDir, 'latest.json.tmp');
 
           // 3. Construct Complete Normalized Layout Document
           const layoutDoc = {
@@ -267,33 +393,55 @@ const server = http.createServer((req, res) => {
           };
 
           const jsonStr = JSON.stringify(layoutDoc, null, 2);
-          // Write immutable numbered iteration
+          // 4. Save immutable numbered iteration file
           fs.writeFileSync(filePath, jsonStr, 'utf8');
-          // Atomically update latest.json
-          fs.writeFileSync(latestPath, jsonStr, 'utf8');
+
+          // 5. Atomically update latest.json via temp file rename
+          fs.writeFileSync(latestTmpPath, jsonStr, 'utf8');
+          fs.renameSync(latestTmpPath, latestPath);
+
+          // 6. Update in-memory activeDevLayout so subsequent room creations use it
+          activeDevLayout = {
+            iteration: nextIter,
+            filename,
+            data: layoutDoc
+          };
 
           console.log(`[WORLD EDITOR] Exported iteration ${nextIter} (${layoutDoc.placements.length} items) -> ${filePath}`);
 
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
+          const resPayload = JSON.stringify({
             success: true,
             iteration: nextIter,
             filename,
             itemCount: layoutDoc.placements.length,
             spawnGroupCount: layoutDoc.spawnGroups.length,
             path: `world-layouts/level0/${filename}`
-          }));
+          });
+
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(resPayload)
+          });
+          res.end(resPayload);
         } catch (err) {
           console.error('[WORLD EDITOR] Export failed:', err.message);
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: err.message }));
+          const errRes = JSON.stringify({ error: err.message });
+          res.writeHead(400, {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(errRes)
+          });
+          res.end(errRes);
         }
       });
       return;
     }
 
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Endpoint not found.' }));
+    const notFoundBody = JSON.stringify({ error: 'Endpoint not found.' });
+    res.writeHead(404, {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(notFoundBody)
+    });
+    res.end(notFoundBody);
     return;
   }
 
@@ -420,7 +568,11 @@ wss.on('connection', (ws, req) => {
 
     switch (type) {
       case MSG_TYPES.CREATE_ROOM: {
-        const res = roomManager.createRoom(ws, payload?.roomCode, payload?.layoutRevision);
+        const defaultRev = (DEV_RENDERING && activeDevLayout && activeDevLayout.filename) ? activeDevLayout.filename : 'default';
+        const requestedRev = (typeof payload?.layoutRevision === 'string' && payload.layoutRevision.trim())
+          ? payload.layoutRevision.trim()
+          : defaultRev;
+        const res = roomManager.createRoom(ws, payload?.roomCode, requestedRev);
         if (res.error) {
           send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error });
         } else {

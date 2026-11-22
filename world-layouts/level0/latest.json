@@ -1,10 +1,10 @@
 {
   "schemaVersion": "1.0.0",
   "level": "level0",
-  "iteration": 2,
-  "createdAt": "2026-11-22T16:18:57.038Z",
+  "iteration": 6,
+  "createdAt": "2026-11-22T17:11:26.750Z",
   "author": "developer",
-  "description": "Visual placement layout via Editor at 9:48:57 PM",
+  "description": "Visual placement layout via Editor at 10:41:26 PM",
   "catalog": {
     "table": {
       "name": "Office Table",
@@ -132,9 +132,9 @@
       "category": "prop",
       "placementMode": "fixed",
       "position": [
-        44.2,
+        43,
         0,
-        -185.5
+        -186
       ],
       "rotation": [
         0,
@@ -190,7 +190,35 @@
       "position": [
         41.5,
         0,
-        -185.45
+        -185.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "floor"
+      },
+      "tags": [
+        "furniture",
+        "obstacle"
+      ]
+    },
+    {
+      "id": "vending_almond_01",
+      "type": "vending_almond",
+      "category": "prop",
+      "placementMode": "fixed",
+      "position": [
+        41.2,
+        0,
+        -185.6
       ],
       "rotation": [
         0,
@@ -846,34 +874,6 @@
       "tags": [
         "consumable",
         "pickup"
-      ]
-    },
-    {
-      "id": "vending_almond_01",
-      "type": "vending_almond",
-      "category": "prop",
-      "placementMode": "fixed",
-      "position": [
-        41.2,
-        0,
-        -185.6
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ],
-      "anchor": {
-        "surface": "floor"
-      },
-      "tags": [
-        "furniture",
-        "obstacle"
       ]
     },
     {

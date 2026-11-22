@@ -885,18 +885,11 @@ function initDevComparisonUI() {
   document.getElementById('dev-item-fire')?.addEventListener('click', () => mpManager?.localPlayer?.fire());
   document.getElementById('dev-item-reload')?.addEventListener('click', () => mpManager?.localPlayer?.startReload());
 
-  // Keyboard shortcut listener
+  // Keyboard shortcut listener (Preserves WASD and eliminates single-letter hotkey conflicts)
   window.addEventListener('keydown', (e) => {
-    if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) return;
 
-    if (e.key === '1') applyRenderConfig('original');
-    else if (e.key === '2') applyRenderConfig('clean_post');
-    else if (e.key === '3') applyRenderConfig('texture_quality');
-    else if (e.key === '4') applyRenderConfig('combined');
-    else if (e.key === 'n' || e.key === 'N') switchView('normal');
-    else if (e.key === 'w' || e.key === 'W') switchView('wallpaper');
-    else if (e.key === 'c' || e.key === 'C') switchView('carpet');
-    else if (e.key === 'h' || e.key === 'H' || e.key === 'F2') {
+    if (e.key === 'F2') {
       e.preventDefault();
       const isVisible = panel.style.display !== 'none';
       setPanelVisible(!isVisible);
@@ -904,12 +897,11 @@ function initDevComparisonUI() {
       e.preventDefault();
       if (worldEditor) worldEditor.toggle();
     }
-    // Sanity simulation test hotkeys
+    // Sanity simulation test hotkeys (non-alphabetic)
     else if (sanityController) {
       if (e.key === '[') sanityController.drainSanity(10, 'key_drain');
       else if (e.key === ']') sanityController.restoreSanity(10);
       else if (e.key === '\\') sanityController.togglePause();
-      else if (e.key === 'r' || e.key === 'R') sanityController.startRapidRegen();
       else if (e.key === '0') sanityController.setSanity(0);
       else if (e.key === '9') sanityController.setSanity(100);
     }

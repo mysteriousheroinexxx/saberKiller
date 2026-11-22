@@ -1,0 +1,1001 @@
+{
+  "schemaVersion": "1.0.0",
+  "level": "level0",
+  "iteration": 5,
+  "createdAt": "2026-11-22T17:11:13.520Z",
+  "author": "developer",
+  "description": "Visual placement layout via Editor at 10:41:13 PM",
+  "catalog": {
+    "table": {
+      "name": "Office Table",
+      "category": "prop",
+      "modelUrl": "assets/items/table.glb",
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "surfaceHeight": 0.936
+    },
+    "metal_shelf": {
+      "name": "Industrial Metal Shelf",
+      "category": "prop",
+      "modelUrl": "assets/items/metal_shelf.glb",
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "tiers": [
+        0.243,
+        0.715,
+        1.188,
+        1.643,
+        2.097
+      ]
+    },
+    "vending_almond": {
+      "name": "Almond Water Vending Machine",
+      "category": "prop",
+      "modelUrl": "assets/items/vending_almond.glb",
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "ammo_crate": {
+      "name": "Ammunition Crate",
+      "category": "ammunition",
+      "modelUrl": "assets/items/ammo_crate.glb",
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "ammo_box": {
+      "name": ".45 ACP Ammunition Box",
+      "category": "ammunition",
+      "modelUrl": "assets/items/ammo_box.glb",
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "almond_can": {
+      "name": "Almond Water Can",
+      "category": "consumable",
+      "modelUrl": "assets/items/almond_can.glb",
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "first_aid": {
+      "name": "First Aid Kit",
+      "category": "medical",
+      "modelUrl": "assets/items/first_aid.glb",
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "sanity_pill": {
+      "name": "Sanity Pills Bottle",
+      "category": "consumable",
+      "modelUrl": "assets/items/sanity_pill_bottle.glb",
+      "scale": [
+        0.0008,
+        0.0008,
+        0.0008
+      ]
+    },
+    "energy_drink": {
+      "name": "Almond Water Energy Drink",
+      "category": "consumable",
+      "modelUrl": "assets/items/energy_drink.glb",
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "aa_battery": {
+      "name": "Flashlight Battery Pack",
+      "category": "battery",
+      "modelUrl": "assets/items/aa_battery.glb",
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "doorKey": {
+      "name": "Brass Door Key",
+      "category": "key",
+      "modelUrl": "assets/items/doorKey.glb",
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    }
+  },
+  "placements": [
+    {
+      "id": "prop_table_01",
+      "type": "table",
+      "category": "prop",
+      "placementMode": "fixed",
+      "position": [
+        44.2,
+        0,
+        -185.5
+      ],
+      "rotation": [
+        0,
+        -1.2,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "floor"
+      },
+      "tags": [
+        "furniture",
+        "obstacle"
+      ]
+    },
+    {
+      "id": "prop_shelf_01",
+      "type": "metal_shelf",
+      "category": "prop",
+      "placementMode": "fixed",
+      "position": [
+        44.5,
+        0,
+        -189.5
+      ],
+      "rotation": [
+        0,
+        1.5708,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "floor"
+      },
+      "tags": [
+        "furniture",
+        "obstacle"
+      ]
+    },
+    {
+      "id": "prop_vending_01",
+      "type": "vending_almond",
+      "category": "prop",
+      "placementMode": "fixed",
+      "position": [
+        41.5,
+        0,
+        -185.8
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "floor"
+      },
+      "tags": [
+        "furniture",
+        "obstacle"
+      ]
+    },
+    {
+      "id": "vending_almond_01",
+      "type": "vending_almond",
+      "category": "prop",
+      "placementMode": "fixed",
+      "position": [
+        41.2,
+        0,
+        -185.6
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "floor"
+      },
+      "tags": [
+        "furniture",
+        "obstacle"
+      ]
+    },
+    {
+      "id": "prop_crate_01",
+      "type": "ammo_crate",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        42.5,
+        0,
+        -189.4
+      ],
+      "rotation": [
+        0,
+        0.2,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "floor"
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "floor_first_aid_01",
+      "type": "first_aid",
+      "category": "medical",
+      "placementMode": "fixed",
+      "position": [
+        43.7,
+        0,
+        -188.9
+      ],
+      "rotation": [
+        0,
+        0.3,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "floor"
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "floor_ammo_crate_01",
+      "type": "ammo_crate",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        42.8,
+        0,
+        -188.8
+      ],
+      "rotation": [
+        0,
+        -0.2,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "floor"
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "floor_ammo_box_01",
+      "type": "ammo_box",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        43.3,
+        0,
+        -188.7
+      ],
+      "rotation": [
+        0,
+        0.5,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "floor"
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "floor_almond_can_01",
+      "type": "almond_can",
+      "category": "consumable",
+      "placementMode": "fixed",
+      "position": [
+        41.8,
+        0,
+        -186.2
+      ],
+      "rotation": [
+        0,
+        0.4,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "floor"
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "floor_energy_drink_01",
+      "type": "energy_drink",
+      "category": "consumable",
+      "placementMode": "fixed",
+      "position": [
+        42.2,
+        0,
+        -186.1
+      ],
+      "rotation": [
+        0,
+        0.8,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "floor"
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "floor_sanity_pill_01",
+      "type": "sanity_pill",
+      "category": "consumable",
+      "placementMode": "fixed",
+      "position": [
+        42.6,
+        0,
+        -186
+      ],
+      "rotation": [
+        0,
+        -0.5,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "floor"
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "floor_door_key_01",
+      "type": "doorKey",
+      "category": "key",
+      "placementMode": "fixed",
+      "position": [
+        43.1,
+        0,
+        -186
+      ],
+      "rotation": [
+        0,
+        1.2,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "floor"
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "table_first_aid_01",
+      "type": "first_aid",
+      "category": "medical",
+      "placementMode": "fixed",
+      "position": [
+        44.75,
+        0.936,
+        -185.45
+      ],
+      "rotation": [
+        0,
+        0.1,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "table",
+        "supportProp": "prop_table_01"
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "table_ammo_box_01",
+      "type": "ammo_box",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        44.35,
+        0.936,
+        -185.45
+      ],
+      "rotation": [
+        0,
+        -0.3,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "table",
+        "supportProp": "prop_table_01"
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "table_almond_can_01",
+      "type": "almond_can",
+      "category": "consumable",
+      "placementMode": "fixed",
+      "position": [
+        44,
+        0.936,
+        -185.45
+      ],
+      "rotation": [
+        0,
+        0.6,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "table",
+        "supportProp": "prop_table_01"
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "table_battery_01",
+      "type": "aa_battery",
+      "category": "battery",
+      "placementMode": "fixed",
+      "position": [
+        43.7,
+        0.936,
+        -185.45
+      ],
+      "rotation": [
+        0,
+        0.9,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "table",
+        "supportProp": "prop_table_01"
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "table_sanity_pill_01",
+      "type": "sanity_pill",
+      "category": "consumable",
+      "placementMode": "fixed",
+      "position": [
+        44.55,
+        0.936,
+        -185.2
+      ],
+      "rotation": [
+        0,
+        0.5,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "table",
+        "supportProp": "prop_table_01"
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "table_door_key_01",
+      "type": "doorKey",
+      "category": "key",
+      "placementMode": "fixed",
+      "position": [
+        44.15,
+        0.936,
+        -185.2
+      ],
+      "rotation": [
+        0,
+        -1.1,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "table",
+        "supportProp": "prop_table_01"
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "shelf_ammo_crate_tier1",
+      "type": "ammo_crate",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        44.5,
+        0.243,
+        -189.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "shelf_tier",
+        "supportProp": "prop_shelf_01",
+        "tier": 1
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "shelf_ammo_box_tier2",
+      "type": "ammo_box",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        44.3,
+        0.715,
+        -189.5
+      ],
+      "rotation": [
+        0,
+        0.2,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "shelf_tier",
+        "supportProp": "prop_shelf_01",
+        "tier": 2
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "shelf_almond_can_tier2",
+      "type": "almond_can",
+      "category": "consumable",
+      "placementMode": "fixed",
+      "position": [
+        44.7,
+        0.715,
+        -189.5
+      ],
+      "rotation": [
+        0,
+        -0.4,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "shelf_tier",
+        "supportProp": "prop_shelf_01",
+        "tier": 2
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "shelf_sanity_pill_tier2",
+      "type": "sanity_pill",
+      "category": "consumable",
+      "placementMode": "fixed",
+      "position": [
+        44.5,
+        0.715,
+        -189.5
+      ],
+      "rotation": [
+        0,
+        -0.6,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "shelf_tier",
+        "supportProp": "prop_shelf_01",
+        "tier": 2
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "shelf_battery_tier3",
+      "type": "aa_battery",
+      "category": "battery",
+      "placementMode": "fixed",
+      "position": [
+        44.3,
+        1.188,
+        -189.5
+      ],
+      "rotation": [
+        0,
+        0.7,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "shelf_tier",
+        "supportProp": "prop_shelf_01",
+        "tier": 3
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "shelf_door_key_tier3",
+      "type": "doorKey",
+      "category": "key",
+      "placementMode": "fixed",
+      "position": [
+        44.5,
+        1.188,
+        -189.5
+      ],
+      "rotation": [
+        0,
+        -0.3,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "shelf_tier",
+        "supportProp": "prop_shelf_01",
+        "tier": 3
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "shelf_almond_can_tier3",
+      "type": "almond_can",
+      "category": "consumable",
+      "placementMode": "fixed",
+      "position": [
+        44.7,
+        1.188,
+        -189.5
+      ],
+      "rotation": [
+        0,
+        0.5,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "shelf_tier",
+        "supportProp": "prop_shelf_01",
+        "tier": 3
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "shelf_first_aid_tier4",
+      "type": "first_aid",
+      "category": "medical",
+      "placementMode": "fixed",
+      "position": [
+        44.5,
+        1.643,
+        -189.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "shelf_tier",
+        "supportProp": "prop_shelf_01",
+        "tier": 4
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    },
+    {
+      "id": "almond_can_01",
+      "type": "almond_can",
+      "category": "consumable",
+      "placementMode": "fixed",
+      "position": [
+        44.4,
+        0,
+        -189.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "anchor": {
+        "surface": "floor"
+      },
+      "tags": [
+        "consumable",
+        "pickup"
+      ]
+    }
+  ],
+  "spawnGroups": [
+    {
+      "id": "sg_hallway_consumables_01",
+      "name": "Hallway Floor Consumables Pool",
+      "eligibleTypes": [
+        "almond_can",
+        "energy_drink",
+        "sanity_pill",
+        "aa_battery"
+      ],
+      "candidatePoints": [
+        [
+          41.8,
+          0,
+          -186.2
+        ],
+        [
+          42.2,
+          0,
+          -186.1
+        ],
+        [
+          42.6,
+          0,
+          -186
+        ],
+        [
+          43.1,
+          0,
+          -186
+        ],
+        [
+          43.3,
+          0,
+          -188.7
+        ]
+      ],
+      "minCount": 2,
+      "maxCount": 4,
+      "surface": "floor",
+      "probability": 0.85,
+      "tags": [
+        "consumable",
+        "random_loot"
+      ]
+    },
+    {
+      "id": "sg_tabletop_supplies_01",
+      "name": "Office Tabletop Medical & Ammo Pool",
+      "eligibleTypes": [
+        "first_aid",
+        "ammo_box",
+        "sanity_pill",
+        "doorKey"
+      ],
+      "candidatePoints": [
+        [
+          44.75,
+          0.936,
+          -185.45
+        ],
+        [
+          44.35,
+          0.936,
+          -185.45
+        ],
+        [
+          44,
+          0.936,
+          -185.45
+        ],
+        [
+          44.55,
+          0.936,
+          -185.2
+        ],
+        [
+          44.15,
+          0.936,
+          -185.2
+        ]
+      ],
+      "minCount": 2,
+      "maxCount": 3,
+      "surface": "table",
+      "supportProp": "prop_table_01",
+      "probability": 1,
+      "tags": [
+        "high_tier_loot",
+        "loot_surface"
+      ]
+    }
+  ]
+}

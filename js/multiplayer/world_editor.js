@@ -22,6 +22,7 @@ export class WorldPlacementEditor {
     this.localPlayer = localPlayer;
 
     this.isOpen = false;
+    this.editorMode = 'navigate'; // 'navigate' or 'edit'
     this.selectedItem = null;
     this.selectedWrapper = null;
     this.lastValidTransforms = new Map(); // id -> { pos, rot, scale, anchor }
@@ -99,6 +100,12 @@ export class WorldPlacementEditor {
           Level 0 World Placement Editor [DEV]
         </span>
         <span style="color: #666; font-size: 12px;">|</span>
+        <div id="ed-mode-container" style="display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.5); padding: 3px 6px; border-radius: 4px; border: 1px solid rgba(212,175,55,0.3);">
+          <label style="font-size: 10px; color: #9c9a92; text-transform: uppercase;">Mode:</label>
+          <button id="ed-btn-mode-nav" class="ed-mode-toggle-btn active" style="padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 3px; cursor: pointer;">🚶 Navigate</button>
+          <button id="ed-btn-mode-edit" class="ed-mode-toggle-btn" style="padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 3px; cursor: pointer;">🛠️ Edit</button>
+        </div>
+        <span style="color: #666; font-size: 12px;">|</span>
         <div style="display: flex; align-items: center; gap: 6px;">
           <label style="font-size: 11px; color: #9c9a92; text-transform: uppercase;">Revision:</label>
           <select id="ed-layout-select" style="background: #111; color: #edece6; border: 1px solid #444; font-size: 11px; padding: 4px 8px; border-radius: 3px; font-family: monospace;">
@@ -113,7 +120,7 @@ export class WorldPlacementEditor {
           Export Iteration JSON
         </button>
         <button id="ed-btn-close" style="background: rgba(200, 40, 40, 0.3); border: 1px solid #e53935; color: #ff8888; font-size: 11px; padding: 6px 12px; border-radius: 3px; cursor: pointer;">
-          Exit Editor [Esc]
+          Close Editor
         </button>
       </div>
     `;
@@ -191,9 +198,9 @@ export class WorldPlacementEditor {
       <!-- Transform Mode Buttons -->
       <div style="font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 4px;">Gizmo Mode</div>
       <div style="display: flex; gap: 4px; margin-bottom: 12px;">
-        <button class="ed-mode-btn active" id="ed-mode-translate" data-mode="translate">Translate (T)</button>
-        <button class="ed-mode-btn" id="ed-mode-rotate" data-mode="rotate">Rotate (R)</button>
-        <button class="ed-mode-btn" id="ed-mode-scale" data-mode="scale">Scale (S)</button>
+        <button class="ed-mode-btn active" id="ed-mode-translate" data-mode="translate">Translate</button>
+        <button class="ed-mode-btn" id="ed-mode-rotate" data-mode="rotate">Rotate</button>
+        <button class="ed-mode-btn" id="ed-mode-scale" data-mode="scale">Scale</button>
       </div>
 
       <!-- Selected Item Info -->
@@ -231,7 +238,7 @@ export class WorldPlacementEditor {
       <!-- Snapping Controls -->
       <div style="font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 4px;">Surface Snapping</div>
       <div style="display: flex; gap: 4px; margin-bottom: 6px;">
-        <button class="ed-action-btn" id="ed-snap-floor" style="flex:1;">Snap Floor (F)</button>
+        <button class="ed-action-btn" id="ed-snap-floor" style="flex:1;">Snap Floor</button>
         <button class="ed-action-btn" id="ed-snap-table" style="flex:1;">Snap Table</button>
       </div>
       <div style="font-size: 9px; color: #888; margin-bottom: 3px;">Snap to Shelf Tier:</div>
@@ -246,10 +253,10 @@ export class WorldPlacementEditor {
       <!-- Actions: Duplicate, Delete, Revert -->
       <div style="font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 4px;">Item Actions</div>
       <div style="display: flex; gap: 4px; margin-bottom: 6px;">
-        <button class="ed-action-btn" id="ed-btn-duplicate" style="flex:1;">Duplicate (Ctrl+D)</button>
-        <button class="ed-action-btn" id="ed-btn-delete" style="flex:1; border-color: rgba(220,50,50,0.5); color: #ff8888;">Delete (Del)</button>
+        <button class="ed-action-btn" id="ed-btn-duplicate" style="flex:1;">Duplicate</button>
+        <button class="ed-action-btn" id="ed-btn-delete" style="flex:1; border-color: rgba(220,50,50,0.5); color: #ff8888;">Delete</button>
       </div>
-      <button class="ed-action-btn" id="ed-btn-revert" style="width:100%; margin-bottom: 12px;">Revert to Last Valid (V)</button>
+      <button class="ed-action-btn" id="ed-btn-revert" style="width:100%; margin-bottom: 12px;">Revert to Last Valid</button>
 
       <!-- Placement Validation Status -->
       <div style="font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 4px;">Validation Status</div>
@@ -283,14 +290,8 @@ export class WorldPlacementEditor {
     `;
     bottomBar.innerHTML = `
       <div style="color: #9c9a92;">
-        Shortcuts: <span style="color: #d4af37;">T</span> Translate &middot;
-        <span style="color: #d4af37;">R</span> Rotate &middot;
-        <span style="color: #d4af37;">S</span> Scale &middot;
-        <span style="color: #d4af37;">F</span> Floor Snap &middot;
-        <span style="color: #d4af37;">Del</span> Delete &middot;
-        <span style="color: #d4af37;">Ctrl+D</span> Duplicate &middot;
-        <span style="color: #d4af37;">V</span> Revert &middot;
-        <span style="color: #d4af37;">Esc</span> Exit
+        Mode: <span id="ed-mode-badge" style="color: #00e5ff; font-weight: 600;">NAVIGATE</span> (WASD = Move &middot; Click = Look) &nbsp;|&nbsp;
+        Controls: Click Toolbar Buttons &middot; Esc: Release Pointer / Deselect
       </div>
       <div id="ed-status-msg" style="color: #00e5ff; font-family: monospace;"></div>
     `;
@@ -298,6 +299,35 @@ export class WorldPlacementEditor {
     // Inject Styles
     const style = document.createElement('style');
     style.textContent = `
+      .ed-mode-toggle-btn {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #aaa;
+        font-family: 'Rubik', monospace, sans-serif;
+        font-size: 11px;
+        padding: 4px 10px;
+        border-radius: 3px;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .ed-mode-toggle-btn:hover {
+        background: rgba(255, 255, 255, 0.15);
+        color: #fff;
+      }
+      .ed-mode-toggle-btn.active#ed-btn-mode-nav {
+        background: #00bcd4;
+        border-color: #00e5ff;
+        color: #111;
+        font-weight: 700;
+        box-shadow: 0 0 8px rgba(0, 229, 255, 0.4);
+      }
+      .ed-mode-toggle-btn.active#ed-btn-mode-edit {
+        background: #d4af37;
+        border-color: #ffea70;
+        color: #111;
+        font-weight: 700;
+        box-shadow: 0 0 8px rgba(212, 175, 55, 0.4);
+      }
       .ed-palette-btn {
         background: rgba(255, 255, 255, 0.05);
         border: 1px solid rgba(212, 175, 55, 0.25);
@@ -385,6 +415,9 @@ export class WorldPlacementEditor {
 
     // Cache element references
     this.ui = {
+      btnModeNav: document.getElementById('ed-btn-mode-nav'),
+      btnModeEdit: document.getElementById('ed-btn-mode-edit'),
+      modeBadge: document.getElementById('ed-mode-badge'),
       layoutSelect: document.getElementById('ed-layout-select'),
       btnLoad: document.getElementById('ed-btn-load'),
       btnRefreshList: document.getElementById('ed-btn-refresh-list'),
@@ -511,12 +544,29 @@ export class WorldPlacementEditor {
     this.ui.btnExport.addEventListener('click', () => this.exportIteration());
     this.ui.btnClose.addEventListener('click', () => this.close());
 
+    // Mode Toggle Buttons (Navigate Mode vs Edit Mode)
+    if (this.ui.btnModeNav) {
+      this.ui.btnModeNav.addEventListener('click', () => this.setEditorMode('navigate'));
+    }
+    if (this.ui.btnModeEdit) {
+      this.ui.btnModeEdit.addEventListener('click', () => this.setEditorMode('edit'));
+    }
+
     // 8. Canvas Pointer Selection & Orbit Handling
     const canvas = this.renderer.domElement;
 
     canvas.addEventListener('mousedown', (e) => {
       if (!this.isOpen) return;
 
+      // In Navigate Mode: Clicking canvas requests pointer lock for FPS look around
+      if (this.editorMode === 'navigate') {
+        if (e.button === 0 && !document.pointerLockElement) {
+          this.localPlayer?.requestPointerLock(canvas);
+        }
+        return;
+      }
+
+      // In Edit Mode:
       if (e.button === 2) { // Right Click: Orbit Camera
         this.isOrbiting = true;
         this.lastMouseX = e.clientX;
@@ -550,7 +600,7 @@ export class WorldPlacementEditor {
     });
 
     window.addEventListener('mousemove', (e) => {
-      if (!this.isOpen || !this.isOrbiting) return;
+      if (!this.isOpen || !this.isOrbiting || this.editorMode !== 'edit') return;
       const dx = e.clientX - this.lastMouseX;
       const dy = e.clientY - this.lastMouseY;
       this.lastMouseX = e.clientX;
@@ -575,40 +625,85 @@ export class WorldPlacementEditor {
       if (this.isOpen) e.preventDefault();
     });
 
-    // 9. Editor Keyboard Shortcuts
+    // 9. Editor Keyboard Shortcuts (Single-letter shortcuts completely removed to preserve WASD)
     window.addEventListener('keydown', (e) => {
       if (!this.isOpen) return;
 
-      // Ignore when typing in numeric inputs
-      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) {
+      // Ignore when typing in input, select or textarea elements
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) {
         if (e.code === 'Escape') {
           e.target.blur();
         }
         return;
       }
 
+      // If in Navigate Mode, DO NOT intercept keyboard inputs; WASD, Space, 1-3 go to player
+      if (this.editorMode === 'navigate') {
+        return;
+      }
+
+      // In Edit Mode:
       if (e.code === 'Escape') {
-        this.close();
-      } else if (e.code === 'KeyT') {
-        this.setMode('translate');
-      } else if (e.code === 'KeyR') {
-        this.setMode('rotate');
-      } else if (e.code === 'KeyS') {
-        this.setMode('scale');
-      } else if (e.code === 'KeyF') {
+        // Sensible Escape behavior: deselect selected object, or switch to Navigate mode
         if (this.selectedItem) {
-          this.itemManager.snapItemToFloor(this.selectedItem.id);
-          this._updateInspector();
+          this.deselect();
+        } else {
+          this.setEditorMode('navigate');
         }
-      } else if (e.code === 'KeyV') {
-        this.revertSelected();
       } else if (e.code === 'Delete' || e.code === 'Backspace') {
-        this.deleteSelected();
+        if (this.selectedItem) {
+          e.preventDefault();
+          this.deleteSelected();
+        }
       } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyD') {
-        e.preventDefault();
-        this.duplicateSelected();
+        if (this.selectedItem) {
+          e.preventDefault();
+          this.duplicateSelected();
+        }
       }
     });
+  }
+
+  setEditorMode(mode) {
+    this.editorMode = mode;
+    const isEdit = (mode === 'edit');
+
+    if (this.ui.btnModeNav && this.ui.btnModeEdit) {
+      this.ui.btnModeNav.classList.toggle('active', !isEdit);
+      this.ui.btnModeEdit.classList.toggle('active', isEdit);
+    }
+    if (this.ui.modeBadge) {
+      this.ui.modeBadge.textContent = isEdit ? 'EDIT' : 'NAVIGATE';
+      this.ui.modeBadge.style.color = isEdit ? '#d4af37' : '#00e5ff';
+    }
+
+    if (isEdit) {
+      // Edit Mode:
+      // 1. Release pointer lock so cursor is available
+      if (document.pointerLockElement) {
+        try { document.exitPointerLock(); } catch (e) {}
+      }
+      // 2. Suspend player WASD movement and weapon firing
+      if (this.localPlayer) {
+        this.localPlayer.setEditorActive(true);
+      }
+      // 3. Attach gizmo to selected object if any
+      if (this.selectedItem && this.selectedWrapper && this.transformControls) {
+        this.transformControls.attach(this.selectedWrapper);
+      }
+      this._setStatus('Mode: EDIT (Click objects to select & move. Gizmo active)');
+    } else {
+      // Navigate Mode:
+      // 1. Detach gizmo so it doesn't obstruct view or click
+      if (this.transformControls) {
+        this.transformControls.detach();
+      }
+      // 2. Enable WASD and normal FPS movement
+      if (this.localPlayer) {
+        this.localPlayer.setEditorActive(false);
+      }
+      this._setStatus('Mode: NAVIGATE (WASD = Move, Click canvas = Look, Esc = Unlock mouse)');
+    }
   }
 
   setMode(mode) {
@@ -822,40 +917,47 @@ export class WorldPlacementEditor {
 
       const res = await fetch('/api/developer/world-layout/export', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify(exportDoc)
       });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || `HTTP ${res.status}`);
+      const rawText = await res.text();
+      let result;
+      try {
+        result = JSON.parse(rawText);
+      } catch (parseErr) {
+        throw new Error(`Server returned non-JSON response (${res.status}): ${rawText.slice(0, 120)}`);
       }
 
-      const result = await res.json();
-      this._setStatus(`Exported ${result.filename} (${result.itemCount} items)`);
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || `HTTP ${res.status}`);
+      }
+
       await this.fetchIterationsList();
-      this.ui.layoutSelect.value = result.filename;
+      if (this.ui.layoutSelect) {
+        this.ui.layoutSelect.value = result.filename;
+      }
+      this._setStatus(`Exported ${result.filename} (${result.itemCount} items)`);
     } catch (err) {
       console.error('[WorldEditor] Export error:', err);
       this._setStatus(`Export failed: ${err.message}`);
     }
   }
 
-  open() {
+  open(initialMode = 'edit') {
     this.isOpen = true;
     this.overlay.style.display = 'block';
-
-    if (this.localPlayer) {
-      this.localPlayer.setEditorActive(true);
-    }
 
     if (this.transformControls && !this.transformControls.parent) {
       this.scene.add(this.transformControls);
     }
 
     this.itemManager.setDebugVisuals(true);
+    this.setEditorMode(initialMode);
     this.fetchIterationsList();
-    this._setStatus('Editor Active. Left-click to select, Right-drag to orbit.');
   }
 
   close() {
@@ -870,6 +972,7 @@ export class WorldPlacementEditor {
     if (this.localPlayer) {
       this.localPlayer.setEditorActive(false);
     }
+    this.editorMode = 'navigate';
   }
 
   toggle() {
