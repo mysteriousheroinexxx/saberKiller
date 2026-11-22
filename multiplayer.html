@@ -7,6 +7,11 @@
   <style>
     @font-face {
       font-family: 'Rubik';
+      src: url('assets/ui/fonts/Rubik-Light.ttf') format('truetype');
+      font-weight: 300;
+    }
+    @font-face {
+      font-family: 'Rubik';
       src: url('assets/ui/fonts/Rubik-Regular.ttf') format('truetype');
       font-weight: 400;
     }
@@ -14,6 +19,11 @@
       font-family: 'Rubik';
       src: url('assets/ui/fonts/Rubik-Medium.ttf') format('truetype');
       font-weight: 500;
+    }
+    @font-face {
+      font-family: 'Rubik';
+      src: url('assets/ui/fonts/Rubik-Bold.ttf') format('truetype');
+      font-weight: 700;
     }
 
     * {
@@ -203,19 +213,12 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 12px;
-      height: 12px;
-    }
-    #crosshair::before, #crosshair::after {
-      content: '';
-      position: absolute;
-      background: rgba(237, 236, 230, 0.75);
-    }
-    #crosshair::before {
-      top: 5px; left: 0; width: 12px; height: 2px;
-    }
-    #crosshair::after {
-      top: 0; left: 5px; width: 2px; height: 12px;
+      width: 6px;
+      height: 6px;
+      background: url('assets/ui/icons/crosshair_smaller.png') no-repeat center center;
+      background-size: contain;
+      opacity: 0.45;
+      pointer-events: none;
     }
 
     #controls-hint {
@@ -244,10 +247,368 @@
       z-index: 100;
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
     }
+
+    /* Developer-only Rendering Comparison Panel */
+    #dev-panel-toggle {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      padding: 6px 12px;
+      background: rgba(22, 20, 18, 0.85);
+      border: 1px solid rgba(212, 175, 55, 0.4);
+      color: #d4af37;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 1.5px;
+      border-radius: 3px;
+      cursor: pointer;
+      z-index: 1001;
+      display: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      transition: background 0.2s;
+    }
+    #dev-panel-toggle:hover {
+      background: rgba(212, 175, 55, 0.2);
+    }
+
+    #dev-comparison-panel {
+      display: none;
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      width: 320px;
+      max-height: calc(100vh - 28px);
+      overflow-y: auto;
+      background: rgba(16, 15, 14, 0.94);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(212, 175, 55, 0.45);
+      border-radius: 4px;
+      padding: 16px;
+      color: #edece6;
+      z-index: 1002;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.8), 0 0 16px rgba(212, 175, 55, 0.1);
+      font-size: 12px;
+    }
+
+    .dev-panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.25);
+    }
+    .dev-panel-title {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 1.8px;
+      color: #d4af37;
+      text-transform: uppercase;
+    }
+    .dev-panel-close {
+      background: none;
+      border: none;
+      color: #9c9a92;
+      font-size: 18px;
+      cursor: pointer;
+      line-height: 1;
+      padding: 0 4px;
+    }
+    .dev-panel-close:hover {
+      color: #edece6;
+    }
+
+    .dev-section-label {
+      font-size: 10px;
+      letter-spacing: 1.2px;
+      color: #9c9a92;
+      text-transform: uppercase;
+      margin: 10px 0 6px 0;
+    }
+
+    .dev-profiles-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .dev-btn {
+      background: rgba(30, 28, 25, 0.9);
+      border: 1px solid rgba(156, 154, 146, 0.25);
+      color: #edece6;
+      padding: 8px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 11px;
+      font-family: inherit;
+      text-align: left;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dev-btn:hover {
+      border-color: rgba(212, 175, 55, 0.6);
+      background: rgba(45, 42, 36, 0.9);
+    }
+    .dev-btn.active {
+      border-color: #d4af37;
+      background: rgba(212, 175, 55, 0.18);
+      box-shadow: 0 0 10px rgba(212, 175, 55, 0.25);
+      color: #fff;
+    }
+    .dev-btn .profile-key {
+      font-weight: 600;
+      color: #d4af37;
+      font-size: 12px;
+    }
+    .dev-btn.active .profile-key {
+      color: #fff;
+    }
+
+    .dev-views-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 4px;
+      margin-bottom: 10px;
+    }
+    .dev-view-btn {
+      background: rgba(25, 24, 22, 0.8);
+      border: 1px solid rgba(156, 154, 146, 0.2);
+      color: #b5b3aa;
+      padding: 6px 4px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 10px;
+      font-family: inherit;
+      text-align: center;
+      transition: all 0.15s ease;
+    }
+    .dev-view-btn:hover {
+      color: #edece6;
+      border-color: rgba(212, 175, 55, 0.4);
+    }
+    .dev-view-btn.active {
+      border-color: #d4af37;
+      background: rgba(212, 175, 55, 0.15);
+      color: #edece6;
+    }
+
+    .dev-readout {
+      background: rgba(10, 9, 8, 0.85);
+      border: 1px solid rgba(156, 154, 146, 0.15);
+      border-radius: 3px;
+      padding: 8px 10px;
+      font-family: monospace;
+      font-size: 10px;
+      color: #a8a69d;
+      line-height: 1.5;
+    }
+    .dev-readout .active-name {
+      color: #d4af37;
+      font-weight: 600;
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+    .dev-readout-row {
+      display: flex;
+      justify-content: space-between;
+    }
+    .dev-readout-val {
+      color: #edece6;
+    }
+
+    .dev-shortcuts-hint {
+      margin-top: 8px;
+      font-size: 9.5px;
+      color: #7a7870;
+      text-align: center;
+      letter-spacing: 0.5px;
+    }
+    .dev-shortcuts-hint b {
+      color: #b5b3aa;
+    }
+
+    .dev-slider-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .dev-slider-row {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .dev-slider-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #b5b3aa;
+    }
+    .dev-slider-header span.val {
+      color: #edece6;
+      font-family: monospace;
+    }
+    .dev-slider {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(156, 154, 146, 0.3);
+      outline: none;
+      margin: 2px 0;
+    }
+    .dev-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #d4af37;
+      cursor: pointer;
+    }
+    .dev-color-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 2px;
+      font-size: 10px;
+      color: #b5b3aa;
+    }
+    .dev-color-input {
+      -webkit-appearance: none;
+      border: 1px solid rgba(156, 154, 146, 0.3);
+      width: 36px;
+      height: 20px;
+      border-radius: 2px;
+      background: none;
+      cursor: pointer;
+      padding: 0;
+    }
   </style>
 </head>
 <body>
   <div id="canvas-container"></div>
+
+  <!-- Developer Comparison Panel -->
+  <div id="dev-panel-toggle" title="Show Render Comparison Panel (F2 or H)">RENDER DEV [F2]</div>
+  <div id="dev-comparison-panel">
+    <div class="dev-panel-header">
+      <span class="dev-panel-title">RENDER COMPARISON [DEV]</span>
+      <button class="dev-panel-close" id="btn-dev-close" title="Hide Panel (F2 or H)">&times;</button>
+    </div>
+
+    <div class="dev-section-label">SELECT PROFILE</div>
+    <div class="dev-profiles-grid">
+      <button class="dev-btn" data-profile="original" id="btn-prof-A">
+        <span class="profile-key">A</span>
+        <span class="profile-name">Original</span>
+      </button>
+      <button class="dev-btn" data-profile="clean_post" id="btn-prof-B">
+        <span class="profile-key">B</span>
+        <span class="profile-name">Clean Post</span>
+      </button>
+      <button class="dev-btn" data-profile="texture_quality" id="btn-prof-C">
+        <span class="profile-key">C</span>
+        <span class="profile-name">Texture Qual</span>
+      </button>
+      <button class="dev-btn active" data-profile="combined" id="btn-prof-D">
+        <span class="profile-key">D</span>
+        <span class="profile-name">Combined</span>
+      </button>
+    </div>
+
+    <div class="dev-section-label">COMPARISON VIEWPOINT</div>
+    <div class="dev-views-row">
+      <button class="dev-view-btn active" data-view="normal" id="btn-v-normal">Hallway [N]</button>
+      <button class="dev-view-btn" data-view="wallpaper" id="btn-v-wallpaper">Wall [W]</button>
+      <button class="dev-view-btn" data-view="carpet" id="btn-v-carpet">Carpet [C]</button>
+    </div>
+
+    <div class="dev-readout" id="dev-readout">
+      <div class="active-name" id="readout-title">D — Combined Optimum</div>
+      <div class="dev-readout-row"><span>Grain:</span><span class="dev-readout-val" id="readout-grain">0.0 (Disabled)</span></div>
+      <div class="dev-readout-row"><span>Fringe:</span><span class="dev-readout-val" id="readout-fringe">0.0 (Disabled)</span></div>
+      <div class="dev-readout-row"><span>Anisotropy:</span><span class="dev-readout-val" id="readout-aniso">16x (Hardware Max: 16x)</span></div>
+      <div class="dev-readout-row"><span>Wall Normal:</span><span class="dev-readout-val" id="readout-wall-norm">0.40 (Tuned)</span></div>
+      <div class="dev-readout-row"><span>Carpet Normal:</span><span class="dev-readout-val" id="readout-carpet-norm">0.60 (Tuned)</span></div>
+    </div>
+
+    <div class="dev-section-label">LIGHTING ADJUSTMENT [DEV]</div>
+    <div class="dev-slider-group">
+      <div class="dev-slider-row">
+        <div class="dev-slider-header">
+          <span>Overall Brightness / Exposure</span>
+          <span class="val" id="dev-val-exposure">1.35</span>
+        </div>
+        <input type="range" class="dev-slider" id="dev-slide-exposure" min="0.5" max="2.5" step="0.05" value="1.35">
+      </div>
+
+      <div class="dev-slider-row">
+        <div class="dev-slider-header">
+          <span>Ambient GI Intensity</span>
+          <span class="val" id="dev-val-ambient">0.90</span>
+        </div>
+        <input type="range" class="dev-slider" id="dev-slide-ambient" min="0.0" max="3.0" step="0.05" value="0.90">
+      </div>
+
+      <div class="dev-slider-row">
+        <div class="dev-slider-header">
+          <span>Key Fluorescent Intensity</span>
+          <span class="val" id="dev-val-point">160</span>
+        </div>
+        <input type="range" class="dev-slider" id="dev-slide-point" min="10" max="350" step="5" value="160">
+      </div>
+
+      <div class="dev-slider-row">
+        <div class="dev-slider-header">
+          <span>Player Fill Intensity</span>
+          <span class="val" id="dev-val-player-fill">3.50</span>
+        </div>
+        <input type="range" class="dev-slider" id="dev-slide-player-fill" min="0.0" max="8.0" step="0.25" value="3.50">
+      </div>
+
+      <div class="dev-color-row">
+        <span>Lighting Tint: <span class="val" id="dev-val-color" style="color: #edece6; font-family: monospace;">#fdf7a8</span></span>
+        <input type="color" class="dev-color-input" id="dev-color-tint" value="#fdf7a8">
+      </div>
+
+      <button class="dev-view-btn" id="dev-reset-lighting" style="width:100%; margin-top:6px;">Reset Lighting (Default D)</button>
+    </div>
+
+    <div class="dev-section-label">SANITY SIMULATION [DEV]</div>
+    <div style="display: flex; gap: 4px; margin-bottom: 6px;">
+      <button class="dev-view-btn" id="dev-sanity-100" style="flex:1;">100%</button>
+      <button class="dev-view-btn" id="dev-sanity-50" style="flex:1;">50%</button>
+      <button class="dev-view-btn" id="dev-sanity-8" style="flex:1;">8% (Panic)</button>
+      <button class="dev-view-btn" id="dev-sanity-0" style="flex:1;">0% (Void)</button>
+    </div>
+    <div style="display: flex; gap: 4px; margin-bottom: 10px;">
+      <button class="dev-view-btn" id="dev-sanity-pause" style="flex:1;">Pause / Resume</button>
+      <button class="dev-view-btn" id="dev-sanity-regen" style="flex:1;">Rapid Regen</button>
+    </div>
+
+    <div class="dev-section-label">SURVIVAL RESOURCES [DEV]</div>
+    <div style="display: flex; gap: 4px; margin-bottom: 6px;">
+      <button class="dev-view-btn" id="dev-hp-down" style="flex:1;">HP -25</button>
+      <button class="dev-view-btn" id="dev-hp-up" style="flex:1;">HP +25</button>
+      <button class="dev-view-btn" id="dev-stamina-drain" style="flex:1;">Sprint Drain</button>
+      <button class="dev-view-btn" id="dev-stamina-full" style="flex:1;">Stamina Full</button>
+    </div>
+    <div style="display: flex; gap: 4px; margin-bottom: 10px;">
+      <button class="dev-view-btn" id="dev-item-pistol" style="flex:1;">Pistol [1]</button>
+      <button class="dev-view-btn" id="dev-item-shotgun" style="flex:1;">Shotgun [2]</button>
+      <button class="dev-view-btn" id="dev-item-torch" style="flex:1;">Torch [3]</button>
+      <button class="dev-view-btn" id="dev-item-fire" style="flex:1;">Fire</button>
+      <button class="dev-view-btn" id="dev-item-reload" style="flex:1;">Reload [R]</button>
+    </div>
+
+    <div class="dev-shortcuts-hint">
+      Keys: <b>1-4</b> Profile &middot; <b>N/W/C</b> View &middot; <b>[ / ]</b> Drain/Heal &middot; <b>H/F2</b> Panel
+    </div>
+  </div>
 
   <!-- Minimal Join / Create Modal -->
   <div id="lobby-panel">
