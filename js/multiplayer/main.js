@@ -287,6 +287,15 @@ async function init() {
     }
   });
 
+  // 5b. Browser unload confirmation safeguard during active gameplay
+  window.addEventListener('beforeunload', (e) => {
+    if (isGameActive && mpManager?.network?.isConnected) {
+      e.preventDefault();
+      e.returnValue = 'You are currently in an active multiplayer room. Are you sure you want to disconnect?';
+      return e.returnValue;
+    }
+  });
+
   // 6. Load Level 0 Environment
   statusEl.textContent = 'Loading Level 0 PBR Environment...';
   initLevel0Env(scene, () => {
@@ -501,28 +510,35 @@ export const VIEWPOINTS = {
     name: 'World Items Overview (Hallway)',
     pos: { x: 48.0, y: 1.50, z: -187.6 },
     yaw: -Math.PI / 2,
-    pitch: -0.22
+    pitch: -0.15
   },
   items_table: {
     key: 'items_table',
     name: 'Items on Table (Close-up)',
-    pos: { x: 45.4, y: 1.30, z: -186.2 },
-    yaw: -Math.PI / 2,
-    pitch: -0.35
+    pos: { x: 44.5, y: 1.25, z: -186.8 },
+    yaw: 0.0,
+    pitch: -0.25
   },
   items_shelf: {
     key: 'items_shelf',
     name: 'Items on Metal Shelf (Close-up)',
-    pos: { x: 45.4, y: 1.30, z: -189.1 },
-    yaw: -Math.PI / 2,
-    pitch: -0.15
+    pos: { x: 44.5, y: 1.25, z: -188.0 },
+    yaw: Math.PI,
+    pitch: -0.10
   },
   items_floor: {
     key: 'items_floor',
     name: 'Items on Carpet Floor (Close-up)',
-    pos: { x: 47.5, y: 1.20, z: -187.6 },
+    pos: { x: 47.8, y: 1.30, z: -187.6 },
     yaw: -Math.PI / 2,
-    pitch: -0.65
+    pitch: -0.55
+  },
+  items_vending: {
+    key: 'items_vending',
+    name: 'Almond Water Vending Machine (Close-up)',
+    pos: { x: 41.5, y: 1.25, z: -186.9 },
+    yaw: 0.0,
+    pitch: 0.0
   }
 };
 

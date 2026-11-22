@@ -293,8 +293,46 @@ export class LocalPlayerController {
 
   _bindEvents() {
     this._onKeyDown = (e) => {
+      // Allow regular typing in input/textarea elements without interference
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+        return;
+      }
+
+      // Browser keyboard shortcut protection during active first-person pointer lock
+      if (this.isPointerLocked) {
+        // ALWAYS preserve Escape key so the browser / user can release pointer lock at will
+        if (e.code === 'Escape') {
+          return;
+        }
+
+        // Intercept and prevent browser window navigation/closure shortcuts: Ctrl+W, Ctrl+R, etc.
+        if (e.ctrlKey || e.metaKey) {
+          const blockedCodes = ['KeyW', 'KeyR', 'KeyS', 'KeyD', 'KeyA', 'KeyP', 'KeyF', 'KeyO', 'KeyU'];
+          if (blockedCodes.includes(e.code)) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }
+
+        // Intercept page reload / browser shortcuts: F5, F1, F3, etc. (preserve F11 fullscreen, F12 devtools)
+        if (e.code === 'F5' || e.key === 'F5' || (e.key && e.key.startsWith('F') && e.key.length <= 3 && e.code !== 'F11' && e.code !== 'F12')) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+
+        // Intercept Tab to avoid losing focus / cycling DOM focus out of the canvas
+        if (e.code === 'Tab') {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+
+        // Intercept page scrolling keys while pointer locked
+        if (['Space', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.code)) {
+          e.preventDefault();
+        }
+      }
+
       this.keys[e.code] = true;
-      if (e.target && e.target.tagName === 'INPUT') return;
 
       // Weapon selection shortcuts
       if (e.code === 'Digit1') this.setWeapon(0);
@@ -304,6 +342,9 @@ export class LocalPlayerController {
     };
 
     this._onKeyUp = (e) => {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+        return;
+      }
       this.keys[e.code] = false;
     };
 
@@ -322,6 +363,7 @@ export class LocalPlayerController {
 
     this._onWheel = (e) => {
       if (this.isPointerLocked) {
+        e.preventDefault(); // Prevent page scrolling during weapon selection wheel
         if (e.deltaY > 0) {
           this.setWeapon((this.weapon + 1) % 3);
         } else if (e.deltaY < 0) {
@@ -332,13 +374,23 @@ export class LocalPlayerController {
 
     this._onPointerLockChange = () => {
       this.isPointerLocked = (document.pointerLockElement !== null);
+      if (this.isPointerLocked) {
+        // Request keyboard lock for W and R if supported by browser
+        if (navigator.keyboard && typeof navigator.keyboard.lock === 'function') {
+          navigator.keyboard.lock(['KeyW', 'KeyR']).catch(() => {});
+        }
+      } else {
+        if (navigator.keyboard && typeof navigator.keyboard.unlock === 'function') {
+          try { navigator.keyboard.unlock(); } catch (e) {}
+        }
+      }
     };
 
-    window.addEventListener('keydown', this._onKeyDown);
-    window.addEventListener('keyup', this._onKeyUp);
+    window.addEventListener('keydown', this._onKeyDown, { capture: true });
+    window.addEventListener('keyup', this._onKeyUp, { capture: true });
     window.addEventListener('mousemove', this._onMouseMove);
     window.addEventListener('mousedown', this._onMouseDown);
-    window.addEventListener('wheel', this._onWheel, { passive: true });
+    window.addEventListener('wheel', this._onWheel, { passive: false });
     document.addEventListener('pointerlockchange', this._onPointerLockChange);
   }
 
@@ -449,11 +501,14 @@ export class LocalPlayerController {
   }
 
   dispose() {
-    window.removeEventListener('keydown', this._onKeyDown);
-    window.removeEventListener('keyup', this._onKeyUp);
+    window.removeEventListener('keydown', this._onKeyDown, { capture: true });
+    window.removeEventListener('keyup', this._onKeyUp, { capture: true });
     window.removeEventListener('mousemove', this._onMouseMove);
     window.removeEventListener('mousedown', this._onMouseDown);
     window.removeEventListener('wheel', this._onWheel);
     document.removeEventListener('pointerlockchange', this._onPointerLockChange);
+    if (navigator.keyboard && typeof navigator.keyboard.unlock === 'function') {
+      try { navigator.keyboard.unlock(); } catch (e) {}
+    }
   }
 }

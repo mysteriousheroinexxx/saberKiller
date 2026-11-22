@@ -1,6 +1,6 @@
 /**
  * World Item Manager — Data-Driven Item Placement & Prop Management for Survival Mode
- * Handles loading, caching, shadow configuration, surface snapping, and telemetry.
+ * Handles loading, caching, shadow configuration, wrapper-based normalization, surface snapping, and telemetry.
  */
 
 export class WorldItemManager {
@@ -62,6 +62,43 @@ export class WorldItemManager {
   }
 
   /**
+   * Creates a normalized wrapper group for a model instance.
+   * Aligns internal geometry so that the wrapper's local origin (0, 0, 0)
+   * is centered horizontally (X=0, Z=0) and sits flush at the lowest point (Y=0).
+   * This non-destructively preserves the original GLB while eliminating floating and clipping.
+   */
+  normalizeModel(instance, def) {
+    const wrapper = new THREE.Group();
+
+    // Apply catalog scale to inner model before measuring bounds
+    if (def.scale) {
+      instance.scale.set(def.scale[0], def.scale[1], def.scale[2]);
+    }
+
+    instance.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(instance);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+
+    // Offset inner model so lowest point is at wrapper local Y = 0, and centered in X and Z
+    instance.position.set(-center.x, -box.min.y, -center.z);
+    wrapper.add(instance);
+    wrapper.updateMatrixWorld(true);
+
+    // Store measured dimensional metadata
+    wrapper.userData.modelSize = {
+      x: +size.x.toFixed(4),
+      y: +size.y.toFixed(4),
+      z: +size.z.toFixed(4)
+    };
+    wrapper.userData.surfaceHeight = +size.y.toFixed(4);
+
+    return wrapper;
+  }
+
+  /**
    * Loads world items definition JSON and spawns all catalogued props and items
    */
   async loadWorldItems(manifestUrl = 'assets/data/world_items.json') {
@@ -91,7 +128,10 @@ export class WorldItemManager {
       // 2. Clear existing instances if re-loading
       this.clear();
 
-      // 3. Instantiate placements
+      // 3. Map of props by ID for surface height resolution
+      const propMap = new Map();
+
+      // 4. Instantiate placements
       for (const p of placements) {
         const def = this.catalog[p.type];
         if (!def) {
@@ -106,25 +146,34 @@ export class WorldItemManager {
         }
 
         // Clone model hierarchy
-        const instance = template.clone(true);
-        instance.name = p.id;
+        const rawInstance = template.clone(true);
 
-        // Apply scale
-        if (def.scale) {
-          instance.scale.set(def.scale[0], def.scale[1], def.scale[2]);
-        }
+        // Normalize using wrapper group (lowest point at local Y=0, centered horizontally)
+        const wrapper = this.normalizeModel(rawInstance, def);
+        wrapper.name = p.id;
 
         // Apply position
         const pos = p.position || [0, 0, 0];
-        instance.position.set(pos[0], pos[1], pos[2]);
+        let targetY = pos[1];
+
+        // If target is placed on a furniture prop and references it, can query prop surface
+        if (p.propId && propMap.has(p.propId)) {
+          const parentProp = propMap.get(p.propId);
+          if (p.surfaceType === 'table') {
+            targetY = parentProp.position.y + parentProp.userData.surfaceHeight;
+          }
+        }
+
+        wrapper.position.set(pos[0], targetY, pos[2]);
 
         // Apply rotation
         if (p.rotation) {
-          instance.rotation.set(p.rotation[0], p.rotation[1], p.rotation[2]);
+          wrapper.rotation.set(p.rotation[0], p.rotation[1], p.rotation[2]);
         }
 
         // Tag user data for interaction & auditing
-        instance.userData = {
+        wrapper.userData = {
+          ...wrapper.userData,
           id: p.id,
           type: p.type,
           name: def.name,
@@ -135,8 +184,12 @@ export class WorldItemManager {
           definition: def
         };
 
+        if (def.category === 'prop') {
+          propMap.set(p.id, wrapper);
+        }
+
         // Attach to container
-        this.container.add(instance);
+        this.container.add(wrapper);
 
         this.items.push({
           id: p.id,
@@ -146,10 +199,11 @@ export class WorldItemManager {
           surfaceType: p.surfaceType,
           surfaceName: p.surfaceName || p.surfaceType,
           shelfTier: p.shelfTier || null,
-          object: instance
+          object: wrapper
         });
       }
 
+      this.container.updateMatrixWorld(true);
       this.isLoaded = true;
       console.log(`[WorldItemManager] Successfully spawned ${this.items.length} items & props in Level 0`);
       return this.items;

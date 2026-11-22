@@ -1,63 +1,73 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "catalog": {
     "table": {
       "name": "Office Table",
       "category": "prop",
       "modelUrl": "assets/items/table.glb",
       "scale": [1.0, 1.0, 1.0],
-      "contactOffsetY": 0.0,
-      "surfaceHeight": 0.940
+      "surfaceHeight": 0.936
     },
     "metal_shelf": {
       "name": "Industrial Metal Shelf",
       "category": "prop",
       "modelUrl": "assets/items/metal_shelf.glb",
       "scale": [1.0, 1.0, 1.0],
-      "contactOffsetY": 0.0,
-      "tiers": [0.250, 0.740, 1.230, 1.720, 2.160]
+      "tiers": [0.243, 0.715, 1.188, 1.643, 2.097]
     },
-    "first_aid": {
-      "name": "First Aid Kit",
-      "category": "medical",
-      "modelUrl": "assets/items/first_aid.glb",
-      "scale": [1.0, 1.0, 1.0],
-      "contactOffsetY": 0.0
+    "vending_almond": {
+      "name": "Almond Water Vending Machine",
+      "category": "prop",
+      "modelUrl": "assets/items/vending_almond.glb",
+      "scale": [1.0, 1.0, 1.0]
     },
     "ammo_crate": {
       "name": "Ammunition Crate",
       "category": "ammunition",
       "modelUrl": "assets/items/ammo_crate.glb",
-      "scale": [1.0, 1.0, 1.0],
-      "contactOffsetY": 0.0
+      "scale": [1.0, 1.0, 1.0]
+    },
+    "ammo_box": {
+      "name": ".45 ACP Ammunition Box",
+      "category": "ammunition",
+      "modelUrl": "assets/items/ammo_box.glb",
+      "scale": [1.0, 1.0, 1.0]
+    },
+    "almond_can": {
+      "name": "Almond Water Can",
+      "category": "consumable",
+      "modelUrl": "assets/items/almond_can.glb",
+      "scale": [1.0, 1.0, 1.0]
+    },
+    "first_aid": {
+      "name": "First Aid Kit",
+      "category": "medical",
+      "modelUrl": "assets/items/first_aid.glb",
+      "scale": [1.0, 1.0, 1.0]
     },
     "sanity_pill": {
       "name": "Sanity Pills Bottle",
       "category": "consumable",
       "modelUrl": "assets/items/sanity_pill_bottle.glb",
-      "scale": [0.0008, 0.0008, 0.0008],
-      "contactOffsetY": 0.0
+      "scale": [0.0008, 0.0008, 0.0008]
     },
     "energy_drink": {
       "name": "Almond Water Energy Drink",
       "category": "consumable",
       "modelUrl": "assets/items/energy_drink.glb",
-      "scale": [1.0, 1.0, 1.0],
-      "contactOffsetY": 0.0849
+      "scale": [1.0, 1.0, 1.0]
     },
     "aa_battery": {
       "name": "Flashlight Battery Pack",
       "category": "battery",
       "modelUrl": "assets/items/aa_battery.glb",
-      "scale": [1.0, 1.0, 1.0],
-      "contactOffsetY": 0.0
+      "scale": [1.0, 1.0, 1.0]
     },
     "doorKey": {
       "name": "Brass Door Key",
       "category": "key",
       "modelUrl": "assets/items/doorKey.glb",
-      "scale": [1.0, 1.0, 1.0],
-      "contactOffsetY": 0.0050
+      "scale": [1.0, 1.0, 1.0]
     }
   },
   "placements": [
@@ -65,15 +75,33 @@
       "id": "prop_table_01",
       "type": "table",
       "surfaceType": "floor",
-      "position": [44.5, 0.0, -186.2],
-      "rotation": [0.0, 0.0, 0.0]
+      "surfaceName": "Carpet Floor",
+      "position": [44.5, 0.0, -185.35],
+      "rotation": [0.0, -1.5708, 0.0]
     },
     {
       "id": "prop_shelf_01",
       "type": "metal_shelf",
       "surfaceType": "floor",
-      "position": [44.5, 0.0, -189.1],
+      "surfaceName": "Carpet Floor",
+      "position": [44.5, 0.0, -189.50],
       "rotation": [0.0, 1.5708, 0.0]
+    },
+    {
+      "id": "prop_vending_01",
+      "type": "vending_almond",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [41.5, 0.0, -185.45],
+      "rotation": [0.0, 0.0, 0.0]
+    },
+    {
+      "id": "prop_crate_01",
+      "type": "ammo_crate",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [42.5, 0.0, -189.40],
+      "rotation": [0.0, 0.2, 0.0]
     },
     {
       "id": "floor_first_aid_01",
@@ -92,11 +120,27 @@
       "rotation": [0.0, -0.2, 0.0]
     },
     {
+      "id": "floor_ammo_box_01",
+      "type": "ammo_box",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [46.2, 0.0, -187.8],
+      "rotation": [0.0, 0.5, 0.0]
+    },
+    {
+      "id": "floor_almond_can_01",
+      "type": "almond_can",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [41.8, 0.0, -186.2],
+      "rotation": [0.0, 0.4, 0.0]
+    },
+    {
       "id": "floor_energy_drink_01",
       "type": "energy_drink",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [47.1, 0.0849, -187.3],
+      "position": [47.1, 0.0, -187.3],
       "rotation": [0.0, 0.8, 0.0]
     },
     {
@@ -112,7 +156,7 @@
       "type": "doorKey",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [46.8, 0.0050, -187.6],
+      "position": [46.8, 0.0, -187.6],
       "rotation": [0.0, 1.2, 0.0]
     },
     {
@@ -120,31 +164,39 @@
       "type": "first_aid",
       "surfaceType": "table",
       "surfaceName": "Office Table Top",
-      "position": [44.3, 0.940, -185.8],
+      "position": [44.8, 0.936, -185.35],
       "rotation": [0.0, 0.1, 0.0]
+    },
+    {
+      "id": "table_ammo_box_01",
+      "type": "ammo_box",
+      "surfaceType": "table",
+      "surfaceName": "Office Table Top",
+      "position": [44.5, 0.936, -185.25],
+      "rotation": [0.0, -0.3, 0.0]
+    },
+    {
+      "id": "table_almond_can_01",
+      "type": "almond_can",
+      "surfaceType": "table",
+      "surfaceName": "Office Table Top",
+      "position": [44.2, 0.936, -185.25],
+      "rotation": [0.0, 0.6, 0.0]
     },
     {
       "id": "table_sanity_pill_01",
       "type": "sanity_pill",
       "surfaceType": "table",
       "surfaceName": "Office Table Top",
-      "position": [44.5, 0.940, -186.2],
+      "position": [44.4, 0.936, -185.45],
       "rotation": [0.0, 0.5, 0.0]
-    },
-    {
-      "id": "table_energy_drink_01",
-      "type": "energy_drink",
-      "surfaceType": "table",
-      "surfaceName": "Office Table Top",
-      "position": [44.6, 1.0249, -186.4],
-      "rotation": [0.0, -0.4, 0.0]
     },
     {
       "id": "table_battery_01",
       "type": "aa_battery",
       "surfaceType": "table",
       "surfaceName": "Office Table Top",
-      "position": [44.3, 0.940, -186.6],
+      "position": [44.1, 0.936, -185.45],
       "rotation": [0.0, 0.9, 0.0]
     },
     {
@@ -152,7 +204,7 @@
       "type": "doorKey",
       "surfaceType": "table",
       "surfaceName": "Office Table Top",
-      "position": [44.7, 0.9450, -186.0],
+      "position": [44.7, 0.936, -185.15],
       "rotation": [0.0, -1.1, 0.0]
     },
     {
@@ -161,17 +213,26 @@
       "surfaceType": "shelf_tier",
       "shelfTier": 1,
       "surfaceName": "Metal Shelf Tier 1 (Bottom)",
-      "position": [44.5, 0.250, -189.1],
+      "position": [44.5, 0.243, -189.50],
       "rotation": [0.0, 1.5708, 0.0]
     },
     {
-      "id": "shelf_energy_drink_tier2",
-      "type": "energy_drink",
+      "id": "shelf_ammo_box_tier2",
+      "type": "ammo_box",
       "surfaceType": "shelf_tier",
       "shelfTier": 2,
       "surfaceName": "Metal Shelf Tier 2",
-      "position": [44.2, 0.8249, -189.1],
+      "position": [44.3, 0.715, -189.50],
       "rotation": [0.0, 0.2, 0.0]
+    },
+    {
+      "id": "shelf_almond_can_tier2",
+      "type": "almond_can",
+      "surfaceType": "shelf_tier",
+      "shelfTier": 2,
+      "surfaceName": "Metal Shelf Tier 2",
+      "position": [44.7, 0.715, -189.50],
+      "rotation": [0.0, -0.4, 0.0]
     },
     {
       "id": "shelf_sanity_pill_tier2",
@@ -179,7 +240,7 @@
       "surfaceType": "shelf_tier",
       "shelfTier": 2,
       "surfaceName": "Metal Shelf Tier 2",
-      "position": [44.7, 0.740, -189.1],
+      "position": [44.5, 0.715, -189.50],
       "rotation": [0.0, -0.6, 0.0]
     },
     {
@@ -188,7 +249,7 @@
       "surfaceType": "shelf_tier",
       "shelfTier": 3,
       "surfaceName": "Metal Shelf Tier 3 (Eye Level)",
-      "position": [44.3, 1.230, -189.1],
+      "position": [44.3, 1.188, -189.50],
       "rotation": [0.0, 0.7, 0.0]
     },
     {
@@ -197,8 +258,17 @@
       "surfaceType": "shelf_tier",
       "shelfTier": 3,
       "surfaceName": "Metal Shelf Tier 3 (Eye Level)",
-      "position": [44.6, 1.2350, -189.1],
+      "position": [44.5, 1.188, -189.50],
       "rotation": [0.0, -0.3, 0.0]
+    },
+    {
+      "id": "shelf_almond_can_tier3",
+      "type": "almond_can",
+      "surfaceType": "shelf_tier",
+      "shelfTier": 3,
+      "surfaceName": "Metal Shelf Tier 3 (Eye Level)",
+      "position": [44.7, 1.188, -189.50],
+      "rotation": [0.0, 0.5, 0.0]
     },
     {
       "id": "shelf_first_aid_tier4",
@@ -206,7 +276,7 @@
       "surfaceType": "shelf_tier",
       "shelfTier": 4,
       "surfaceName": "Metal Shelf Tier 4",
-      "position": [44.5, 1.720, -189.1],
+      "position": [44.5, 1.643, -189.50],
       "rotation": [0.0, 1.5708, 0.0]
     }
   ]
