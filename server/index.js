@@ -16,7 +16,7 @@ const CLIENT_DIR = fs.existsSync(path.resolve(__dirname, '../multiplayer.html'))
   : path.resolve(__dirname, '../doom-zombies');
 
 const PORT = parseInt(process.env.PORT, 10) || 8749;
-const HOST = '0.0.0.0';
+const HOST = process.env.HOST || '::';
 
 // Parse optional startup flag for developer rendering comparison panel
 const DEV_RENDERING = process.argv.includes('--dev-rendering');
@@ -1033,6 +1033,14 @@ const heartbeatInterval = setInterval(() => {
 }, 25000);
 
 server.on('error', (err) => {
+  if (err.code === 'EADDRNOTAVAIL' && HOST === '::') {
+    console.warn(`[SABER KILLER SERVER] IPv6 '::' not available, falling back to '0.0.0.0'`);
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`[SABER KILLER SERVER] Listening on http://0.0.0.0:${PORT}`);
+      console.log(`[SABER KILLER SERVER] Serving client files from: ${CLIENT_DIR}`);
+    });
+    return;
+  }
   console.error(`[HTTP/WS LISTENER ERROR] ${HOST}:${PORT} code=${err.code || 'UNKNOWN'} message=${err.message}`);
   if (err.code === 'EADDRINUSE' || err.code === 'EACCES' || err.code === 'EPERM') {
     clearInterval(heartbeatInterval);
@@ -1046,6 +1054,7 @@ wss.on('close', () => {
 
 // 4. Start Server
 server.listen(PORT, HOST, () => {
-  console.log(`[SABER KILLER SERVER] Listening on http://${HOST}:${PORT}`);
+  const displayHost = HOST === '::' ? 'localhost' : HOST;
+  console.log(`[SABER KILLER SERVER] Listening on http://${displayHost}:${PORT} (bound to ${HOST})`);
   console.log(`[SABER KILLER SERVER] Serving client files from: ${CLIENT_DIR}`);
 });

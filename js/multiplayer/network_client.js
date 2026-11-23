@@ -26,15 +26,17 @@ export const MSG_TYPES = {
 
 function resolveWebSocketUrl(input) {
   const value = (input || '').trim();
-  const defaultScheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  if (!value) return `${defaultScheme}//${window.location.host}`;
-  if (/^wss?:\/\//i.test(value)) return new URL(value).toString();
-  if (/^https?:\/\//i.test(value)) {
-    const parsed = new URL(value);
+  const defaultScheme = (typeof window !== 'undefined' && window.location?.protocol === 'https:') ? 'wss:' : 'ws:';
+  const defaultHost = (typeof window !== 'undefined' && window.location?.host) ? window.location.host : '127.0.0.1:8749';
+  const target = value || defaultHost;
+
+  if (/^wss?:\/\//i.test(target)) return new URL(target).toString();
+  if (/^https?:\/\//i.test(target)) {
+    const parsed = new URL(target);
     parsed.protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
     return parsed.toString();
   }
-  return `${defaultScheme}//${value.replace(/^\/+/, '')}`;
+  return new URL(`${defaultScheme}//${target.replace(/^\/+/, '')}`).toString();
 }
 
 export class NetworkClient {

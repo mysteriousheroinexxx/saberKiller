@@ -296,6 +296,9 @@ async function init() {
   inventoryUI = new InventoryUI(mpManager.inventory, mpManager.localPlayer, mpManager.network, document.body);
   window.inventoryUI = inventoryUI;
 
+  // Auto-connect to local server immediately on page load (runs concurrently with heavy 3D asset downloads)
+  mpManager.connect(defaultWsHost);
+
   // 5. Connect button actions
   function connectThen(serverUrl, action) {
     if (mpManager.network.isConnected) {
@@ -315,6 +318,10 @@ async function init() {
   }
 
   btnCreate.addEventListener('click', () => {
+    if (!isEnvReady) {
+      showError('Level environment is still loading, please wait...');
+      return;
+    }
     const srv = serverInput.value.trim();
     const customCode = roomInput.value.trim().toUpperCase() || null;
     const layoutRev = (devToolsEnabled && worldEditor?.ui?.layoutSelect?.value && worldEditor.ui.layoutSelect.value !== 'default')
@@ -325,6 +332,10 @@ async function init() {
   });
 
   btnJoin.addEventListener('click', () => {
+    if (!isEnvReady) {
+      showError('Level environment is still loading, please wait...');
+      return;
+    }
     const srv = serverInput.value.trim();
     const code = roomInput.value.trim().toUpperCase();
     if (!code) {
@@ -417,10 +428,13 @@ async function init() {
   window.inventory = mpManager.inventory;
 
   isEnvReady = true;
-  statusEl.textContent = 'Ready to Connect';
-
-  // Auto-connect to local server on page load
-  mpManager.connect(defaultWsHost);
+  if (mpManager?.network?.isConnected) {
+    statusEl.textContent = `Connected (${mpManager.network.serverUrl})`;
+  } else if (!mpManager?.network?.ws) {
+    mpManager.connect(defaultWsHost);
+  } else {
+    statusEl.textContent = 'Connecting to Server...';
+  }
 
   // Resize handling
   window.addEventListener('resize', () => {
