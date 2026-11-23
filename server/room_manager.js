@@ -420,4 +420,26 @@ export class RoomManager {
     if (!room) return null;
     return { room, player: room.players.get(meta.playerId) };
   }
+
+  handleSwapSlots(ws, fromSlot, toSlot) {
+    const session = this.getPlayer(ws);
+    if (!session) return { error: 'Client not associated with any active room session' };
+
+    const { room, player } = session;
+    if (!player) return { error: 'Player not found in room' };
+
+    if (typeof fromSlot !== 'number' || typeof toSlot !== 'number') {
+      return { error: 'Invalid slot indices' };
+    }
+
+    const success = player.inventory.swapSlots(fromSlot, toSlot);
+    return {
+      success,
+      room,
+      player,
+      fromSlot,
+      toSlot,
+      inventory: player.inventory.serialize()
+    };
+  }
 }

@@ -204,6 +204,10 @@ export class InteractionManager {
       this._notifyDiagnostics();
       return;
     }
+
+    if (window.inventoryUI && window.inventoryUI.isOpen) {
+      return;
+    }
     if (!this.currentTarget) {
       this.diagnostics.eligibility = 'NOT TARGETED (No object in crosshair)';
       this._notifyDiagnostics();
@@ -420,8 +424,8 @@ export class InteractionManager {
       return;
     }
 
-    // Do not interact when editor is in Edit mode
-    if (window.worldEditor && window.worldEditor.editorMode === 'edit') {
+    // Do not interact when editor is in Edit mode or inventory is open
+    if ((window.worldEditor && window.worldEditor.editorMode === 'edit') || (window.inventoryUI && window.inventoryUI.isOpen)) {
       if (this.currentTarget) this._clearHoverTarget();
       return;
     }

@@ -2,131 +2,115 @@
 
 ## 1. Executive Summary
 
-This milestone completes the full player-facing inventory and quick-access hotbar experience for multiplayer Survival Mode on Level 0 in Saber Killer. Building upon the interaction and networking foundation, players now have seamless access to a 10-slot persistent gameplay hotbar, an expandable 30-slot backpack inventory modal (`Tab` / `Escape`), contextual item inspection, physical world dropping with real-time multi-client synchronization, and authoritative server-validated item consumption.
-
-Key Accomplishments:
-- **10-Slot Quick-Access Hotbar**: Permanently displayed at the bottom of the HUD with guaranteed vertical stacking clearance above the stamina gauge. Keys `1`–`9` select slots 1–9, and Key `0` selects slot 10.
-- **Integrated Starting Loadout**: Starting equipment is automatically populated into hotbar slots 1–3 on spawn:
-  - Slot 1 (Index 0): Beretta Px4 Storm Pistol
-  - Slot 2 (Index 1): Stagecoach Double-Barrel Shotgun
-  - Slot 3 (Index 2): Tactical Flashlight
-  - Slots 4–10 (Indices 3–9): Reserved for collected supplies and consumables.
-- **30-Slot Full Inventory Modal (`Tab` / `Escape`)**: Organized into 10 hotbar slots and 20 configurable backpack storage slots ($5\times4$ grid). Toggling the modal frees the mouse cursor, suspends movement and weapon discharge, keeps the room simulation active without pausing, and allows seamless slot swapping and stack management.
-- **Item Inspection Details**: Selecting any filled inventory or hotbar slot renders high-fidelity metadata (display name, item category, descriptive narrative, and resource effect statistics).
-- **Physical World Dropping & Stacking**: Dropping an item safely calculates a forward drop position on the floor in front of the player, spawns an interactive physical 3D world item via `ITEM_SPAWNED` across all connected peers, and supports both single-item immediate drops and multi-item stack quantity selection.
-- **Server-Authoritative Item Consumption**: Medical kits (+50 HP), Almond Water (+35 Sanity), Sanity Pills (+60 Sanity), Energy Drinks (+100 Stamina, +25% Sprint Speed for 15s), Batteries (+50 Flashlight charge), and Ammunition Boxes (+12 Pistol rounds) are validated and deducted on the server before client-side effect dispatch.
-- **Multiplayer State Isolation & Circular Lifecycle**: Two concurrent Chromium clients verified the full circular lifecycle: Player A collects item -> stacks items -> drops partial stack into world -> Player B approaches dropped item -> Player B collects item -> Player A's inventory remains unaffected.
+This milestone completes the player-facing inventory experience for multiplayer Survival Mode on Level 0 in Saber Killer, featuring focused UI and input corrections:
+- **Tab Key Inventory Opening & Input Control**: Resolved the critical bug where pressing `Tab` released pointer lock without making the inventory visible. Tab now reliably toggles the full 30-slot modal (`display: flex`), frees the pointer, clears held keys, suppresses WASD movement and weapon discharge, keeps the multiplayer simulation ticking at 20Hz, and restores controls upon closing.
+- **Permanent Gameplay Hotbar Removed**: The 10-slot bar has been completely removed from the normal gameplay HUD. No permanent item bar or selected-item box clutters the screen. The authentic Health, Sanity, Ammo, and Stamina gauges remain untouched and fully visible.
+- **Ten-Slot Quick-Access Row Inside Inventory**: The 10 quick-access slots (`1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `0`) are displayed exclusively inside the full inventory interface opened with `Tab`.
+- **Drag-and-Drop Organization & Stack Merging**: Players can drag items from backpack storage into quick-access slots, move between hotbar slots, swap occupied slots, and move items back into storage. Compatible stacks merge seamlessly, and slot changes synchronize authoritatively to the server via `INVENTORY_SWAP_REQUEST`.
+- **Dynamic Quick-Access Item Selection**: During active gameplay, pressing keys `1`–`9` and `0` dynamically equips whatever item is assigned to that quick-access slot. Beretta pistol (slot 1), Stagecoach shotgun (slot 2), and tactical flashlight (slot 3) function immediately from spawn, and moving or assigning consumables into hotbar slots enables left-click consumption and right-click dropping.
+- **Two-Client Multiplayer Verification**: Tested and passed across 15 focused Tab & hotbar acceptance criteria and 21 regression scenarios using concurrent headless Chromium instances.
 - **Zero Story Mode Regression**: Single-player Story Mode files (`index.html`, `js/engine.js`, `js/levels/level0.js`, `js/levels/level0_env.js`) maintain a strict 0-line diff against `master`.
 
 ---
 
-## 2. Architecture & Data Flow
+## 2. Root Cause Analysis — Tab Key Investigation
 
-```
-                      +-----------------------------+
-                      |     Client A (LocalPlayer)  |
-                      | - Hotbar (10 Slots)         |
-                      | - Backpack (20 Slots)       |
-                      | - Active Held Item / Weapon |
-                      +--------------+--------------+
-                                     |
-               +---------------------+---------------------+
-               | (Left-Click / Use)                        | (Right-Click / Drop)
-               v                                           v
-     ITEM_USE_REQUEST                            ITEM_DROP_REQUEST
-   (slotIndex, instanceId)                     (slotIndex, qty, dropPos)
-               |                                           |
-               +---------------------+---------------------+
-                                     |
-                                     v
-                        ===========================
-                           WebSocket Connection
-                        ===========================
-                                     |
-                                     v
-                      +-----------------------------+
-                      |     Saber Killer Server     |
-                      | - Validate Player & Room    |
-                      | - Verify Item Existence     |
-                      | - Authoritative Inventory   |
-                      | - Decrement / Split Slot    |
-                      +--------------+--------------+
-                                     |
-         +---------------------------+---------------------------+
-         | (If Use Request)                                      | (If Drop Request)
-         v                                                       v
-  ITEM_USE_RESPONSE                                       ITEM_DROP_RESPONSE
-  INVENTORY_UPDATE                                        INVENTORY_UPDATE
-         |                                                       |
-         |                                           +-----------+-----------+
-         |                                           |                       |
-         | Broadcast (only for drop)                 v                       v
-         +---------------------------------> ITEM_SPAWNED              ITEM_SPAWNED
-                                              (Client A)                (Client B)
-                                                   |                         |
-                                                   v                         v
-                                          +-----------------+       +-----------------+
-                                          | WorldItemManager|       | WorldItemManager|
-                                          | Spawn 3D Object |       | Spawn 3D Object |
-                                          +-----------------+       +-----------------+
-                                                                             |
-                                                                             | (Approach & E)
-                                                                             v
-                                                                    ITEM_PICKUP_REQUEST
-```
+### 2.1 The Issue
+- When the player pressed `Tab` during active pointer lock, pointer lock was released, but the inventory modal did NOT appear.
+
+### 2.2 Diagnostic Findings
+1. **Competing Window Capture Listeners**:
+   - Both `PlayerController._onKeyDown` and `InventoryUI._bindEvents` registered independent capture-phase `keydown` listeners on `window` listening for `e.code === 'Tab'`.
+   - When `Tab` was pressed:
+     1. `PlayerController`'s listener fired first and called `window.inventoryUI.toggle()`.
+     2. `toggle()` saw `isOpen === false` and opened the modal (`isOpen = true`, `style.display = 'flex'`, called `document.exitPointerLock()`).
+     3. Immediately afterward within the same event dispatch on `window`, `InventoryUI`'s listener fired and called `this.toggle()`.
+     4. `toggle()` saw `isOpen === true` and closed the modal (`isOpen = false`, `style.display = 'none'`)!
+     5. The modal was opened and closed in microseconds during the single keypress.
+2. **Missing Repeat Guard**: Neither listener checked `e.repeat`, causing rapid toggling if Tab was held even momentarily.
+3. **Missing Immediate Propagation Stop**: `e.stopPropagation()` does not cancel other listeners attached to the same DOM target (`window`); `e.stopImmediatePropagation()` was required.
+
+### 2.3 The Correction
+- Redundant `Tab` handling was eliminated from `PlayerController`.
+- `InventoryUI._bindEvents` now serves as the sole, authoritative handler:
+  ```javascript
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Tab') {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      if (e.repeat) return;
+      this.toggle();
+      return;
+    }
+    if (e.code === 'Escape') {
+      if (this.isOpen) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        if (e.repeat) return;
+        this.close();
+        return;
+      }
+    }
+  }, { capture: true });
+  ```
+- When `open()` executes:
+  - Sets `isOpen = true` and `inventoryModalEl.style.display = 'flex'`.
+  - Sets `player.isInventoryOpen = true` and clears `player.keys = {}`.
+  - Calls `document.exitPointerLock()`.
+  - Suppresses movement, firing, and reloading inside `PlayerController` (`fire()`, `startReload()`, `consumeHeldItem()`, `dropHeldItem()`).
+- When `close()` executes:
+  - Sets `isOpen = false` and `inventoryModalEl.style.display = 'none'`.
+  - Sets `player.isInventoryOpen = false`.
+  - Restores normal gameplay input; clicking the canvas re-acquires pointer lock.
 
 ---
 
-## 3. UI Component System & Control Bindings
+## 3. UI Component System & Input Scheme
 
-### 3.1 Hotbar Layout & Visual Hierarchy
-- **Positioning**: Bottom center fixed container (`#bb-hotbar-container`).
-  - Hotbar bounds: `top: calc(100vh - 87px)`, `height: 56px`.
-  - Stamina bar bounds: `top: calc(100vh - 19px)`, `height: 12px`.
-  - Margin: 12px vertical buffer ensuring zero visual overlap or occlusion.
-- **Styling**: Monochromatic Budget-Backrooms palette:
-  - Slots: $48\times48\text{px}$, background `rgba(18, 18, 16, 0.85)`, border $1\text{px}$ solid `#3a3832`.
-  - Active Selection: Border `#ffcc00`, box-shadow `0 0 10px rgba(255, 204, 0, 0.45)`, gold keycap badge.
-  - Keycap Number: Upper-left corner, font-size $10\text{px}$, color `#8a887d` (or `#ffcc00` when selected).
-  - Quantity Badge: Lower-right corner, font-size $11\text{px}$ bold, `#edece6`.
+### 3.1 Clean Gameplay HUD (Permanent Hotbar Removed)
+- `#bb-hotbar-container` has been completely removed from the gameplay DOM and CSS.
+- The gameplay screen presents an uncluttered, atmospheric view with only:
+  - Room info & player count header.
+  - Centered crosshair.
+  - Health & Sanity bars (top left).
+  - Tactical flashlight battery / ammo counter (lower right).
+  - Stamina gauge (bottom center, resting naturally at `bottom: 7px`).
 
 ### 3.2 Full Inventory Modal (`Tab` / `Escape`)
-- **Container**: Translucent fullscreen overlay (`rgba(10, 10, 8, 0.78)`) hosting a centered modal (`rgba(18, 18, 16, 0.96)`, border $2\text{px}$ solid `#3a3832`, box-shadow `0 8px 32px rgba(0,0,0,0.85)`).
-- **Structure**:
-  - **Header**: Title `"SURVIVAL INVENTORY"` with slot occupancy indicator (`"X / 30 SLOTS"`) and Close button (`[ESC]`).
-  - **Upper Section**: 10 Hotbar Quick-Access Slots ($1\times10$ grid).
-  - **Lower Section**: 20 Backpack Storage Slots ($5\times4$ grid).
-  - **Side Panel**: Contextual Item Inspection Inspector rendering:
-    - High-contrast $48\times48\text{px}$ vector SVG icon.
-    - Title, category badge (`WEAPON`, `MEDICAL`, `CONSUMABLE`, `EQUIPMENT`).
-    - Flavour description text.
-    - Dynamic effect statistics breakdown.
-    - Direct action buttons (`[USE / CONSUME]`, `[DROP]`).
+- **Container**: Translucent fullscreen overlay (`rgba(8, 8, 7, 0.72)`) hosting a centered modal window (`rgba(18, 18, 16, 0.96)`, border `#3a3832`).
+- **Upper Section**: Quick-Access Hotbar row (10 slots, labeled `1`–`9`, `0`).
+  - Slots display keycap badges, icons, stack quantity badges, and an `EQUIPPED` badge on the currently held slot.
+- **Lower Section**: Backpack Storage grid (20 slots, indices `10`–`29`).
+- **Right Panel**: Contextual Item Inspection Inspector displaying icon preview, item name, category badge, lore narrative, consumable stat effects, and direct action buttons.
 
-### 3.3 Context Menu & Drop Quantity Selector Modal
-- **Context Menu**: Triggered via right-clicking any occupied slot.
-  - Actions: `Use / Consume`, `Drop`, `Assign to Hotbar`, `Inspect`.
-  - Click-outside detection auto-dismisses menu.
-- **Drop Quantity Selector**:
-  - Automatically bypassed for single-item slots (`qty === 1`), immediately dropping the unit.
-  - Displayed for multi-item stacks: slider and numeric stepper defaulting to `1`, clamped between `1` and `maxStack`, with `"CONFIRM DROP"` and `"CANCEL"` buttons.
+### 3.3 Drag-and-Drop & Slot Reorganization
+- Every grid slot supports native HTML5 Drag & Drop (`dragstart`, `dragover`, `dragleave`, `drop`, `dragend`).
+- Visual feedback: dragging slot becomes translucent with dashed gold outline (`.dragging`); hovered destination slot highlights cyan with glow (`.drag-over`).
+- Supported operations:
+  - Storage $\to$ Quick-Access (assigning item for number-key use).
+  - Quick-Access $\to$ Quick-Access (reordering loadout).
+  - Quick-Access $\to$ Storage (storing items).
+  - Storage $\to$ Storage (organizing backpack).
+  - Compatible stack merging up to `maxStack`.
+- Authoritative synchronization: slot moves trigger `INVENTORY_SWAP_REQUEST` to the server, ensuring client and server inventories match identically.
 
 ### 3.4 Key & Mouse Input Scheme
 
-| Input | Navigate Mode / Gameplay | Full Inventory Open (`Tab`) |
+| Input | Normal Gameplay | Full Inventory Open (`Tab`) |
 | :--- | :--- | :--- |
-| `Keys 1`–`9` | Select Hotbar Slots 1–9 | Assign selected item to Hotbar Slot 1–9 |
-| `Key 0` | Select Hotbar Slot 10 | Assign selected item to Hotbar Slot 10 |
 | `Tab` | Open Full Inventory Modal | Close Full Inventory Modal |
-| `Escape` | Pause / Game Menu | Close Full Inventory Modal |
-| `Left Click` | Fire equipped weapon / Consume held item | Select slot / Click UI buttons |
+| `Escape` | Release pointer lock / Menu | Close Full Inventory Modal |
+| `Keys 1`–`9`, `0` | Select assigned quick-access slot | Assign selected item to slot `1`–`0` |
+| `Left Click` | Fire weapon / Consume held item | Select slot / Drag item / Click actions |
 | `Right Click` | Drop 1 unit of held item into world | Open contextual item menu |
-| `WASD` | Normal FPS Player Movement | Suppressed (modal open) |
+| `WASD` | Normal FPS Player Movement | Suppressed (movement locked) |
 | `Mouse Look` | First-Person Camera Control | Pointer freed for UI interaction |
 
 ---
 
-## 4. Item Definitions & Consumable Effects
+## 4. Item Definitions & Quick-Access Assignments
 
 | Item ID | Display Name | Category | Stack | Effect / Resource Restored |
 | :--- | :--- | :--- | :---: | :--- |
@@ -143,50 +127,45 @@ Key Accomplishments:
 
 ---
 
-## 5. Verification Matrix — All 21 Scenarios Passed
+## 5. Verification Results
 
-All 21 end-to-end scenarios were executed and verified against a live multiplayer server using headless Chromium instances via Chrome DevTools Protocol (`scratch/verify_inventory_hotbar.js`):
+### 5.1 Focused Tab & Hotbar Correction Suite (`scratch/verify_tab_and_hotbar_correction.js`)
 
-| # | Scenario Objective | Verification Criteria | Observed Result | Status |
-| :-: | :--- | :--- | :--- | :-: |
-| **1** | Default Starting Loadout | Slots 0, 1, 2 populated with Pistol, Shotgun, Flashlight. | Slots 0–2 initialized; slot 3 empty; 30 slots total. | **PASS** |
-| **2** | Hotbar HUD Layout & Clearance | 10 slots rendered; vertical buffer above stamina bar. | Hotbar `top: 457, bottom: 513`; Stamina `top: 525`; 12px margin. | **PASS** |
-| **3** | Two-Client Room Join | Client A creates room; Client B joins; isolated state. | Client A (`p_1`) & Client B (`p_2`) connected to `TESTROOM`. | **PASS** |
-| **4** | World Item Collection into Slot 4 | Target item picked up into first free hotbar slot. | Player A collected `table_first_aid_01` into slot 3 (`inst_first_aid_*`). | **PASS** |
-| **5** | Peer World Despawn Sync | Collected item instantly despawns on remote clients. | `table_first_aid_01` became invisible and marked collected on Player B. | **PASS** |
-| **6** | Hotbar Selection (Keys 1–3) | Slot 1 activates Pistol; Slot 2 Shotgun; Slot 3 Torch. | Viewmodels and spotlight toggled correctly according to selection. | **PASS** |
-| **7** | Consumable Selection (Key 4) | Slot 4 activates held 3D consumable container. | Weapon viewmodel lowered; held item container active. | **PASS** |
-| **8** | Unarmed Selection (Key 0) | Slot 10 selects empty slot; viewmodels hidden. | Weapon set to `-1`; hands empty. | **PASS** |
-| **9** | Full Inventory Modal (`Tab`) | Opens 30-slot grid; frees mouse; maintains room tick. | Modal displayed (`flex`); movement suppressed; simulation active. | **PASS** |
-| **10** | Modal Dismissal (`Escape`) | Modal cleanly closes; input returned to gameplay. | Modal display set to `none`; player control restored. | **PASS** |
-| **11** | Authoritative Item Consumption | First Aid Kit heals 50 HP; item decremented from slot. | Player A HP restored from 60 to 100; slot 3 cleared to null. | **PASS** |
-| **12** | Item Stacking in Inventory | Collecting same type merges into existing stack. | Player A picked up two Almond Cans; merged to quantity 2 in slot 3. | **PASS** |
-| **13** | Partial Stack World Drop | Dropping 1 from stack of 2 leaves 1 in inventory. | Player A dropped 1 can; remaining quantity in slot 3 became 1. | **PASS** |
-| **14** | Dropped Item World Spawning | Server spawns dynamic 3D item safely in front of player. | `drop_almond_can_*` spawned at `[42, 0.02, -186.9]`. | **PASS** |
-| **15** | Peer 3D Scene Synchronization | Dropped item immediately visible and interactive for peer. | Player B received `ITEM_SPAWNED` and rendered visible object. | **PASS** |
-| **16** | Peer Pickup of Dropped Item | Remote player approaches and collects dropped item. | Player B approached drop; picked up into slot 3; item despawned. | **PASS** |
-| **17** | Single-Item Full Stack Drop | Dropping final remaining item clears slot to null. | Player A dropped last can; slot 3 transitioned to null. | **PASS** |
-| **18** | Malicious / Invalid Drop Rejection | Dropping from empty slot or invalid quantity rejected. | Server rejected drop attempt with `"Item not found in inventory"`. | **PASS** |
-| **19** | Inventory Isolation | Actions of Player A do not leak into Player B inventory. | Player A slot 3 empty; Player B inventory contains 1 Almond Can. | **PASS** |
-| **20** | Weapon & Equipment Integrity | Firing pistol consumes ammo; torch consumes battery. | Pistol fired, bullets $12 \to 11$; battery drained $100 \to 99.5\%$. | **PASS** |
-| **21** | Visual Artifacts & UI Proof | Clean screenshots captured and archived. | All 5 inspection and gameplay PNG screenshots captured. | **PASS** |
+| # | Acceptance Criterion | Observed Result | Status |
+| :-: | :--- | :--- | :---: |
+| **1** | Start multiplayer and enter a room | Client A & Client B connected to `CORRECTROOM`. | **PASS** |
+| **2** | Press Tab while pointer-locked | Pointer lock released without consuming event. | **PASS** |
+| **3** | Confirm inventory visibly opens | Modal display transitioned to `flex`, `isOpen=true`. | **PASS** |
+| **4** | Confirm pointer lock is released | `document.exitPointerLock()` executed cleanly. | **PASS** |
+| **5** | Suppress WASD and weapon firing | Movement keys ignored; `fire()` returned `false`. | **PASS** |
+| **6** | Confirm world continues running | 20Hz network sync and room simulation active. | **PASS** |
+| **7** | Confirm 10-slot row inside inventory | 10 slots labeled `1`–`9`, `0` rendered in modal. | **PASS** |
+| **8** | Drag item from storage into slot 4 | Almond Water dragged from slot 10 to slot 3. | **PASS** |
+| **9** | Close inventory | Tab cleanly closed modal (`display: none`). | **PASS** |
+| **10** | Confirm no permanent hotbar on HUD | `#bb-hotbar-container` is `null` on gameplay HUD. | **PASS** |
+| **11** | Press 4 and confirm assigned item selected | Slot 3 selected; Almond Water held in hand. | **PASS** |
+| **12** | Verify keys 1, 2, 3 control weapons/torch | Keys 1, 2, 3 activate pistol, shotgun, flashlight. | **PASS** |
+| **13** | Reopen inventory and verify persistence | Slot 3 retains Almond Water upon reopening. | **PASS** |
+| **14** | Test closing with Escape and Tab | Escape closes modal; Tab reopens and toggles. | **PASS** |
+| **15** | Individual client state isolation | Client A and Client B maintain independent inventories. | **PASS** |
+
+### 5.2 Full Regression Suite (`scratch/verify_inventory_hotbar.js`)
+All 21 end-to-end scenarios (item pickup, simultaneous world despawn, item consumption, stack merging, physical world drop spawning, peer pickup of dropped items, invalid drop rejection, weapon ammo tracking, flashlight battery consumption, and screenshot generation) passed with exit code 0.
 
 ---
 
 ## 6. Generated Visual Artifacts
 
-The following visual artifacts were generated and saved in the artifact directory:
-
 1. [inventory_01_gameplay_hotbar.png](file:///home/mhxxx/.gemini/antigravity-cli/brain/1f289c44-ad8c-4627-87d0-a5464314d899/inventory_01_gameplay_hotbar.png):
-   10-slot gameplay hotbar during active navigation, displaying pistol (1), shotgun (2), flashlight (3), collected energy drinks (4, stack of 3), empty slots (5–10), and clear vertical spacing above the stamina meter.
+   Clean gameplay HUD showing removal of the permanent hotbar container while maintaining health, ammo, and stamina bars.
 2. [inventory_02_full_inventory_modal.png](file:///home/mhxxx/.gemini/antigravity-cli/brain/1f289c44-ad8c-4627-87d0-a5464314d899/inventory_02_full_inventory_modal.png):
-   Full 30-slot modal opened via `Tab`, showing 10 hotbar slots, 20 storage slots, slot occupancy count, and translucent backdrop.
+   Full inventory modal opened with `Tab`, showing the 10 quick-access hotbar slots in the top row and 20 storage slots below.
 3. [inventory_03_item_inspection_details.png](file:///home/mhxxx/.gemini/antigravity-cli/brain/1f289c44-ad8c-4627-87d0-a5464314d899/inventory_03_item_inspection_details.png):
-   Selected item inspection details panel showing Energy Drink metadata, narrative lore, stamina boost stat, speed multiplier stat, and direct action triggers.
+   Selected item inspection details panel showing Almond Water assigned into quick-access slot 4.
 4. [inventory_04_context_menu_and_drop_modal.png](file:///home/mhxxx/.gemini/antigravity-cli/brain/1f289c44-ad8c-4627-87d0-a5464314d899/inventory_04_context_menu_and_drop_modal.png):
-   Drop Quantity Selector modal displaying stack split slider, clamped numeric input, and confirmation controls.
+   Drop quantity selector modal displaying clamped numeric input.
 5. [inventory_05_dropped_world_item_sync.png](file:///home/mhxxx/.gemini/antigravity-cli/brain/1f289c44-ad8c-4627-87d0-a5464314d899/inventory_05_dropped_world_item_sync.png):
-   In-game 3D rendering of dropped Almond Water item resting on the carpeted floor, synchronized across clients.
+   Synchronized 3D rendering of physical dropped item in world.
 
 ---
 
@@ -204,4 +183,3 @@ The following visual artifacts were generated and saved in the artifact director
   - `saber_prototype/`
   - `yuka/`
 - **Branch**: `feature/interaction-inventory-foundation`
-- **No Master Merging**: Changes remain strictly on `feature/interaction-inventory-foundation`.

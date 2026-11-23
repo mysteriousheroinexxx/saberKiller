@@ -239,18 +239,28 @@ export class LocalPlayerController {
     if (idx < 0 || idx > 9) return;
     this.selectedHotbarSlot = idx;
 
-    if (idx >= 0 && idx <= 2) {
-      this._clearHeldItem();
-      this.setWeapon(idx);
+    const slotItem = this.inventory ? this.inventory.getItem(idx) : null;
+    if (slotItem) {
+      if (slotItem.typeId === 'weapon_pistol') {
+        this._clearHeldItem();
+        this.setWeapon(0);
+      } else if (slotItem.typeId === 'weapon_shotgun') {
+        this._clearHeldItem();
+        this.setWeapon(1);
+      } else if (slotItem.typeId === 'equipment_torch') {
+        this._clearHeldItem();
+        this.setWeapon(2);
+      } else {
+        // Consumable or other world item
+        this.weapon = -1;
+        this._updateViewmodelVisibility();
+        this._setHeldItem(slotItem.typeId);
+      }
     } else {
+      // Empty slot (unarmed)
       this.weapon = -1;
       this._updateViewmodelVisibility();
-      const slotItem = this.inventory ? this.inventory.getItem(idx) : null;
-      if (slotItem) {
-        this._setHeldItem(slotItem.typeId);
-      } else {
-        this._clearHeldItem();
-      }
+      this._clearHeldItem();
     }
 
     if (window.inventoryUI) {
@@ -307,6 +317,7 @@ export class LocalPlayerController {
   }
 
   consumeHeldItem() {
+    if (this.isEditorActive || this.isInventoryOpen) return;
     if (this.selectedHotbarSlot < 0 || this.selectedHotbarSlot > 9) return;
     const item = this.inventory ? this.inventory.getItem(this.selectedHotbarSlot) : null;
     if (!item) return;
@@ -320,6 +331,7 @@ export class LocalPlayerController {
   }
 
   dropHeldItem() {
+    if (this.isEditorActive || this.isInventoryOpen) return;
     if (this.selectedHotbarSlot < 0 || this.selectedHotbarSlot > 9) return;
     const item = this.inventory ? this.inventory.getItem(this.selectedHotbarSlot) : null;
     if (!item) return;
@@ -357,6 +369,7 @@ export class LocalPlayerController {
   }
 
   fire() {
+    if (this.isEditorActive || this.isInventoryOpen) return false;
     if (this.cool > 0 || this.reloadT > 0) return false;
     if (this.weapon === 0) { // PISTOL
       if (this.mag.bullets <= 0) {
@@ -388,6 +401,7 @@ export class LocalPlayerController {
   }
 
   startReload() {
+    if (this.isEditorActive || this.isInventoryOpen) return false;
     if (this.reloadT > 0) return false;
     if (this.weapon === 0) {
       const needed = 12 - this.mag.bullets;
@@ -443,7 +457,7 @@ export class LocalPlayerController {
 
   _bindEvents() {
     this._onKeyDown = (e) => {
-      if (this.isEditorActive) {
+      if (this.isEditorActive || this.isInventoryOpen) {
         return;
       }
       // Allow regular typing in visible input/textarea elements when not in active pointer lock
@@ -458,26 +472,6 @@ export class LocalPlayerController {
 
       // Browser keyboard shortcut protection during active first-person pointer lock
       if (this.isPointerLocked) {
-        // Intercept Tab to open/close inventory
-        if (e.code === 'Tab') {
-          e.preventDefault();
-          e.stopPropagation();
-          if (window.inventoryUI) {
-            window.inventoryUI.toggle();
-          }
-          return;
-        }
-
-        // ALWAYS preserve Escape key so the browser / user can release pointer lock at will
-        if (e.code === 'Escape') {
-          if (window.inventoryUI && window.inventoryUI.isOpen) {
-            e.preventDefault();
-            e.stopPropagation();
-            window.inventoryUI.close();
-          }
-          return;
-        }
-
         // Intercept and prevent browser window navigation/closure shortcuts: Ctrl+W, Ctrl+R, etc.
         if (e.ctrlKey || e.metaKey) {
           const blockedCodes = ['KeyW', 'KeyR', 'KeyS', 'KeyD', 'KeyA', 'KeyP', 'KeyF', 'KeyO', 'KeyU'];
@@ -497,28 +491,6 @@ export class LocalPlayerController {
         if (['Space', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.code)) {
           e.preventDefault();
         }
-      } else {
-        // When not pointer locked, allow Tab and Escape to toggle inventory
-        if (e.code === 'Tab') {
-          e.preventDefault();
-          e.stopPropagation();
-          if (window.inventoryUI) {
-            window.inventoryUI.toggle();
-          }
-          return;
-        }
-        if (e.code === 'Escape') {
-          if (window.inventoryUI && window.inventoryUI.isOpen) {
-            e.preventDefault();
-            e.stopPropagation();
-            window.inventoryUI.close();
-            return;
-          }
-        }
-      }
-
-      if (this.isInventoryOpen) {
-        return;
       }
 
       this.keys[e.code] = true;

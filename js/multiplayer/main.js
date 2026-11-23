@@ -329,7 +329,7 @@ async function init() {
   renderer.domElement.tabIndex = 0;
   renderer.domElement.addEventListener('click', () => {
     try { renderer.domElement.focus(); } catch (e) {}
-    if (isGameActive && mpManager && !mpManager.localPlayer.isEditorActive && (!worldEditor || !worldEditor.isOpen)) {
+    if (isGameActive && mpManager && !mpManager.localPlayer.isEditorActive && (!worldEditor || !worldEditor.isOpen) && !window.inventoryUI?.isOpen) {
       mpManager.localPlayer.requestPointerLock(renderer.domElement);
     }
   });

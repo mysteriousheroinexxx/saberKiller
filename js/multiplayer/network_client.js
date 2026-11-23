@@ -20,7 +20,8 @@ export const MSG_TYPES = {
   ITEM_USE_RESPONSE: 'ITEM_USE_RESPONSE',
   ITEM_DROP_REQUEST: 'ITEM_DROP_REQUEST',
   ITEM_DROP_RESPONSE: 'ITEM_DROP_RESPONSE',
-  ITEM_SPAWNED: 'ITEM_SPAWNED'
+  ITEM_SPAWNED: 'ITEM_SPAWNED',
+  INVENTORY_SWAP_REQUEST: 'INVENTORY_SWAP_REQUEST'
 };
 
 function resolveWebSocketUrl(input) {
@@ -313,6 +314,10 @@ export class NetworkClient {
     };
     const sent = this.send(MSG_TYPES.ITEM_DROP_REQUEST, payload);
     return { sent, requestId };
+  }
+
+  requestItemSwap(fromSlot, toSlot) {
+    return this.send(MSG_TYPES.INVENTORY_SWAP_REQUEST, { fromSlot, toSlot });
   }
 
   sendUpdate(x, y, z, yaw, pitch, weapon = 0) {

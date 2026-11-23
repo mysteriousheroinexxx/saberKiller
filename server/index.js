@@ -960,6 +960,18 @@ wss.on('connection', (ws, req) => {
         break;
       }
 
+      case MSG_TYPES.INVENTORY_SWAP_REQUEST: {
+        const fromSlot = payload?.fromSlot;
+        const toSlot = payload?.toSlot;
+        const res = roomManager.handleSwapSlots(ws, fromSlot, toSlot);
+        if (!res.error && res.success) {
+          send(ws, MSG_TYPES.INVENTORY_UPDATE, {
+            inventory: res.inventory
+          });
+        }
+        break;
+      }
+
       case MSG_TYPES.ROOM_ITEMS_STATE: {
         const session = roomManager.getPlayer(ws);
         if (!session) return;

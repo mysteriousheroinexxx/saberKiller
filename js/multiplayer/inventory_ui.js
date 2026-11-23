@@ -34,15 +34,14 @@ export class InventoryUI {
     // Drop quantity state
     this.dropModalSlotIndex = null;
     this.dropQuantity = 1;
+    this.draggedSlotIndex = null;
 
     // DOM Elements
-    this.hotbarEl = null;
     this.inventoryModalEl = null;
     this.contextMenuEl = null;
     this.dropModalEl = null;
 
     this._injectStyles();
-    this._initHotbarUI();
     this._initInventoryModalUI();
     this._initContextMenuUI();
     this._initDropModalUI();
@@ -68,7 +67,9 @@ export class InventoryUI {
 
   setSelectedSlot(slotIdx) {
     this.selectedHotbarSlot = Math.max(0, Math.min(9, slotIdx));
-    this.renderHotbar();
+    if (this.isOpen) {
+      this.renderInventoryModal();
+    }
   }
 
   toggle() {
@@ -86,7 +87,8 @@ export class InventoryUI {
     }
     if (this.player) {
       this.player.isInventoryOpen = true;
-      if (this.player.isPointerLocked) {
+      this.player.keys = {};
+      if (this.player.isPointerLocked || document.pointerLockElement) {
         try {
           document.exitPointerLock();
         } catch (e) {}
@@ -115,52 +117,7 @@ export class InventoryUI {
     const style = document.createElement('style');
     style.id = 'bb-inventory-styles';
     style.textContent = `
-      /* --- Gameplay Hotbar (10 Slots, anchored above Stamina Bar) --- */
-      #bb-hotbar-container {
-        position: fixed;
-        bottom: 64px;
-        left: 50%;
-        transform: translateX(-50%);
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 5px 8px;
-        background: rgba(14, 14, 12, 0.78);
-        border: 1px solid rgba(255, 204, 0, 0.35);
-        border-radius: 6px;
-        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.75);
-        z-index: 110;
-        user-select: none;
-        backdrop-filter: blur(4px);
-        font-family: 'Rubik', -apple-system, BlinkMacSystemFont, sans-serif;
-      }
-
-      .bb-hotbar-slot {
-        position: relative;
-        width: 44px;
-        height: 44px;
-        background: rgba(24, 24, 22, 0.85);
-        border: 1px solid rgba(237, 236, 230, 0.18);
-        border-radius: 4px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
-      }
-
-      .bb-hotbar-slot:hover {
-        border-color: rgba(255, 204, 0, 0.7);
-        background: rgba(36, 36, 32, 0.95);
-      }
-
-      .bb-hotbar-slot.selected {
-        border: 2px solid #ffcc00;
-        box-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
-        background: rgba(45, 42, 30, 0.95);
-        transform: translateY(-2px);
-      }
-
+      /* --- Badge and Icon Elements --- */
       .bb-slot-key-badge {
         position: absolute;
         top: 2px;
@@ -170,10 +127,6 @@ export class InventoryUI {
         color: #9c9a92;
         pointer-events: none;
         line-height: 1;
-      }
-
-      .bb-hotbar-slot.selected .bb-slot-key-badge {
-        color: #ffcc00;
       }
 
       .bb-slot-qty-badge {
@@ -189,8 +142,8 @@ export class InventoryUI {
       }
 
       .bb-slot-icon {
-        width: 26px;
-        height: 26px;
+        width: 32px;
+        height: 32px;
         object-fit: contain;
         display: block;
         filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.8));
@@ -353,6 +306,35 @@ export class InventoryUI {
         border: 2px dashed #00e5ff;
         box-shadow: 0 0 8px rgba(0, 229, 255, 0.4);
         background: rgba(20, 45, 50, 0.9);
+      }
+
+      .bb-grid-slot.dragging {
+        opacity: 0.45;
+        border: 2px dashed #ffcc00;
+      }
+
+      .bb-grid-slot.drag-over {
+        border: 2px solid #00e5ff;
+        box-shadow: 0 0 12px rgba(0, 229, 255, 0.6);
+        background: rgba(30, 60, 65, 0.95);
+        transform: scale(1.04);
+      }
+
+      .bb-grid-slot.active-equipped {
+        border-color: #ffcc00;
+        box-shadow: 0 0 8px rgba(255, 204, 0, 0.45);
+      }
+
+      .bb-grid-slot.active-equipped::after {
+        content: 'EQUIPPED';
+        position: absolute;
+        bottom: 2px;
+        left: 3px;
+        font-size: 7px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        color: #ffcc00;
+        pointer-events: none;
       }
 
       .bb-grid-slot .bb-slot-icon {
@@ -620,51 +602,10 @@ export class InventoryUI {
     document.head.appendChild(style);
   }
 
-  _initHotbarUI() {
-    this.hotbarEl = document.createElement('div');
-    this.hotbarEl.id = 'bb-hotbar-container';
-
-    for (let i = 0; i < 10; i++) {
-      const slot = document.createElement('div');
-      slot.className = 'bb-hotbar-slot';
-      slot.dataset.slotIndex = String(i);
-      if (i === this.selectedHotbarSlot) {
-        slot.classList.add('selected');
-      }
-
-      const keyBadge = document.createElement('div');
-      keyBadge.className = 'bb-slot-key-badge';
-      keyBadge.textContent = i === 9 ? '0' : String(i + 1);
-      slot.appendChild(keyBadge);
-
-      const qtyBadge = document.createElement('div');
-      qtyBadge.className = 'bb-slot-qty-badge';
-      qtyBadge.id = `bb-hotbar-qty-${i}`;
-      slot.appendChild(qtyBadge);
-
-      const iconImg = document.createElement('img');
-      iconImg.className = 'bb-slot-icon';
-      iconImg.id = `bb-hotbar-icon-${i}`;
-      iconImg.draggable = false;
-      slot.appendChild(iconImg);
-
-      slot.addEventListener('click', () => {
-        if (this.player && typeof this.player.selectHotbarSlot === 'function') {
-          this.player.selectHotbarSlot(i);
-        } else {
-          this.setSelectedSlot(i);
-        }
-      });
-
-      this.hotbarEl.appendChild(slot);
-    }
-
-    this.parent.appendChild(this.hotbarEl);
-  }
-
   _initInventoryModalUI() {
     this.inventoryModalEl = document.createElement('div');
     this.inventoryModalEl.id = 'bb-inventory-modal';
+    this.inventoryModalEl.style.display = 'none';
 
     const win = document.createElement('div');
     win.className = 'bb-inv-window';
@@ -847,6 +788,54 @@ export class InventoryUI {
       this._handleSlotRightClick(slotIdx, e.clientX, e.clientY);
     });
 
+    // Drag & Drop
+    slot.addEventListener('dragstart', (e) => {
+      const item = this.inventory ? this.inventory.getItem(slotIdx) : null;
+      if (!item) {
+        e.preventDefault();
+        return;
+      }
+      this.draggedSlotIndex = slotIdx;
+      e.dataTransfer.setData('text/plain', String(slotIdx));
+      e.dataTransfer.effectAllowed = 'move';
+      slot.classList.add('dragging');
+    });
+
+    slot.addEventListener('dragend', () => {
+      slot.classList.remove('dragging');
+      this.draggedSlotIndex = null;
+      document.querySelectorAll('.bb-grid-slot.drag-over').forEach(el => el.classList.remove('drag-over'));
+    });
+
+    slot.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      slot.classList.add('drag-over');
+    });
+
+    slot.addEventListener('dragleave', (e) => {
+      if (!slot.contains(e.relatedTarget)) {
+        slot.classList.remove('drag-over');
+      }
+    });
+
+    slot.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      slot.classList.remove('drag-over');
+
+      let fromIdx = this.draggedSlotIndex;
+      if (fromIdx === null || fromIdx === undefined) {
+        const text = e.dataTransfer.getData('text/plain');
+        if (text) fromIdx = parseInt(text, 10);
+      }
+
+      if (typeof fromIdx === 'number' && !isNaN(fromIdx) && fromIdx !== slotIdx) {
+        this.moveOrSwapSlots(fromIdx, slotIdx);
+      }
+      this.draggedSlotIndex = null;
+    });
+
     return slot;
   }
 
@@ -996,15 +985,59 @@ export class InventoryUI {
       if (e.code === 'Tab') {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
+        if (e.repeat) return;
         this.toggle();
-      } else if (e.code === 'Escape') {
+        return;
+      }
+      if (e.code === 'Escape') {
         if (this.isOpen) {
           e.preventDefault();
           e.stopPropagation();
+          e.stopImmediatePropagation();
+          if (e.repeat) return;
           this.close();
+          return;
+        }
+      }
+      if (this.isOpen && this.selectedInventorySlot !== null && !e.repeat) {
+        const numMap = {
+          Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3, Digit5: 4,
+          Digit6: 5, Digit7: 6, Digit8: 7, Digit9: 8, Digit0: 9
+        };
+        if (numMap[e.code] !== undefined) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          const targetSlot = numMap[e.code];
+          this.moveOrSwapSlots(this.selectedInventorySlot, targetSlot);
         }
       }
     }, { capture: true });
+  }
+
+  moveOrSwapSlots(fromIdx, toIdx) {
+    if (!this.inventory) return false;
+    if (fromIdx < 0 || fromIdx >= this.inventory.capacity || toIdx < 0 || toIdx >= this.inventory.capacity) {
+      return false;
+    }
+    if (fromIdx === toIdx) return false;
+
+    const fromItem = this.inventory.getItem(fromIdx);
+    if (!fromItem) return false;
+
+    const success = this.inventory.swapSlots(fromIdx, toIdx);
+    if (success) {
+      if (this.networkClient && this.networkClient.isConnected) {
+        this.networkClient.send('INVENTORY_SWAP_REQUEST', { fromSlot: fromIdx, toSlot: toIdx });
+      }
+      this._selectSlot(toIdx);
+      if (this.player && (fromIdx === this.player.selectedHotbarSlot || toIdx === this.player.selectedHotbarSlot)) {
+        this.player.selectHotbarSlot(this.player.selectedHotbarSlot);
+      }
+      this.render();
+    }
+    return success;
   }
 
   _handleSlotClick(slotIdx) {
@@ -1015,8 +1048,7 @@ export class InventoryUI {
       const from = this.activeSwapSourceSlot;
       this.activeSwapSourceSlot = null;
       if (from !== slotIdx) {
-        this.inventory.swapSlots(from, slotIdx);
-        this._selectSlot(slotIdx);
+        this.moveOrSwapSlots(from, slotIdx);
         return;
       }
     }
@@ -1138,8 +1170,7 @@ export class InventoryUI {
     if (targetSlot === -1) {
       targetSlot = 3; // Default replace slot 4 if hotbar full
     }
-    this.inventory.swapSlots(slotIdx, targetSlot);
-    this._selectSlot(targetSlot);
+    this.moveOrSwapSlots(slotIdx, targetSlot);
   }
 
   _handleUseSelected() {
@@ -1161,37 +1192,8 @@ export class InventoryUI {
   }
 
   render() {
-    this.renderHotbar();
     if (this.isOpen) {
       this.renderInventoryModal();
-    }
-  }
-
-  renderHotbar() {
-    if (!this.hotbarEl || !this.inventory) return;
-
-    for (let i = 0; i < 10; i++) {
-      const slotData = this.inventory.getItem(i);
-      const slotEl = this.hotbarEl.children[i];
-      if (!slotEl) continue;
-
-      slotEl.classList.toggle('selected', i === this.selectedHotbarSlot);
-
-      const iconImg = document.getElementById(`bb-hotbar-icon-${i}`);
-      const qtyBadge = document.getElementById(`bb-hotbar-qty-${i}`);
-
-      if (slotData) {
-        if (iconImg) {
-          iconImg.src = slotData.iconUrl || 'assets/ui/icons/hud_ammo.svg';
-          iconImg.style.display = 'block';
-        }
-        if (qtyBadge) {
-          qtyBadge.textContent = slotData.quantity > 1 ? String(slotData.quantity) : '';
-        }
-      } else {
-        if (iconImg) iconImg.style.display = 'none';
-        if (qtyBadge) qtyBadge.textContent = '';
-      }
     }
   }
 
@@ -1229,6 +1231,15 @@ export class InventoryUI {
 
     slotEl.classList.toggle('selected', slotIdx === this.selectedInventorySlot);
     slotEl.classList.toggle('swap-source', slotIdx === this.activeSwapSourceSlot);
+    slotEl.classList.toggle('active-equipped', slotIdx < 10 && slotIdx === this.selectedHotbarSlot);
+
+    if (slotData) {
+      slotEl.setAttribute('draggable', 'true');
+      slotEl.style.cursor = 'grab';
+    } else {
+      slotEl.setAttribute('draggable', 'false');
+      slotEl.style.cursor = 'pointer';
+    }
 
     const iconImg = document.getElementById(`bb-grid-icon-${slotIdx}`);
     const qtyBadge = document.getElementById(`bb-grid-qty-${slotIdx}`);
