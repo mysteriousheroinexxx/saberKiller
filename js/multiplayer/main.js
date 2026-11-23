@@ -383,8 +383,12 @@ async function init() {
         console.log(`[STAGE 4/19] [CLIENT] Request ID assigned: ${requestId} for item: ${target.id}`);
         const pPos = mpManager.localPlayer ? mpManager.localPlayer.pos : null;
         const clientPos = pPos ? { x: +pPos.x.toFixed(3), y: +(pPos.y || 0).toFixed(3), z: +pPos.z.toFixed(3) } : null;
-        console.log(`[STAGE 5/19] [CLIENT] Request transmitted through WebSocket: reqId=${requestId}, item=${target.id}`);
-        mpManager.network.requestItemPickup(target.id, requestId, clientPos);
+        console.log(`[PICKUP ${requestId}] E received; constructing request for ${target.id}`);
+        console.log(`[PICKUP ${requestId}] Sending ITEM_PICKUP_REQUEST via WebSocket`);
+        const result = mpManager.network.requestItemPickup(target.id, requestId, clientPos);
+        if (result.sent) console.log(`[PICKUP ${requestId}] WebSocket send completed`);
+        else console.warn(`[PICKUP ${requestId}] WebSocket send did not occur (readyState=${mpManager.network.ws?.readyState ?? 'no socket'})`);
+        return result;
       }
     },
     onDiagnosticsChange: (diag) => {

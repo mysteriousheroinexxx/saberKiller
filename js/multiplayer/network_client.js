@@ -204,6 +204,8 @@ export class NetworkClient {
       payload.clientPosition = clientPosition;
     }
     const sent = this.send(MSG_TYPES.ITEM_PICKUP_REQUEST, payload);
+    if (sent) console.log(`[PICKUP ${requestId}] WebSocket send completed (${MSG_TYPES.ITEM_PICKUP_REQUEST}, item=${itemId})`);
+    else console.warn(`[PICKUP ${requestId}] WebSocket send failed (connected=${this.isConnected}, readyState=${this.ws?.readyState ?? 'no socket'})`);
     return { sent, requestId };
   }
 

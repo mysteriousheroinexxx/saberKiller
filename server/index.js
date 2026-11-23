@@ -763,13 +763,37 @@ wss.on('connection', (ws, req) => {
         const playerId = session ? session.player.id : 'unknown';
         const roomCode = session ? session.room.code : 'unknown';
 
+        console.log(`[PICKUP ${requestId}] Message received: player=${playerId}, room=${roomCode}, item=${itemId}`);
         console.log(`[STAGE 6/19] [SERVER] Pickup request received: reqId=${requestId}, player=${playerId}, room=${roomCode}, item=${itemId}`);
         console.log(`[STAGE 7/19] [SERVER] Request ID parsed: ${requestId}`);
         console.log(`[STAGE 8/19] [SERVER] Player and room resolved: player=${playerId}, room=${roomCode}`);
         console.log(`[STAGE 9/19] [SERVER] Item ID resolved: ${itemId}`);
 
         console.log(`[STAGE 10/19] [SERVER] Validation executing for item '${itemId}' by player '${playerId}'...`);
-        const res = roomManager.handlePickupRequest(ws, itemId, clientPos);
+        const requestKey = `${playerId}:${requestId}`;
+        const activeRoom = session?.room;
+        const cached = activeRoom?.pickupRequests?.get(requestKey);
+        if (cached) {
+          console.log(`[PICKUP ${requestId}] Duplicate request; replaying prior acknowledgement`);
+          send(ws, MSG_TYPES.ITEM_PICKUP_RESPONSE, cached);
+          if (cached.success && activeRoom) {
+            const player = activeRoom.players.get(playerId);
+            send(ws, MSG_TYPES.INVENTORY_UPDATE, {
+              requestId,
+              inventory: player?.inventory.serialize(),
+              addedItem: { id: cached.itemId, type: cached.itemType }
+            });
+          }
+          break;
+        }
+
+        let res;
+        try {
+          res = roomManager.handlePickupRequest(ws, itemId, clientPos);
+        } catch (err) {
+          console.error(`[PICKUP ${requestId}] Pickup processing exception:`, err);
+          res = { error: `Pickup processing failed: ${err.message}`, room: session?.room, player: session?.player };
+        }
 
         if (res.error) {
           console.log(`[STAGE 12/19] [SERVER] Pickup REJECTED: reqId=${requestId}, item='${itemId}', reason='${res.error}'`);
@@ -781,6 +805,8 @@ wss.on('connection', (ws, req) => {
             roomCode: res.room ? res.room.code : roomCode,
             reason: res.error
           };
+          if (activeRoom?.pickupRequests) activeRoom.pickupRequests.set(requestKey, rejectPayload);
+          console.log(`[PICKUP ${requestId}] Acknowledgement sent: rejected (${rejectPayload.reason})`);
           console.log(`[STAGE 13/19] [SERVER] Transmitting rejection response to client:`, rejectPayload);
           send(ws, MSG_TYPES.ITEM_PICKUP_RESPONSE, rejectPayload);
           send(ws, MSG_TYPES.PICKUP_REJECTED, {
@@ -800,6 +826,11 @@ wss.on('connection', (ws, req) => {
             playerId: res.player.id,
             roomCode: res.room.code
           };
+          if (res.room.pickupRequests) {
+            res.room.pickupRequests.set(requestKey, acceptPayload);
+            if (res.room.pickupRequests.size > 500) res.room.pickupRequests.delete(res.room.pickupRequests.keys().next().value);
+          }
+          console.log(`[PICKUP ${requestId}] Acknowledgement sent: accepted item=${res.item.id}, player=${res.player.id}`);
           console.log(`[STAGE 13/19] [SERVER] Transmitting success response to client:`, acceptPayload);
           send(ws, MSG_TYPES.ITEM_PICKUP_RESPONSE, acceptPayload);
 

@@ -57,7 +57,8 @@ export class RoomManager {
       createdAt: Date.now(),
       layoutRevision: (typeof layoutRevision === 'string' && layoutRevision.trim()) ? layoutRevision.trim() : 'default',
       players: new Map([[playerId, player]]),
-      worldItems: new Map()
+      worldItems: new Map(),
+      pickupRequests: new Map()
     };
 
     // Initialize room world pickup state from frozen layout

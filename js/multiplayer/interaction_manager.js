@@ -245,15 +245,27 @@ export class InteractionManager {
       }
     }, 3000);
 
-    this.diagnostics.lastRequest = `PICKUP_REQUEST sent (${target.id}, reqId=${requestId}) at ${new Date().toLocaleTimeString()}`;
+    console.log(`[PICKUP ${requestId}] E received: target=${target.id}`);
+    this.diagnostics.lastRequest = `PICKUP_REQUEST created (${target.id}, reqId=${requestId}) at ${new Date().toLocaleTimeString()}`;
     this.diagnostics.serverResult = `PENDING (Awaiting server response for ${requestId}...)`;
     this._notifyDiagnostics();
 
     if (typeof this.onInteract === 'function') {
       try {
-        this.onInteract(target, requestId);
+        const result = this.onInteract(target, requestId);
+        if (result === false || result?.sent === false) {
+          this._finishPickupRequest(requestId);
+          this.diagnostics.serverResult = 'NOT SENT (WebSocket is not open)';
+          this.diagnostics.lastRejection = 'WebSocket is not connected';
+          console.warn(`[PICKUP ${requestId}] WebSocket send failed; request was not transmitted`);
+          this._notifyDiagnostics();
+        }
       } catch (err) {
         console.error('[InteractionManager] Error executing onInteract:', err);
+        this._finishPickupRequest(requestId);
+        this.diagnostics.serverResult = `SEND ERROR (${err.message})`;
+        this.diagnostics.lastRejection = err.message;
+        this._notifyDiagnostics();
       }
     }
   }
@@ -273,7 +285,7 @@ export class InteractionManager {
     }
 
     // Match acknowledgements against original request IDs (or pending target)
-    const matches = (!this.pendingRequestId) || (this.pendingRequestId === requestId) || (this.pendingTargetId === itemId);
+    const matches = this.pendingRequestId === requestId;
     if (!matches) {
       console.warn(`[InteractionManager] Unmatched response received (expected reqId=${this.pendingRequestId}, got ${requestId})`);
       return;
@@ -281,13 +293,7 @@ export class InteractionManager {
 
     console.log(`[STAGE 16/19] [CLIENT] Request ID matched: expected=${this.pendingRequestId}, received=${requestId}`);
 
-    if (this.pendingTimeout) {
-      clearTimeout(this.pendingTimeout);
-      this.pendingTimeout = null;
-    }
-    this.isPending = false;
-    this.pendingRequestId = null;
-    this.pendingTargetId = null;
+    this._finishPickupRequest(requestId);
 
     if (requestId) {
       this.completedRequests.add(requestId);
@@ -310,6 +316,18 @@ export class InteractionManager {
       this.diagnostics.lastRejection = reason || 'Server rejection';
     }
     this._notifyDiagnostics();
+  }
+
+  _finishPickupRequest(requestId) {
+    if (requestId && this.pendingRequestId && requestId !== this.pendingRequestId) return false;
+    if (this.pendingTimeout) {
+      clearTimeout(this.pendingTimeout);
+      this.pendingTimeout = null;
+    }
+    this.isPending = false;
+    this.pendingRequestId = null;
+    this.pendingTargetId = null;
+    return true;
   }
 
   /**
