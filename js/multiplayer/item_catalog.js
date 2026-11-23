@@ -4,6 +4,8 @@
  */
 
 export const ITEM_CATEGORIES = {
+  WEAPON: 'weapon',
+  EQUIPMENT: 'equipment',
   MEDICAL: 'medical',
   CONSUMABLE: 'consumable',
   AMMUNITION: 'ammunition',
@@ -117,7 +119,7 @@ export const ITEM_DEFINITIONS = {
     isPickup: true,
     stackable: true,
     maxStack: 5,
-    consumable: false,
+    consumable: true,
     equippable: false,
     droppable: true,
     metadata: {
@@ -125,6 +127,65 @@ export const ITEM_DEFINITIONS = {
       roundsPerBox: 12,
       compatibleWeapons: ['pistol'],
       description: 'Box of 12 rounds of .45 ACP ammunition for semi-automatic sidearm.'
+    }
+  },
+
+  weapon_pistol: {
+    id: 'weapon_pistol',
+    name: 'Beretta Px4 Storm',
+    category: ITEM_CATEGORIES.WEAPON,
+    modelUrl: 'assets/beretta_px4_storm_compact.glb',
+    iconUrl: 'assets/ui/icons/weapon_pistol.svg',
+    isPickup: false,
+    stackable: false,
+    maxStack: 1,
+    consumable: false,
+    equippable: true,
+    droppable: false,
+    weaponIndex: 0,
+    metadata: {
+      caliber: '.45 ACP',
+      magCapacity: 12,
+      description: 'Compact semi-automatic service pistol. Standard issue sidearm.'
+    }
+  },
+
+  weapon_shotgun: {
+    id: 'weapon_shotgun',
+    name: 'Stagecoach Shotgun',
+    category: ITEM_CATEGORIES.WEAPON,
+    modelUrl: 'assets/stagecoach_shotgun.glb',
+    iconUrl: 'assets/ui/icons/weapon_shotgun.svg',
+    isPickup: false,
+    stackable: false,
+    maxStack: 1,
+    consumable: false,
+    equippable: true,
+    droppable: false,
+    weaponIndex: 1,
+    metadata: {
+      caliber: '12 Gauge',
+      magCapacity: 6,
+      description: 'Short-barreled break-action coach shotgun. Devastating close-range spread.'
+    }
+  },
+
+  equipment_torch: {
+    id: 'equipment_torch',
+    name: 'Tactical Flashlight',
+    category: ITEM_CATEGORIES.EQUIPMENT,
+    modelUrl: 'assets/torch.glb',
+    iconUrl: 'assets/ui/icons/item_torch.svg',
+    isPickup: false,
+    stackable: false,
+    maxStack: 1,
+    consumable: false,
+    equippable: true,
+    droppable: false,
+    weaponIndex: 2,
+    metadata: {
+      batteryDrainRate: 0.25,
+      description: 'High-intensity tactical flashlight. Illuminates dense darkness of Level 0.'
     }
   },
 
@@ -185,13 +246,43 @@ export function isPickupItem(typeId) {
 }
 
 /**
- * Validates requested quantity against item stack constraints
+ * Central consumable effect configuration
  */
-export function validateItemQuantity(typeId, qty) {
-  if (typeof qty !== 'number' || !Number.isInteger(qty) || qty <= 0) return false;
-  const def = getItemDefinition(typeId);
-  if (!def) return false;
-  if (!def.stackable && qty > 1) return false;
-  if (def.stackable && qty > def.maxStack) return false;
-  return true;
-}
+export const ITEM_EFFECTS_CONFIG = {
+  first_aid: {
+    healAmount: 50,
+    requiresMissingHp: true,
+    description: 'Restores 50 HP (cannot exceed 100 HP)'
+  },
+  almond_can: {
+    sanityRestore: 35,
+    staminaBoost: 25,
+    requiresMissingSanity: false,
+    description: 'Restores 35 Sanity & 25 Stamina'
+  },
+  sanity_pill: {
+    sanityRestore: 60,
+    requiresMissingSanity: false,
+    description: 'Restores 60 Sanity'
+  },
+  energy_drink: {
+    staminaBoost: 100,
+    speedMultiplier: 1.25,
+    durationSeconds: 15,
+    sanityRestore: 15,
+    description: 'Boosts stamina by 100 and movement speed by +25% for 15s'
+  },
+  aa_battery: {
+    batteryCharge: 50,
+    requiresMissingBattery: true,
+    description: 'Recharges tactical flashlight battery by +50%'
+  },
+  ammo_box: {
+    rounds: 12,
+    weapon: 'pistol',
+    maxReserve: 120,
+    requiresMissingAmmo: true,
+    description: 'Adds 12 rounds of .45 ACP pistol ammunition'
+  }
+};
+

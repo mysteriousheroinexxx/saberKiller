@@ -680,7 +680,9 @@ wss.on('connection', (ws, req) => {
             spawn: res.spawn,
             totalPlayers: res.totalPlayers,
             layoutRevision: res.layoutRevision,
-            collectedItems: res.collectedItems || []
+            collectedItems: res.collectedItems || [],
+            spawnedItems: res.spawnedItems || [],
+            inventory: res.inventory
           });
         }
         break;
@@ -700,7 +702,9 @@ wss.on('connection', (ws, req) => {
             existingPlayers: res.existingPlayers,
             totalPlayers: res.totalPlayers,
             layoutRevision: res.layoutRevision,
-            collectedItems: res.collectedItems || []
+            collectedItems: res.collectedItems || [],
+            spawnedItems: res.spawnedItems || [],
+            inventory: res.inventory
           });
 
           // Notify existing players in room about new arrival
@@ -860,6 +864,97 @@ wss.on('connection', (ws, req) => {
               id: res.item.id,
               type: res.item.type
             }
+          });
+        }
+        break;
+      }
+
+      case MSG_TYPES.ITEM_USE_REQUEST: {
+        const requestId = payload?.requestId || `use_${Date.now()}`;
+        const slotIndex = payload?.slotIndex;
+        const instanceId = payload?.instanceId;
+
+        const session = roomManager.getPlayer(ws);
+        const playerId = session ? session.player.id : 'unknown';
+        const roomCode = session ? session.room.code : 'unknown';
+
+        console.log(`[ITEM USE ${requestId}] Received from player=${playerId}, room=${roomCode}, slot=${slotIndex}`);
+
+        const res = roomManager.handleUseItem(ws, slotIndex, instanceId);
+        if (res.error) {
+          console.log(`[ITEM USE ${requestId}] Rejected: ${res.error}`);
+          send(ws, MSG_TYPES.ITEM_USE_RESPONSE, {
+            requestId,
+            success: false,
+            slotIndex,
+            reason: res.error
+          });
+        } else {
+          console.log(`[ITEM USE ${requestId}] Accepted for player=${res.player.id}, item=${res.itemType}`);
+          send(ws, MSG_TYPES.ITEM_USE_RESPONSE, {
+            requestId,
+            success: true,
+            slotIndex: res.slotIndex,
+            itemType: res.itemType,
+            itemName: res.itemName,
+            effect: res.effect,
+            remainingQuantity: res.remainingQuantity
+          });
+
+          send(ws, MSG_TYPES.INVENTORY_UPDATE, {
+            requestId,
+            inventory: res.inventory,
+            usedItem: { type: res.itemType }
+          });
+        }
+        break;
+      }
+
+      case MSG_TYPES.ITEM_DROP_REQUEST: {
+        const requestId = payload?.requestId || `drop_${Date.now()}`;
+        const slotIndex = payload?.slotIndex;
+        const instanceId = payload?.instanceId;
+        const quantity = payload?.quantity || 1;
+        const clientPos = payload?.playerPosition;
+        const clientYaw = payload?.playerYaw;
+
+        const session = roomManager.getPlayer(ws);
+        const playerId = session ? session.player.id : 'unknown';
+        const roomCode = session ? session.room.code : 'unknown';
+
+        console.log(`[ITEM DROP ${requestId}] Received from player=${playerId}, room=${roomCode}, slot=${slotIndex}, qty=${quantity}`);
+
+        const res = roomManager.handleDropItem(ws, slotIndex, instanceId, quantity, clientPos, clientYaw);
+        if (res.error) {
+          console.log(`[ITEM DROP ${requestId}] Rejected: ${res.error}`);
+          send(ws, MSG_TYPES.ITEM_DROP_RESPONSE, {
+            requestId,
+            success: false,
+            slotIndex,
+            reason: res.error
+          });
+        } else {
+          console.log(`[ITEM DROP ${requestId}] Accepted: spawned ${res.droppedItem.id} (${res.droppedItem.type}) at [${res.droppedItem.position.join(', ')}]`);
+          send(ws, MSG_TYPES.ITEM_DROP_RESPONSE, {
+            requestId,
+            success: true,
+            dropId: res.droppedItem.id,
+            slotIndex: res.slotIndex,
+            quantity: res.droppedQuantity
+          });
+
+          // Broadcast spawned world item to ALL players in room
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.ITEM_SPAWNED, {
+              item: res.droppedItem,
+              droppedBy: res.player.id
+            });
+          }
+
+          send(ws, MSG_TYPES.INVENTORY_UPDATE, {
+            requestId,
+            inventory: res.inventory,
+            droppedItem: { id: res.droppedItem.id, type: res.droppedItem.type, quantity: res.droppedQuantity }
           });
         }
         break;

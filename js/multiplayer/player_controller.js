@@ -1,6 +1,8 @@
 // Local First-Person Player Controller for Multiplayer
 // Handles input, camera orientation, wall collision via level0_env, viewmodel, survival resources, and 20Hz network updates
 
+import { getItemDefinition } from './item_catalog.js';
+
 export class LocalPlayerController {
   constructor(camera, scene, networkClient, collisionHandler) {
     this.camera = camera;
@@ -46,10 +48,21 @@ export class LocalPlayerController {
     this.reloadWeapon = -1;
     this.cool = 0;
 
-    // Viewmodels and flashlight
+    // Viewmodels, held items, and flashlight
     this.gunGroup = new THREE.Group();
     this.camera.add(this.gunGroup);
     this.viewmodels = [null, null, null]; // [pistol, shotgun, torch]
+
+    this.selectedHotbarSlot = 0;
+    this.inventory = null;
+    this.isInventoryOpen = false;
+    this.speedBoostTimer = 0.0;
+    this.speedMultiplier = 1.0;
+
+    this.heldItemContainer = new THREE.Group();
+    this.gunGroup.add(this.heldItemContainer);
+    this.heldItemMesh = null;
+    this.heldItemTypeId = null;
 
     // Tactical Flashlight for Torch (matches Story Mode spotlight setup)
     this.flashlight = new THREE.SpotLight(0xfffae0, 24.0, 38.0, Math.PI / 6.5, 0.45, 1.8);
@@ -208,6 +221,9 @@ export class LocalPlayerController {
     if (this.flashlight) {
       this.flashlight.visible = (this.weapon === 2);
     }
+    if (this.heldItemContainer) {
+      this.heldItemContainer.visible = (this.weapon === -1 && this.heldItemMesh !== null);
+    }
   }
 
   setWeapon(idx) {
@@ -217,6 +233,127 @@ export class LocalPlayerController {
     this.reloadT = 0;
     this.reloadWeapon = -1;
     this._updateViewmodelVisibility();
+  }
+
+  selectHotbarSlot(idx) {
+    if (idx < 0 || idx > 9) return;
+    this.selectedHotbarSlot = idx;
+
+    if (idx >= 0 && idx <= 2) {
+      this._clearHeldItem();
+      this.setWeapon(idx);
+    } else {
+      this.weapon = -1;
+      this._updateViewmodelVisibility();
+      const slotItem = this.inventory ? this.inventory.getItem(idx) : null;
+      if (slotItem) {
+        this._setHeldItem(slotItem.typeId);
+      } else {
+        this._clearHeldItem();
+      }
+    }
+
+    if (window.inventoryUI) {
+      window.inventoryUI.setSelectedSlot(idx);
+    }
+  }
+
+  _clearHeldItem() {
+    if (this.heldItemContainer) {
+      this.heldItemContainer.clear();
+    }
+    this.heldItemMesh = null;
+    this.heldItemTypeId = null;
+  }
+
+  _setHeldItem(typeId) {
+    if (this.heldItemTypeId === typeId && this.heldItemMesh) {
+      if (this.heldItemContainer) this.heldItemContainer.visible = true;
+      return;
+    }
+    this._clearHeldItem();
+    this.heldItemTypeId = typeId;
+    const def = getItemDefinition(typeId);
+    if (!def || !def.modelUrl) return;
+
+    const loader = new THREE.GLTFLoader();
+    loader.load(def.modelUrl, (gltf) => {
+      if (this.heldItemTypeId !== typeId) return;
+      const mesh = gltf.scene;
+      mesh.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(mesh);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      const s = 0.16 / maxDim;
+
+      mesh.position.set(-center.x, -center.y, -center.z);
+      mesh.traverse(o => {
+        if (o.isMesh) {
+          o.castShadow = true;
+          o.receiveShadow = true;
+        }
+      });
+      const wrap = new THREE.Group();
+      wrap.add(mesh);
+      wrap.scale.setScalar(s);
+      wrap.position.set(0.04, -0.06, -0.16);
+      wrap.rotation.set(0.2, -0.4, 0.1);
+
+      this.heldItemContainer.add(wrap);
+      this.heldItemMesh = wrap;
+      this._updateViewmodelVisibility();
+    });
+  }
+
+  consumeHeldItem() {
+    if (this.selectedHotbarSlot < 0 || this.selectedHotbarSlot > 9) return;
+    const item = this.inventory ? this.inventory.getItem(this.selectedHotbarSlot) : null;
+    if (!item) return;
+
+    const def = getItemDefinition(item.typeId);
+    if (!def || !def.consumable) return;
+
+    if (this.networkClient) {
+      this.networkClient.requestItemUse(this.selectedHotbarSlot, item.instanceId);
+    }
+  }
+
+  dropHeldItem() {
+    if (this.selectedHotbarSlot < 0 || this.selectedHotbarSlot > 9) return;
+    const item = this.inventory ? this.inventory.getItem(this.selectedHotbarSlot) : null;
+    if (!item) return;
+
+    const def = getItemDefinition(item.typeId);
+    if (!def || def.droppable === false) return;
+
+    if (this.networkClient) {
+      this.networkClient.requestItemDrop(this.selectedHotbarSlot, item.instanceId, 1, this.pos, this.yaw);
+    }
+  }
+
+  applyItemEffect(effect) {
+    if (!effect) return;
+    if (typeof effect.healAmount === 'number') {
+      this.heal(effect.healAmount);
+    }
+    if (typeof effect.sanityRestore === 'number' && window.sanityController) {
+      window.sanityController.restoreSanity(effect.sanityRestore);
+    }
+    if (typeof effect.batteryCharge === 'number') {
+      this.battery = Math.min(this.maxBattery, this.battery + effect.batteryCharge);
+    }
+    if (typeof effect.rounds === 'number') {
+      this.bullets = Math.min(120, this.bullets + effect.rounds);
+    }
+    if (typeof effect.staminaBoost === 'number') {
+      this.stamina = Math.min(this.maxStamina, this.stamina + effect.staminaBoost);
+      this._staminaExhausted = false;
+    }
+    if (typeof effect.speedMultiplier === 'number') {
+      this.speedMultiplier = effect.speedMultiplier;
+      this.speedBoostTimer = Math.max(this.speedBoostTimer, effect.durationSeconds || 15);
+    }
   }
 
   fire() {
@@ -321,8 +458,23 @@ export class LocalPlayerController {
 
       // Browser keyboard shortcut protection during active first-person pointer lock
       if (this.isPointerLocked) {
+        // Intercept Tab to open/close inventory
+        if (e.code === 'Tab') {
+          e.preventDefault();
+          e.stopPropagation();
+          if (window.inventoryUI) {
+            window.inventoryUI.toggle();
+          }
+          return;
+        }
+
         // ALWAYS preserve Escape key so the browser / user can release pointer lock at will
         if (e.code === 'Escape') {
+          if (window.inventoryUI && window.inventoryUI.isOpen) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.inventoryUI.close();
+          }
           return;
         }
 
@@ -341,24 +493,47 @@ export class LocalPlayerController {
           e.stopPropagation();
         }
 
-        // Intercept Tab to avoid losing focus / cycling DOM focus out of the canvas
-        if (e.code === 'Tab') {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-
         // Intercept page scrolling keys while pointer locked
         if (['Space', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.code)) {
           e.preventDefault();
         }
+      } else {
+        // When not pointer locked, allow Tab and Escape to toggle inventory
+        if (e.code === 'Tab') {
+          e.preventDefault();
+          e.stopPropagation();
+          if (window.inventoryUI) {
+            window.inventoryUI.toggle();
+          }
+          return;
+        }
+        if (e.code === 'Escape') {
+          if (window.inventoryUI && window.inventoryUI.isOpen) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.inventoryUI.close();
+            return;
+          }
+        }
+      }
+
+      if (this.isInventoryOpen) {
+        return;
       }
 
       this.keys[e.code] = true;
 
-      // Weapon selection shortcuts
-      if (e.code === 'Digit1') this.setWeapon(0);
-      else if (e.code === 'Digit2') this.setWeapon(1);
-      else if (e.code === 'Digit3') this.setWeapon(2);
+      // Hotbar selection shortcuts (1-9, 0)
+      if (e.code === 'Digit1') this.selectHotbarSlot(0);
+      else if (e.code === 'Digit2') this.selectHotbarSlot(1);
+      else if (e.code === 'Digit3') this.selectHotbarSlot(2);
+      else if (e.code === 'Digit4') this.selectHotbarSlot(3);
+      else if (e.code === 'Digit5') this.selectHotbarSlot(4);
+      else if (e.code === 'Digit6') this.selectHotbarSlot(5);
+      else if (e.code === 'Digit7') this.selectHotbarSlot(6);
+      else if (e.code === 'Digit8') this.selectHotbarSlot(7);
+      else if (e.code === 'Digit9') this.selectHotbarSlot(8);
+      else if (e.code === 'Digit0') this.selectHotbarSlot(9);
       else if (e.code === 'KeyR') this.startReload();
     };
 
@@ -370,28 +545,43 @@ export class LocalPlayerController {
     };
 
     this._onMouseMove = (e) => {
-      if (!this.isPointerLocked) return;
+      if (!this.isPointerLocked || this.isInventoryOpen) return;
       this.yaw -= e.movementX * this.mouseSensitivity;
       this.pitch -= e.movementY * this.mouseSensitivity;
       this.pitch = Math.max(-1.48, Math.min(1.48, this.pitch));
     };
 
     this._onMouseDown = (e) => {
-      if (this.isEditorActive) return;
-      if (this.isPointerLocked && e.button === 0) {
-        this.fire();
+      if (this.isEditorActive || this.isInventoryOpen) return;
+      if (this.isPointerLocked) {
+        if (e.button === 0) { // Left click
+          if (this.weapon >= 0) {
+            this.fire();
+          } else {
+            this.consumeHeldItem();
+          }
+        } else if (e.button === 2) { // Right click
+          e.preventDefault();
+          this.dropHeldItem();
+        }
       }
     };
 
     this._onWheel = (e) => {
-      if (this.isEditorActive) return;
+      if (this.isEditorActive || this.isInventoryOpen) return;
       if (this.isPointerLocked) {
         e.preventDefault(); // Prevent page scrolling during weapon selection wheel
         if (e.deltaY > 0) {
-          this.setWeapon((this.weapon + 1) % 3);
+          this.selectHotbarSlot((this.selectedHotbarSlot + 1) % 10);
         } else if (e.deltaY < 0) {
-          this.setWeapon((this.weapon + 2) % 3);
+          this.selectHotbarSlot((this.selectedHotbarSlot + 9) % 10);
         }
+      }
+    };
+
+    this._onContextMenu = (e) => {
+      if (this.isPointerLocked) {
+        e.preventDefault();
       }
     };
 
@@ -414,6 +604,7 @@ export class LocalPlayerController {
     window.addEventListener('mousemove', this._onMouseMove);
     window.addEventListener('mousedown', this._onMouseDown);
     window.addEventListener('wheel', this._onWheel, { passive: false });
+    window.addEventListener('contextmenu', this._onContextMenu);
     document.addEventListener('pointerlockchange', this._onPointerLockChange);
   }
 
@@ -424,7 +615,7 @@ export class LocalPlayerController {
   }
 
   update(dt) {
-    if (this.isEditorActive) {
+    if (this.isEditorActive || this.isInventoryOpen) {
       // Suspend movement and firing, but maintain 20Hz network sync
       this.updateTimer += dt;
       if (this.updateTimer >= this.updateInterval) {
@@ -453,6 +644,12 @@ export class LocalPlayerController {
     }
     if (this.weapon === 2 && this.battery > 0) {
       this.battery = Math.max(0, this.battery - 0.25 * dt);
+    }
+    if (this.speedBoostTimer > 0) {
+      this.speedBoostTimer = Math.max(0, this.speedBoostTimer - dt);
+      if (this.speedBoostTimer === 0) {
+        this.speedMultiplier = 1.0;
+      }
     }
 
     // 1. Movement and stamina drain/regeneration
@@ -486,7 +683,7 @@ export class LocalPlayerController {
       }
     }
 
-    const curSpeed = this.isSprinting ? this.sprintSpeed : this.speed;
+    const curSpeed = (this.isSprinting ? this.sprintSpeed : this.speed) * this.speedMultiplier;
 
     if (len > 0) {
       fx /= len; fz /= len;

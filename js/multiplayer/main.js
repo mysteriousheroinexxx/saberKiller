@@ -22,6 +22,7 @@ import { SanityHUD } from './sanity_hud.js';
 import { WorldItemManager } from './item_manager.js';
 import { WorldPlacementEditor } from './world_editor.js';
 import { InteractionManager } from './interaction_manager.js';
+import { InventoryUI } from './inventory_ui.js';
 
 let scene, camera, renderer, mpManager, playerLight;
 let lastTime = performance.now();
@@ -30,6 +31,7 @@ let isEnvReady = false;
 let itemManager = null;
 let worldEditor = null;
 let interactionManager = null;
+let inventoryUI = null;
 
 // Survival Mode Sanity System
 let sanityController = null;
@@ -240,6 +242,7 @@ async function init() {
       if (lobbyPanel) lobbyPanel.style.display = 'none';
       if (hudOverlay) hudOverlay.style.display = 'block';
       if (sanityHUD) sanityHUD.setVisible(true);
+      if (inventoryUI) inventoryUI.render();
       if (roomInfoEl) roomInfoEl.textContent = `ROOM: ${payload.roomCode}`;
       if (countEl) countEl.textContent = `PLAYERS: ${payload.totalPlayers || 1} / 2`;
 
@@ -280,6 +283,9 @@ async function init() {
   if (sanityHUD && mpManager.localPlayer) {
     sanityHUD.setPlayer(mpManager.localPlayer);
   }
+
+  inventoryUI = new InventoryUI(mpManager.inventory, mpManager.localPlayer, mpManager.network, document.body);
+  window.inventoryUI = inventoryUI;
 
   // 5. Connect button actions
   function connectThen(serverUrl, action) {

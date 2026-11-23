@@ -15,7 +15,8 @@ export class MPManager {
     this.network = new NetworkClient();
     this.remotePlayers = new Map(); // playerId -> RemotePlayer
     this.localPlayer = new LocalPlayerController(camera, scene, this.network, null);
-    this.inventory = new InventoryController(12);
+    this.inventory = new InventoryController(30);
+    this.inventory.initDefaultLoadout();
     this.localPlayer.inventory = this.inventory;
     this.itemManager = null;
 
@@ -54,6 +55,18 @@ export class MPManager {
       // Hide any already collected world items in this room
       if (Array.isArray(payload.collectedItems) && this.itemManager) {
         this.itemManager.setCollectedItems(payload.collectedItems);
+      }
+
+      // Spawn any dynamically dropped items in this room
+      if (Array.isArray(payload.spawnedItems) && this.itemManager) {
+        for (const si of payload.spawnedItems) {
+          this.itemManager.spawnWorldItem(si);
+        }
+      }
+
+      // Sync player inventory from server if provided
+      if (payload.inventory) {
+        this.inventory.deserialize(payload.inventory);
       }
 
       // Spawn any players who were already in the room
@@ -133,6 +146,24 @@ export class MPManager {
 
     this.network.onRoomItemsState = (payload) => {
       if (this.ui.onRoomItemsState) this.ui.onRoomItemsState(payload);
+    };
+
+    this.network.onItemSpawned = (payload) => {
+      if (this.itemManager && payload.item) {
+        this.itemManager.spawnWorldItem(payload.item);
+      }
+      if (this.ui.onItemSpawned) this.ui.onItemSpawned(payload);
+    };
+
+    this.network.onItemUseResponse = (payload) => {
+      if (payload && payload.success && payload.effect && this.localPlayer) {
+        this.localPlayer.applyItemEffect(payload.effect);
+      }
+      if (this.ui.onItemUseResponse) this.ui.onItemUseResponse(payload);
+    };
+
+    this.network.onItemDropResponse = (payload) => {
+      if (this.ui.onItemDropResponse) this.ui.onItemDropResponse(payload);
     };
 
     this.network.onError = (errMsg) => {

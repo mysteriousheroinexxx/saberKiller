@@ -8,6 +8,8 @@
  * - Placement anchors and telemetry reporting for runtime validation
  */
 
+import { getItemDefinition } from './item_catalog.js';
+
 export class WorldItemManager {
   constructor(scene, collisionHandler = null) {
     this.scene = scene;
@@ -791,10 +793,13 @@ export class WorldItemManager {
    * Instantiates a single placement with surface detection, anchor resolution, and validation
    */
   _instantiatePlacement(p) {
-    const def = this.catalog[p.type];
+    const def = this.catalog[p.type] || getItemDefinition(p.type);
     if (!def) {
       console.warn(`[WorldItemManager] Unknown item type '${p.type}' for placement '${p.id}'`);
       return null;
+    }
+    if (!this.catalog[p.type]) {
+      this.catalog[p.type] = def;
     }
 
     const template = this.templates.get(def.modelUrl);
@@ -928,6 +933,49 @@ export class WorldItemManager {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Spawns a physical world item dynamically (e.g. dropped by a player)
+   */
+  async spawnWorldItem(itemData) {
+    if (!itemData || !itemData.id) return null;
+
+    // If item already exists in scene, unhide it
+    const existing = this.getItemById(itemData.id);
+    if (existing) {
+      if (existing.object) existing.object.visible = true;
+      existing.isCollected = false;
+      this.collectedItemIds.delete(itemData.id);
+      return existing;
+    }
+
+    const def = (this.catalog && this.catalog[itemData.type]) || getItemDefinition(itemData.type);
+    if (!def) {
+      console.warn(`[WorldItemManager] Unknown item type '${itemData.type}' for spawnWorldItem`);
+      return null;
+    }
+
+    if (def.modelUrl && !this.templates.has(def.modelUrl)) {
+      await this.preloadTemplate(def.modelUrl);
+    }
+
+    const placement = {
+      id: itemData.id,
+      type: itemData.type,
+      position: itemData.position || [0, 0.02, 0],
+      rotation: itemData.rotation || [0, 0, 0],
+      surfaceType: 'floor',
+      anchor: { surface: 'floor' },
+      isDropped: true
+    };
+
+    const entry = this._instantiatePlacement(placement);
+    if (entry) {
+      this.collectedItemIds.delete(itemData.id);
+      console.log(`[WorldItemManager] Spawned dropped world item: ${itemData.id} (${itemData.type}) at [${placement.position.join(', ')}]`);
+    }
+    return entry;
   }
 
   /**

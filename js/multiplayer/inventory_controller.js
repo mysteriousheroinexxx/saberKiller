@@ -6,12 +6,75 @@
 
 import { getItemDefinition } from './item_catalog.js';
 
+export const INVENTORY_CONFIG = {
+  HOTBAR_SLOTS: 10,
+  BACKPACK_SLOTS: 20,
+  get TOTAL_CAPACITY() {
+    return this.HOTBAR_SLOTS + this.BACKPACK_SLOTS;
+  }
+};
+
 export class InventoryController {
-  constructor(capacity = 12) {
+  constructor(capacity = INVENTORY_CONFIG.TOTAL_CAPACITY) {
     this.capacity = capacity;
     this.slots = new Array(capacity).fill(null);
     this.onChangeCallbacks = new Set();
     this.nextInstanceNum = 1;
+  }
+
+  /**
+   * Initializes default Level 0 survivor starting loadout
+   * Slot 1 (idx 0): Beretta Px4 pistol
+   * Slot 2 (idx 1): Stagecoach shotgun
+   * Slot 3 (idx 2): Tactical flashlight
+   */
+  initDefaultLoadout() {
+    const pistolDef = getItemDefinition('weapon_pistol');
+    if (pistolDef) {
+      this.slots[0] = {
+        slotIndex: 0,
+        typeId: 'weapon_pistol',
+        instanceId: 'inst_weapon_pistol_default',
+        quantity: 1,
+        name: pistolDef.name,
+        category: pistolDef.category,
+        iconUrl: pistolDef.iconUrl,
+        stackable: false,
+        maxStack: 1,
+        metadata: { ...pistolDef.metadata }
+      };
+    }
+    const shotgunDef = getItemDefinition('weapon_shotgun');
+    if (shotgunDef) {
+      this.slots[1] = {
+        slotIndex: 1,
+        typeId: 'weapon_shotgun',
+        instanceId: 'inst_weapon_shotgun_default',
+        quantity: 1,
+        name: shotgunDef.name,
+        category: shotgunDef.category,
+        iconUrl: shotgunDef.iconUrl,
+        stackable: false,
+        maxStack: 1,
+        metadata: { ...shotgunDef.metadata }
+      };
+    }
+    const torchDef = getItemDefinition('equipment_torch');
+    if (torchDef) {
+      this.slots[2] = {
+        slotIndex: 2,
+        typeId: 'equipment_torch',
+        instanceId: 'inst_equipment_torch_default',
+        quantity: 1,
+        name: torchDef.name,
+        category: torchDef.category,
+        iconUrl: torchDef.iconUrl,
+        stackable: false,
+        maxStack: 1,
+        metadata: { ...torchDef.metadata }
+      };
+    }
+    this._notifyChange({ type: 'loadout_initialized' });
   }
 
   /**
@@ -218,6 +281,35 @@ export class InventoryController {
   }
 
   /**
+   * Swaps items between two slots or merges them if compatible
+   */
+  swapSlots(fromIdx, toIdx) {
+    if (fromIdx < 0 || fromIdx >= this.capacity || toIdx < 0 || toIdx >= this.capacity) {
+      return false;
+    }
+    if (fromIdx === toIdx) return false;
+
+    const fromSlot = this.slots[fromIdx];
+    const toSlot = this.slots[toIdx];
+
+    if (!fromSlot && !toSlot) return false;
+
+    // If both slots contain the same stackable item, attempt merge
+    if (fromSlot && toSlot && fromSlot.typeId === toSlot.typeId && toSlot.stackable) {
+      if (toSlot.quantity < toSlot.maxStack) {
+        return this.mergeSlots(fromIdx, toIdx);
+      }
+    }
+
+    // Direct swap
+    this.slots[fromIdx] = toSlot ? { ...toSlot, slotIndex: fromIdx } : null;
+    this.slots[toIdx] = fromSlot ? { ...fromSlot, slotIndex: toIdx } : null;
+
+    this._notifyChange({ type: 'slot_swapped', fromIdx, toIdx });
+    return true;
+  }
+
+  /**
    * Serializes current inventory state for network transmission or saving
    */
   serialize() {
@@ -238,7 +330,7 @@ export class InventoryController {
    */
   deserialize(data) {
     if (!data || !Array.isArray(data.slots)) return false;
-    this.capacity = data.capacity || this.capacity;
+    this.capacity = Math.max(data.capacity || 0, this.capacity || INVENTORY_CONFIG.TOTAL_CAPACITY);
     this.slots = new Array(this.capacity).fill(null);
 
     for (let i = 0; i < Math.min(data.slots.length, this.capacity); i++) {

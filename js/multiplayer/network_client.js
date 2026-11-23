@@ -15,7 +15,12 @@ export const MSG_TYPES = {
   ITEM_COLLECTED: 'ITEM_COLLECTED',
   INVENTORY_UPDATE: 'INVENTORY_UPDATE',
   PICKUP_REJECTED: 'PICKUP_REJECTED',
-  ROOM_ITEMS_STATE: 'ROOM_ITEMS_STATE'
+  ROOM_ITEMS_STATE: 'ROOM_ITEMS_STATE',
+  ITEM_USE_REQUEST: 'ITEM_USE_REQUEST',
+  ITEM_USE_RESPONSE: 'ITEM_USE_RESPONSE',
+  ITEM_DROP_REQUEST: 'ITEM_DROP_REQUEST',
+  ITEM_DROP_RESPONSE: 'ITEM_DROP_RESPONSE',
+  ITEM_SPAWNED: 'ITEM_SPAWNED'
 };
 
 function resolveWebSocketUrl(input) {
@@ -56,6 +61,9 @@ export class NetworkClient {
     this.onInventoryUpdate = null;
     this.onPickupRejected = null;
     this.onRoomItemsState = null;
+    this.onItemUseResponse = null;
+    this.onItemDropResponse = null;
+    this.onItemSpawned = null;
   }
 
   connect(url) {
@@ -234,6 +242,18 @@ export class NetworkClient {
         if (this.onRoomItemsState) this.onRoomItemsState(payload);
         break;
 
+      case MSG_TYPES.ITEM_USE_RESPONSE:
+        if (this.onItemUseResponse) this.onItemUseResponse(payload);
+        break;
+
+      case MSG_TYPES.ITEM_DROP_RESPONSE:
+        if (this.onItemDropResponse) this.onItemDropResponse(payload);
+        break;
+
+      case MSG_TYPES.ITEM_SPAWNED:
+        if (this.onItemSpawned) this.onItemSpawned(payload);
+        break;
+
       default:
         console.log('[NetworkClient] Unhandled packet type:', type);
         break;
@@ -267,6 +287,31 @@ export class NetworkClient {
     const sent = this.send(MSG_TYPES.ITEM_PICKUP_REQUEST, payload);
     if (sent) console.log(`[PICKUP ${requestId}] WebSocket send completed (${MSG_TYPES.ITEM_PICKUP_REQUEST}, item=${itemId})`);
     else console.warn(`[PICKUP ${requestId}] WebSocket send failed (connected=${this.isConnected}, readyState=${this.ws?.readyState ?? 'no socket'})`);
+    return { sent, requestId };
+  }
+
+  requestItemUse(slotIndex, instanceId = null, requestId = null) {
+    if (!requestId) {
+      requestId = 'use_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    }
+    const payload = { slotIndex, instanceId, requestId };
+    const sent = this.send(MSG_TYPES.ITEM_USE_REQUEST, payload);
+    return { sent, requestId };
+  }
+
+  requestItemDrop(slotIndex, instanceId = null, quantity = 1, playerPosition = null, playerYaw = 0, requestId = null) {
+    if (!requestId) {
+      requestId = 'drop_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    }
+    const payload = {
+      slotIndex,
+      instanceId,
+      quantity: Math.max(1, parseInt(quantity, 10) || 1),
+      playerPosition,
+      playerYaw,
+      requestId
+    };
+    const sent = this.send(MSG_TYPES.ITEM_DROP_REQUEST, payload);
     return { sent, requestId };
   }
 
