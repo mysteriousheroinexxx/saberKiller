@@ -32,6 +32,7 @@ let itemManager = null;
 let worldEditor = null;
 let interactionManager = null;
 let inventoryUI = null;
+let devToolsEnabled = false;
 
 // Survival Mode Sanity System
 let sanityController = null;
@@ -224,7 +225,7 @@ async function init() {
   }
 
   // 4. Initialize MPManager
-  const devToolsEnabled = await checkDevToolsConfig();
+  devToolsEnabled = await checkDevToolsConfig();
   if (!devToolsEnabled) {
     console.log('[DEV TOOLS] Developer tools disabled by server. Removing panels from DOM.');
     document.getElementById('dev-comparison-panel')?.remove();

@@ -232,6 +232,9 @@ export class WorldItemManager {
     let detectedY = 0.000;
 
     if (this.scene) {
+      if (!this.raycaster.camera && window.camera) {
+        this.raycaster.camera = window.camera;
+      }
       this.raycaster.set(new THREE.Vector3(x, 4.0, z), new THREE.Vector3(0, -1, 0));
       const hits = this.raycaster.intersectObjects(this.scene.children, true);
       for (const hit of hits) {

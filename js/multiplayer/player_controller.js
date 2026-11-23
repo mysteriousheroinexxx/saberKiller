@@ -253,6 +253,7 @@ export class LocalPlayerController {
     this.muzzleSprite.name = 'MP_LocalPlayerMuzzleSprite';
     this.muzzleSprite.scale.set(0.55, 0.55, 1);
     this.muzzleSprite.visible = false;
+    this.muzzleSprite.raycast = () => {}; // Ephemeral billboard flash; bypass Raycaster camera requirement
     this.gunGroup.add(this.muzzleSprite);
     this._muzzleTimer = null;
   }
