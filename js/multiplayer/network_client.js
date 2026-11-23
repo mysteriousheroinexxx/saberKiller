@@ -32,7 +32,13 @@ export const MSG_TYPES = {
   PLAYER_REVIVE_REQUEST: 'PLAYER_REVIVE_REQUEST',
   PLAYER_REVIVE_RESPONSE: 'PLAYER_REVIVE_RESPONSE',
   PLAYER_REVIVED: 'PLAYER_REVIVED',
-  GAME_OVER: 'GAME_OVER'
+  GAME_OVER: 'GAME_OVER',
+  // Pre-Game Staging Lobby packet types
+  LOBBY_READY_TOGGLE: 'LOBBY_READY_TOGGLE',
+  LOBBY_STATE_UPDATE: 'LOBBY_STATE_UPDATE',
+  MATCH_START_REQUEST: 'MATCH_START_REQUEST',
+  MATCH_START_REJECTED: 'MATCH_START_REJECTED',
+  MATCH_STARTED: 'MATCH_STARTED'
 };
 
 function resolveWebSocketUrl(input) {
@@ -85,6 +91,9 @@ export class NetworkClient {
     this.onPlayerReviveResponse = null;
     this.onPlayerRevived = null;
     this.onGameOver = null;
+    this.onLobbyStateUpdate = null;
+    this.onMatchStartRejected = null;
+    this.onMatchStarted = null;
   }
 
   connect(url) {
@@ -303,6 +312,18 @@ export class NetworkClient {
         if (this.onGameOver) this.onGameOver(payload);
         break;
 
+      case MSG_TYPES.LOBBY_STATE_UPDATE:
+        if (this.onLobbyStateUpdate) this.onLobbyStateUpdate(payload);
+        break;
+
+      case MSG_TYPES.MATCH_START_REJECTED:
+        if (this.onMatchStartRejected) this.onMatchStartRejected(payload);
+        break;
+
+      case MSG_TYPES.MATCH_STARTED:
+        if (this.onMatchStarted) this.onMatchStarted(payload);
+        break;
+
       default:
         console.log('[NetworkClient] Unhandled packet type:', type);
         break;
@@ -398,6 +419,14 @@ export class NetworkClient {
     }
     const sent = this.send(MSG_TYPES.PLAYER_REVIVE_REQUEST, payload);
     return { sent, requestId };
+  }
+
+  toggleReady(isReady = null) {
+    return this.send(MSG_TYPES.LOBBY_READY_TOGGLE, { isReady });
+  }
+
+  requestMatchStart() {
+    return this.send(MSG_TYPES.MATCH_START_REQUEST, {});
   }
 
   sendUpdate(x, y, z, yaw, pitch, weapon = 0) {

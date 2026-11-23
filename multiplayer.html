@@ -248,6 +248,153 @@
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
     }
 
+    /* Pre-Game Staging Lobby UI */
+    #staging-lobby-overlay {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 15;
+      pointer-events: none;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      padding: 40px;
+      box-sizing: border-box;
+    }
+
+    #staging-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      background: rgba(18, 17, 16, 0.75);
+      border: 1px solid rgba(212, 175, 55, 0.4);
+      padding: 12px 28px;
+      border-radius: 4px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+      pointer-events: auto;
+    }
+
+    .staging-title {
+      font-size: 11px;
+      letter-spacing: 2.5px;
+      color: #9c9a92;
+      text-transform: uppercase;
+      font-weight: 500;
+    }
+
+    #staging-room-code {
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: 3px;
+      color: #d4af37;
+      text-transform: uppercase;
+    }
+
+    #staging-status-msg {
+      display: none;
+      background: rgba(180, 40, 40, 0.92);
+      color: #ffffff;
+      padding: 12px 28px;
+      font-size: 13px;
+      letter-spacing: 1.5px;
+      font-weight: 500;
+      text-transform: uppercase;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 120, 120, 0.6);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
+      pointer-events: auto;
+      animation: staging-shake 0.35s ease;
+    }
+
+    @keyframes staging-shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-6px); }
+      40%, 80% { transform: translateX(6px); }
+    }
+
+    #staging-actions {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      pointer-events: auto;
+      margin-bottom: 24px;
+    }
+
+    .staging-btn-action {
+      min-width: 220px;
+      padding: 14px 32px;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+      font-family: 'Rubik', sans-serif;
+    }
+
+    .staging-btn-start {
+      background: rgba(212, 175, 55, 0.25);
+      border: 1px solid #d4af37;
+      color: #fff4cc;
+    }
+
+    .staging-btn-start:hover {
+      background: rgba(212, 175, 55, 0.45);
+      box-shadow: 0 0 24px rgba(212, 175, 55, 0.5);
+      color: #ffffff;
+    }
+
+    .staging-btn-ready-off {
+      background: rgba(40, 40, 45, 0.85);
+      border: 1px solid rgba(156, 154, 146, 0.5);
+      color: #edece6;
+    }
+
+    .staging-btn-ready-off:hover {
+      background: rgba(60, 60, 70, 0.95);
+      border-color: #edece6;
+    }
+
+    .staging-btn-ready-on {
+      background: rgba(46, 204, 113, 0.3);
+      border: 1px solid #2ecc71;
+      color: #a3ffc7;
+      box-shadow: 0 0 16px rgba(46, 204, 113, 0.35);
+    }
+
+    .staging-btn-ready-on:hover {
+      background: rgba(46, 204, 113, 0.45);
+      color: #ffffff;
+      box-shadow: 0 0 24px rgba(46, 204, 113, 0.5);
+    }
+
+    .staging-btn-leave {
+      padding: 14px 24px;
+      font-size: 12px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      background: rgba(25, 20, 20, 0.7);
+      border: 1px solid rgba(180, 60, 60, 0.5);
+      color: #ffaaaa;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: 'Rubik', sans-serif;
+    }
+
+    .staging-btn-leave:hover {
+      background: rgba(180, 40, 40, 0.4);
+      border-color: #ff6666;
+      color: #ffffff;
+    }
+
     /* Survival Mode Downed, Eliminated & Game Over Overlays */
     #bb-downed-overlay {
       display: none;
@@ -771,6 +918,19 @@
 
     <div id="connection-status">Connecting to server...</div>
     <a href="index.html" class="back-link">&larr; Return to Story Mode</a>
+  </div>
+
+  <!-- Pre-Game Staging Lobby Overlay -->
+  <div id="staging-lobby-overlay">
+    <div id="staging-header">
+      <div class="staging-title">STAGING LOBBY</div>
+      <div id="staging-room-code">ROOM: ----</div>
+    </div>
+    <div id="staging-status-msg">Waiting for all players to ready up.</div>
+    <div id="staging-actions">
+      <button id="btn-staging-action" class="staging-btn-action staging-btn-start">START MATCH</button>
+      <button id="btn-staging-leave" class="staging-btn-leave">LEAVE</button>
+    </div>
   </div>
 
   <!-- Minimal Gameplay HUD -->

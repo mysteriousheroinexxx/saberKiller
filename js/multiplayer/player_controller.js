@@ -795,7 +795,7 @@ export class LocalPlayerController {
 
   _bindEvents() {
     this._onKeyDown = (e) => {
-      if (this.isEditorActive || this.isInventoryOpen) {
+      if (this.isEditorActive || this.isInventoryOpen || (window.mpManager && window.mpManager.isInStagingLobby)) {
         return;
       }
       // Allow regular typing in visible input/textarea elements when not in active pointer lock
@@ -862,6 +862,9 @@ export class LocalPlayerController {
     };
 
     this._onMouseDown = (e) => {
+      if (window.mpManager && window.mpManager.isInStagingLobby) {
+        return;
+      }
       if (this.isEditorActive) {
         this.firingDiagnostics.lastRejectionReason = 'EDITOR_ACTIVE';
         return;
@@ -940,6 +943,11 @@ export class LocalPlayerController {
   }
 
   update(dt) {
+    if (window.mpManager && window.mpManager.isInStagingLobby) {
+      if (this.gunGroup) this.gunGroup.visible = false;
+      return;
+    }
+
     this._updateThrowAnimations(dt);
 
     if (this.isEditorActive || this.isInventoryOpen || this.isDowned || this.isDead || this.state !== 'ACTIVE') {

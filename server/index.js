@@ -694,12 +694,18 @@ wss.on('connection', (ws, req) => {
             playerId: res.player.id,
             slot: res.player.slot,
             spawn: res.spawn,
+            leaderId: res.leaderId,
+            runState: res.runState,
             totalPlayers: res.totalPlayers,
             layoutRevision: res.layoutRevision,
             collectedItems: res.collectedItems || [],
             spawnedItems: res.spawnedItems || [],
             inventory: res.inventory
           });
+          const lobbyState = roomManager.getLobbyState(res.roomCode);
+          if (lobbyState) {
+            send(ws, MSG_TYPES.LOBBY_STATE_UPDATE, lobbyState);
+          }
         }
         break;
       }
@@ -715,6 +721,8 @@ wss.on('connection', (ws, req) => {
             playerId: res.player.id,
             slot: res.player.slot,
             spawn: res.spawn,
+            leaderId: res.leaderId,
+            runState: res.runState,
             existingPlayers: res.existingPlayers,
             totalPlayers: res.totalPlayers,
             layoutRevision: res.layoutRevision,
@@ -733,6 +741,13 @@ wss.on('connection', (ws, req) => {
                   slot: res.player.slot,
                   spawn: res.spawn
                 });
+              }
+            }
+            // Broadcast synchronized lobby state to all players in room
+            const lobbyState = roomManager.getLobbyState(res.roomCode);
+            if (lobbyState) {
+              for (const [_, p] of room.players) {
+                send(p.ws, MSG_TYPES.LOBBY_STATE_UPDATE, lobbyState);
               }
             }
           }
@@ -1148,6 +1163,41 @@ wss.on('connection', (ws, req) => {
         break;
       }
 
+      case MSG_TYPES.LOBBY_READY_TOGGLE: {
+        const res = roomManager.setPlayerReady(ws, payload?.isReady);
+        if (res.error) {
+          send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error });
+        } else if (res.success && res.room) {
+          const lobbyState = roomManager.getLobbyState(res.room.code);
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.LOBBY_STATE_UPDATE, lobbyState);
+          }
+        }
+        break;
+      }
+
+      case MSG_TYPES.MATCH_START_REQUEST: {
+        const res = roomManager.startMatch(ws);
+        if (res.error) {
+          console.warn(`[MATCH START] Rejected for player in room ${res.room?.code}: ${res.error}`);
+          send(ws, MSG_TYPES.MATCH_START_REJECTED, {
+            reason: res.error,
+            unreadyCount: res.unreadyCount
+          });
+        } else if (res.success && res.room) {
+          console.log(`[MATCH START] Match started for room ${res.room.code} with ${res.startingPlayers} players!`);
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.MATCH_STARTED, {
+              roomCode: res.room.code,
+              startingPlayers: res.startingPlayers,
+              layoutRevision: res.room.layoutRevision,
+              collectedItems: res.collectedItems || []
+            });
+          }
+        }
+        break;
+      }
+
       default:
         // Ignore unhandled message
         break;
@@ -1163,6 +1213,14 @@ wss.on('connection', (ws, req) => {
           playerId: res.playerId,
           remainingPlayers: res.remainingPlayers
         });
+      }
+      if (res.room.runState === 'LOBBY') {
+        const lobbyState = roomManager.getLobbyState(res.room.code);
+        if (lobbyState) {
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.LOBBY_STATE_UPDATE, lobbyState);
+          }
+        }
       }
     }
   });

@@ -199,7 +199,7 @@ export class InteractionManager {
    * Performs single-action interaction on current target with complete request lifecycle management
    */
   triggerInteraction() {
-    if (!this.enabled) {
+    if (!this.enabled || (window.mpManager && window.mpManager.isInStagingLobby)) {
       this.diagnostics.eligibility = 'DISABLED';
       this._notifyDiagnostics();
       return;
@@ -470,7 +470,7 @@ export class InteractionManager {
    * Raycasts from center of camera and updates hovered target
    */
   update() {
-    if (!this.enabled || !this.camera || !this.itemManager) {
+    if (!this.enabled || !this.camera || !this.itemManager || (window.mpManager && window.mpManager.isInStagingLobby)) {
       if (this.currentTarget) this._clearHoverTarget();
       return;
     }

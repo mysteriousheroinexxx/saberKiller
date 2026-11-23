@@ -92,6 +92,8 @@ export class RoomManager {
       id: playerId,
       ws,
       slot: 0,
+      name: (options && options.playerName) ? options.playerName : 'Player 1',
+      isReady: true,
       spawn,
       position: { ...spawn },
       inventory: new InventoryController(30),
@@ -109,11 +111,12 @@ export class RoomManager {
     const room = {
       code: roomCode,
       createdAt: Date.now(),
+      leaderId: playerId,
       layoutRevision: (typeof layoutRevision === 'string' && layoutRevision.trim()) ? layoutRevision.trim() : 'default',
       players: new Map([[playerId, player]]),
       worldItems: new Map(),
       pickupRequests: new Map(),
-      runState: 'IN_PROGRESS', // 'IN_PROGRESS', 'GAME_OVER'
+      runState: (options && (options.directStart || typeof options.startingPlayers === 'number')) ? 'IN_PROGRESS' : 'LOBBY', // 'LOBBY', 'IN_PROGRESS', 'GAME_OVER'
       healthPacksFrozen: false,
       startingPlayerCount: 0,
       availableHealthPackCount: 0
@@ -145,11 +148,11 @@ export class RoomManager {
     }
 
     // Health Pack Economy: Total Health Packs available on map must equal starting player count at run start
-    // Quantity frozen when run begins; late joiners must NOT increase supply.
-    const startingCount = (options && typeof options.startingPlayers === 'number' && options.startingPlayers > 0)
-      ? options.startingPlayers
-      : 1;
-    this._freezeRoomHealthPacks(room, startingCount);
+    // If startingPlayers is explicitly provided (e.g. survival test setup), freeze immediately;
+    // Otherwise, freeze authoritatively at actual match start when leader starts the run.
+    if (options && typeof options.startingPlayers === 'number' && options.startingPlayers > 0) {
+      this._freezeRoomHealthPacks(room, options.startingPlayers);
+    }
 
     this.rooms.set(roomCode, room);
     this.clientToRoom.set(ws, { roomCode, playerId });
@@ -165,6 +168,8 @@ export class RoomManager {
     return {
       roomCode,
       player,
+      leaderId: room.leaderId,
+      runState: room.runState,
       spawn,
       totalPlayers: 1,
       layoutRevision: room.layoutRevision,
@@ -210,7 +215,7 @@ export class RoomManager {
     return this._freezeRoomHealthPacks(room, startingCount);
   }
 
-  joinRoom(ws, roomCode) {
+  joinRoom(ws, roomCode, options = {}) {
     const code = (roomCode || '').trim().toUpperCase();
     const room = this.rooms.get(code);
 
@@ -232,6 +237,8 @@ export class RoomManager {
       id: playerId,
       ws,
       slot,
+      name: (options && options.playerName) ? options.playerName : ('Player ' + (slot + 1)),
+      isReady: false,
       spawn,
       position: { ...spawn },
       inventory: new InventoryController(30),
@@ -251,12 +258,15 @@ export class RoomManager {
     for (const [id, p] of room.players) {
       existingPlayers.push({
         id: p.id,
+        name: p.name || `Player_${p.id}`,
         slot: p.slot,
         spawn: p.spawn,
         hp: p.hp,
         maxHp: p.maxHp,
         state: p.state,
-        revivalsUsed: p.revivalsUsed
+        revivalsUsed: p.revivalsUsed,
+        isLeader: (p.id === room.leaderId),
+        isReady: (p.id === room.leaderId ? true : Boolean(p.isReady))
       });
     }
 
@@ -278,6 +288,8 @@ export class RoomManager {
     return {
       roomCode: code,
       player,
+      leaderId: room.leaderId,
+      runState: room.runState,
       spawn,
       existingPlayers,
       totalPlayers: room.players.size,
@@ -686,7 +698,116 @@ export class RoomManager {
       return { roomCode, playerId, roomDeleted: true, remainingPlayers: 0 };
     }
 
-    return { roomCode, playerId, roomDeleted: false, remainingPlayers: room.players.size, room };
+    // If disconnected player was room leader, elect first remaining player as new leader
+    let leaderChanged = false;
+    if (room.leaderId === playerId && room.players.size > 0) {
+      room.leaderId = room.players.keys().next().value;
+      const newLeader = room.players.get(room.leaderId);
+      if (newLeader) newLeader.isReady = true;
+      leaderChanged = true;
+    }
+
+    return {
+      roomCode,
+      playerId,
+      roomDeleted: false,
+      remainingPlayers: room.players.size,
+      room,
+      leaderChanged,
+      lobbyState: this.getLobbyState(roomCode)
+    };
+  }
+
+  getLobbyState(roomCode) {
+    const room = this.rooms.get(roomCode);
+    if (!room) return null;
+    return {
+      roomCode: room.code,
+      leaderId: room.leaderId,
+      runState: room.runState,
+      totalPlayers: room.players.size,
+      players: [...room.players.values()].map(p => ({
+        id: p.id,
+        name: p.name || `Player_${p.id}`,
+        slot: p.slot,
+        isLeader: (p.id === room.leaderId),
+        isReady: (p.id === room.leaderId ? true : Boolean(p.isReady))
+      }))
+    };
+  }
+
+  setPlayerReady(ws, isReady = null) {
+    const session = this.getPlayer(ws);
+    if (!session) return { error: 'Client not associated with any active room session' };
+
+    const { room, player } = session;
+    if (room.runState !== 'LOBBY') {
+      return { error: 'Room is not in lobby state', room, player };
+    }
+
+    if (player.id === room.leaderId) {
+      player.isReady = true;
+    } else if (typeof isReady === 'boolean') {
+      player.isReady = isReady;
+    } else {
+      player.isReady = !player.isReady;
+    }
+
+    return {
+      success: true,
+      room,
+      player,
+      isReady: player.isReady,
+      lobbyState: this.getLobbyState(room.code)
+    };
+  }
+
+  startMatch(ws) {
+    const session = this.getPlayer(ws);
+    if (!session) return { error: 'Client not associated with any active room session' };
+
+    const { room, player } = session;
+    if (player.id !== room.leaderId) {
+      return { error: 'Only the room leader can start the match.', room, player };
+    }
+
+    if (room.runState !== 'LOBBY') {
+      return { error: 'Match has already started.', room, player };
+    }
+
+    // Check that every connected non-leader player is ready
+    const unready = [...room.players.values()].filter(p => p.id !== room.leaderId && !p.isReady);
+    if (unready.length > 0) {
+      return {
+        error: 'Waiting for all players to ready up.',
+        room,
+        player,
+        unreadyCount: unready.length,
+        unreadyPlayers: unready.map(p => p.id)
+      };
+    }
+
+    // All players ready! Transition to IN_PROGRESS
+    room.runState = 'IN_PROGRESS';
+
+    // Freeze Health Pack economy using current starting player count at actual match start
+    if (!room.healthPacksFrozen) {
+      this._freezeRoomHealthPacks(room, room.players.size);
+    }
+
+    const collectedItems = [];
+    for (const [id, item] of room.worldItems) {
+      if (item.isPickup && !item.available) {
+        collectedItems.push(id);
+      }
+    }
+
+    return {
+      success: true,
+      room,
+      startingPlayers: room.players.size,
+      collectedItems
+    };
   }
 
   getRoom(roomCode) {

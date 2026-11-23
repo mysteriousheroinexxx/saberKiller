@@ -5,6 +5,7 @@ import { NetworkClient } from './network_client.js';
 import { RemotePlayer, preloadPlayerAssets } from './remote_player.js';
 import { LocalPlayerController } from './player_controller.js';
 import { InventoryController } from './inventory_controller.js';
+import { StagingLobby } from './staging_lobby.js';
 
 export class MPManager {
   constructor(scene, camera, uiCallbacks = {}) {
@@ -19,6 +20,12 @@ export class MPManager {
     this.inventory.initDefaultLoadout();
     this.localPlayer.inventory = this.inventory;
     this.itemManager = null;
+
+    this.stagingLobby = new StagingLobby(scene, camera, this.network);
+    this.isInStagingLobby = false;
+    this.mySpawn = null;
+    this.isLeader = false;
+    this.roomRunState = null;
 
     this.currentRoomCode = null;
     this.myPlayerId = null;
@@ -48,19 +55,47 @@ export class MPManager {
     this.network.onRoomJoined = (payload) => {
       this.myPlayerId = payload.playerId;
       this.currentRoomCode = payload.roomCode;
+      this.mySpawn = payload.spawn;
+      this.roomRunState = payload.runState || 'IN_PROGRESS';
+      this.isLeader = Boolean(payload.leaderId ? (payload.leaderId === this.myPlayerId) : (payload.slot === 0));
 
-      // Spawn local player at assigned spawn
-      this.localPlayer.setSpawn(payload.spawn);
+      if (payload.runState === 'LOBBY') {
+        this.isInStagingLobby = true;
+        if (this.localPlayer && this.localPlayer.gunGroup) {
+          this.localPlayer.gunGroup.visible = false;
+        }
+        if (this.stagingLobby) {
+          this.stagingLobby.enterLobby(payload.roomCode, this.isLeader, this.myPlayerId);
+        }
+      } else {
+        this.isInStagingLobby = false;
+        if (this.localPlayer && this.localPlayer.gunGroup) {
+          this.localPlayer.gunGroup.visible = true;
+        }
+        // Spawn local player at assigned spawn
+        this.localPlayer.setSpawn(payload.spawn);
 
-      // Hide any already collected world items in this room
-      if (Array.isArray(payload.collectedItems) && this.itemManager) {
-        this.itemManager.setCollectedItems(payload.collectedItems);
-      }
+        // Hide any already collected world items in this room
+        if (Array.isArray(payload.collectedItems) && this.itemManager) {
+          this.itemManager.setCollectedItems(payload.collectedItems);
+        }
 
-      // Spawn any dynamically dropped items in this room
-      if (Array.isArray(payload.spawnedItems) && this.itemManager) {
-        for (const si of payload.spawnedItems) {
-          this.itemManager.spawnWorldItem(si);
+        // Spawn any dynamically dropped items in this room
+        if (Array.isArray(payload.spawnedItems) && this.itemManager) {
+          for (const si of payload.spawnedItems) {
+            this.itemManager.spawnWorldItem(si);
+          }
+        }
+
+        // Spawn any players who were already in the room
+        if (Array.isArray(payload.existingPlayers)) {
+          for (const ep of payload.existingPlayers) {
+            if (ep.id !== this.myPlayerId && !this.remotePlayers.has(ep.id)) {
+              const rp = new RemotePlayer(ep.id, this.scene, ep.spawn);
+              if (ep.state) rp.setState(ep.state);
+              this.remotePlayers.set(ep.id, rp);
+            }
+          }
         }
       }
 
@@ -71,17 +106,6 @@ export class MPManager {
 
       // Synchronize local player viewmodel and weapon with active hotbar slot
       this.localPlayer.selectHotbarSlot(this.localPlayer.selectedHotbarSlot);
-
-      // Spawn any players who were already in the room
-      if (Array.isArray(payload.existingPlayers)) {
-        for (const ep of payload.existingPlayers) {
-          if (ep.id !== this.myPlayerId && !this.remotePlayers.has(ep.id)) {
-            const rp = new RemotePlayer(ep.id, this.scene, ep.spawn);
-            if (ep.state) rp.setState(ep.state);
-            this.remotePlayers.set(ep.id, rp);
-          }
-        }
-      }
 
       this._updatePlayerCount();
       if (this.ui.onRoomJoined) this.ui.onRoomJoined(payload);
@@ -266,6 +290,41 @@ export class MPManager {
       if (this.ui.onGameOver) this.ui.onGameOver(payload);
     };
 
+    this.network.onLobbyStateUpdate = (payload) => {
+      if (this.stagingLobby && this.isInStagingLobby) {
+        this.stagingLobby.handleLobbyStateUpdate(payload);
+      }
+      if (payload && payload.leaderId) {
+        this.isLeader = (payload.leaderId === this.myPlayerId);
+      }
+      if (this.ui.onLobbyStateUpdate) this.ui.onLobbyStateUpdate(payload);
+    };
+
+    this.network.onMatchStartRejected = (payload) => {
+      if (this.stagingLobby && this.isInStagingLobby) {
+        this.stagingLobby.handleMatchStartRejected(payload);
+      }
+      if (this.ui.onMatchStartRejected) this.ui.onMatchStartRejected(payload);
+    };
+
+    this.network.onMatchStarted = (payload) => {
+      this.isInStagingLobby = false;
+      this.roomRunState = 'IN_PROGRESS';
+      if (this.stagingLobby) {
+        this.stagingLobby.leaveLobby();
+      }
+      if (this.localPlayer && this.localPlayer.gunGroup) {
+        this.localPlayer.gunGroup.visible = true;
+      }
+      if (this.mySpawn) {
+        this.localPlayer.setSpawn(this.mySpawn);
+      }
+      if (Array.isArray(payload.collectedItems) && this.itemManager) {
+        this.itemManager.setCollectedItems(payload.collectedItems);
+      }
+      if (this.ui.onMatchStarted) this.ui.onMatchStarted(payload);
+    };
+
     this.network.onError = (errMsg) => {
       if (this.ui.onError) this.ui.onError(errMsg);
     };
@@ -290,7 +349,26 @@ export class MPManager {
     this.network.joinRoom(roomCode);
   }
 
+  leaveRoom() {
+    if (this.stagingLobby) {
+      this.stagingLobby.leaveLobby();
+    }
+    this.isInStagingLobby = false;
+    for (const rp of this.remotePlayers.values()) {
+      rp.destroy();
+    }
+    this.remotePlayers.clear();
+    this.currentRoomCode = null;
+    this.myPlayerId = null;
+    this.inventory.clear();
+    this._updatePlayerCount();
+  }
+
   disconnect() {
+    if (this.stagingLobby) {
+      this.stagingLobby.leaveLobby();
+    }
+    this.isInStagingLobby = false;
     this.network.disconnect();
     for (const rp of this.remotePlayers.values()) {
       rp.destroy();
