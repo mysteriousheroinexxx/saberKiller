@@ -59,6 +59,22 @@ export class MPManager {
       this.roomRunState = payload.runState || 'IN_PROGRESS';
       this.isLeader = Boolean(payload.leaderId ? (payload.leaderId === this.myPlayerId) : (payload.slot === 0));
 
+      // Cache existing players and instantiate remote player entities
+      if (Array.isArray(payload.existingPlayers)) {
+        this.cachedExistingPlayers = payload.existingPlayers;
+        for (const ep of payload.existingPlayers) {
+          if (ep.id !== this.myPlayerId && !this.remotePlayers.has(ep.id)) {
+            const rp = new RemotePlayer(ep.id, this.scene, ep.spawn);
+            if (ep.state) rp.setState(ep.state);
+            // Hide Level 0 character mesh while in staging lobby
+            if (payload.runState === 'LOBBY') {
+              rp.group.visible = false;
+            }
+            this.remotePlayers.set(ep.id, rp);
+          }
+        }
+      }
+
       if (payload.runState === 'LOBBY') {
         this.isInStagingLobby = true;
         if (this.localPlayer && this.localPlayer.gunGroup) {
@@ -86,17 +102,6 @@ export class MPManager {
             this.itemManager.spawnWorldItem(si);
           }
         }
-
-        // Spawn any players who were already in the room
-        if (Array.isArray(payload.existingPlayers)) {
-          for (const ep of payload.existingPlayers) {
-            if (ep.id !== this.myPlayerId && !this.remotePlayers.has(ep.id)) {
-              const rp = new RemotePlayer(ep.id, this.scene, ep.spawn);
-              if (ep.state) rp.setState(ep.state);
-              this.remotePlayers.set(ep.id, rp);
-            }
-          }
-        }
       }
 
       // Sync player inventory from server if provided
@@ -114,6 +119,9 @@ export class MPManager {
     this.network.onPlayerJoined = (payload) => {
       if (payload.playerId !== this.myPlayerId && !this.remotePlayers.has(payload.playerId)) {
         const rp = new RemotePlayer(payload.playerId, this.scene, payload.spawn);
+        if (this.isInStagingLobby) {
+          rp.group.visible = false;
+        }
         this.remotePlayers.set(payload.playerId, rp);
         this._updatePlayerCount();
         if (this.ui.onPlayerJoined) this.ui.onPlayerJoined(payload);
@@ -131,9 +139,27 @@ export class MPManager {
     };
 
     this.network.onPlayerUpdate = (payload) => {
-      const rp = this.remotePlayers.get(payload.playerId);
+      let rp = this.remotePlayers.get(payload.playerId);
+      if (!rp && payload.playerId !== this.myPlayerId) {
+        // Defensive self-healing: instantiate remote player if position update received
+        rp = new RemotePlayer(payload.playerId, this.scene, {
+          x: payload.x,
+          y: payload.y,
+          z: payload.z,
+          yaw: payload.yaw || 0,
+          pitch: payload.pitch || 0
+        });
+        if (this.isInStagingLobby) {
+          rp.group.visible = false;
+        }
+        this.remotePlayers.set(payload.playerId, rp);
+        this._updatePlayerCount();
+      }
       if (rp) {
         rp.pushUpdate(payload);
+        if (!this.isInStagingLobby && rp.state !== 'ELIMINATED') {
+          rp.group.visible = true;
+        }
       }
     };
 
@@ -318,10 +344,44 @@ export class MPManager {
       }
       if (this.mySpawn) {
         this.localPlayer.setSpawn(this.mySpawn);
+        // Immediately broadcast initial spawn update to server so all clients receive host & player positions
+        if (this.network && this.network.isConnected) {
+          this.network.sendUpdate(
+            +this.mySpawn.x.toFixed(3),
+            +this.mySpawn.y.toFixed(3),
+            +this.mySpawn.z.toFixed(3),
+            +this.mySpawn.yaw.toFixed(4),
+            +this.mySpawn.pitch.toFixed(4),
+            this.localPlayer.weapon || 0
+          );
+        }
       }
+
+      // Ensure every connected player from payload.players or cachedExistingPlayers is instantiated
+      const playerList = payload?.players || this.cachedExistingPlayers || [];
+      for (const p of playerList) {
+        if (p.id !== this.myPlayerId) {
+          let rp = this.remotePlayers.get(p.id);
+          if (!rp) {
+            rp = new RemotePlayer(p.id, this.scene, p.spawn);
+            this.remotePlayers.set(p.id, rp);
+          }
+          if (p.state) rp.setState(p.state);
+          rp.group.visible = (rp.state !== 'ELIMINATED');
+        }
+      }
+
+      // Unhide and activate all remote player character models for Level 0
+      for (const [id, rp] of this.remotePlayers) {
+        if (rp && rp.state !== 'ELIMINATED') {
+          rp.group.visible = true;
+        }
+      }
+
       if (Array.isArray(payload.collectedItems) && this.itemManager) {
         this.itemManager.setCollectedItems(payload.collectedItems);
       }
+      this._updatePlayerCount();
       if (this.ui.onMatchStarted) this.ui.onMatchStarted(payload);
     };
 

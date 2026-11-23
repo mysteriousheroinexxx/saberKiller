@@ -277,6 +277,25 @@ export class StagingLobby {
     this.lobbyGroup.add(mainLight);
     this.lobbyLights.push(mainLight);
 
+    // Dedicated overhead light source directly above the centre of the staging platform
+    // Casts a conical downward pool of illumination directly onto the platform and models,
+    // illuminating player characters vividly while preserving the dark surrounding environment
+    const overheadSpot = new THREE.SpotLight(0xffffff, 14.0, 32, Math.PI / 4.2, 0.5, 1.2);
+    overheadSpot.name = 'StagingLobby_OverheadSpot';
+    overheadSpot.position.set(0, 7.5, 0);
+    overheadSpot.target.position.set(0, 0, 0);
+    overheadSpot.castShadow = true;
+    this.lobbyGroup.add(overheadSpot.target);
+    this.lobbyGroup.add(overheadSpot);
+    this.lobbyLights.push(overheadSpot);
+
+    // Overhead fill light directly above character heads for crisp facial/chest definition
+    const overheadFill = new THREE.PointLight(0xfff4e8, 3.5, 12, 1.4);
+    overheadFill.name = 'StagingLobby_OverheadFill';
+    overheadFill.position.set(0, 3.8, 0.3);
+    this.lobbyGroup.add(overheadFill);
+    this.lobbyLights.push(overheadFill);
+
     // Front key/fill light to ensure character faces, chests, and legs are brightly illuminated
     const frontFill = new THREE.DirectionalLight(0xecf3fd, 2.6);
     frontFill.position.set(0, 3.5, 4.8);

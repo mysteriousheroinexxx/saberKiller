@@ -1191,7 +1191,8 @@ wss.on('connection', (ws, req) => {
               roomCode: res.room.code,
               startingPlayers: res.startingPlayers,
               layoutRevision: res.room.layoutRevision,
-              collectedItems: res.collectedItems || []
+              collectedItems: res.collectedItems || [],
+              players: res.players || []
             });
           }
         }

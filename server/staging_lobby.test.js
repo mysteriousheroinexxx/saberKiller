@@ -162,3 +162,29 @@ test('7. Disconnecting a player updates lobby state and leadership', () => {
   assert.equal(state.players[0].isLeader, true);
   assert.equal(state.players[0].isReady, true); // New leader is ready!
 });
+
+test('8. startMatch returns complete player list and spawns for client visibility synchronization', () => {
+  const manager = new RoomManager();
+  const ws1 = { send: () => {} };
+  const ws2 = { send: () => {} };
+
+  const r1 = manager.createRoom(ws1, 'SYNC_ROOM');
+  const r2 = manager.joinRoom(ws2, 'SYNC_ROOM');
+
+  manager.setPlayerReady(ws2, true);
+  const startRes = manager.startMatch(ws1);
+
+  assert.equal(startRes.success, true);
+  assert.ok(Array.isArray(startRes.players), 'players array must be returned');
+  assert.equal(startRes.players.length, 2, 'all room players must be returned');
+
+  const p1 = startRes.players.find(p => p.id === r1.player.id);
+  const p2 = startRes.players.find(p => p.id === r2.player.id);
+
+  assert.ok(p1, 'host player must be in players list');
+  assert.ok(p2, 'joining player must be in players list');
+  assert.ok(p1.spawn && typeof p1.spawn.x === 'number', 'host must have valid spawn');
+  assert.ok(p2.spawn && typeof p2.spawn.x === 'number', 'joining player must have valid spawn');
+  assert.equal(p1.isLeader, true, 'host must be marked leader');
+  assert.equal(p2.isLeader, false, 'joining player must not be leader');
+});

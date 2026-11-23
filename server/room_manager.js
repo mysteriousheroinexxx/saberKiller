@@ -802,11 +802,28 @@ export class RoomManager {
       }
     }
 
+    // Build complete player list with their initial spawns and statuses
+    const players = [];
+    for (const [id, p] of room.players) {
+      players.push({
+        id: p.id,
+        name: p.name || `Player_${p.id}`,
+        slot: p.slot,
+        spawn: p.spawn,
+        hp: p.hp,
+        maxHp: p.maxHp,
+        state: p.state,
+        revivalsUsed: p.revivalsUsed,
+        isLeader: (p.id === room.leaderId)
+      });
+    }
+
     return {
       success: true,
       room,
       startingPlayers: room.players.size,
-      collectedItems
+      collectedItems,
+      players
     };
   }
 
