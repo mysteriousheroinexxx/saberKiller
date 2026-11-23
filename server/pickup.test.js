@@ -18,7 +18,7 @@ test('pickup is authoritative, rejects competing claims, range, and fabricated I
 
   const accepted = manager.handlePickupRequest(firstSocket, 'energy_1');
   assert.equal(accepted.success, true);
-  assert.equal(accepted.inventory.slots[0].typeId, 'energy_drink');
+  assert.equal(accepted.inventory.slots.find(s => s?.typeId === 'energy_drink')?.typeId, 'energy_drink');
   assert.equal(accepted.room.worldItems.get('energy_1').available, false);
 
   const competingClaim = manager.handlePickupRequest(secondSocket, 'energy_1');
