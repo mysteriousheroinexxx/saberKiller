@@ -47,6 +47,20 @@ export class LocalPlayerController {
     this.reloadT = 0;
     this.reloadWeapon = -1;
     this.cool = 0;
+    this.recoilKick = 0.0;
+    this.isDead = false;
+    this.isDowned = false;
+
+    // Developer firing diagnostics (inspected under --dev-rendering)
+    this.firingDiagnostics = {
+      selectedWeapon: 'PISTOL (0)',
+      lastFiringInput: 'NONE',
+      cooldown: '0.00s',
+      magAmmo: 12,
+      reserveAmmo: 36,
+      reloadState: 'IDLE',
+      lastRejectionReason: 'NONE'
+    };
 
     // Viewmodels, held items, and flashlight
     this.gunGroup = new THREE.Group();
@@ -210,6 +224,59 @@ export class LocalPlayerController {
       this.viewmodels[2] = wrap;
       this._updateViewmodelVisibility();
     });
+
+    // Muzzle Flash PointLight & Billboard Sprite
+    this.muzzleLight = new THREE.PointLight(0xffb040, 0, 11, 2);
+    this.muzzleLight.name = 'MP_LocalPlayerMuzzleLight';
+    this.camera.add(this.muzzleLight);
+    this.muzzleLight.position.set(0.25, -0.18, -0.92);
+
+    const flashCanvas = document.createElement('canvas');
+    flashCanvas.width = 64;
+    flashCanvas.height = 64;
+    const fCtx = flashCanvas.getContext('2d');
+    const fGrad = fCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    fGrad.addColorStop(0, 'rgba(255, 255, 240, 1.0)');
+    fGrad.addColorStop(0.25, 'rgba(255, 200, 60, 0.9)');
+    fGrad.addColorStop(0.55, 'rgba(255, 100, 20, 0.5)');
+    fGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    fCtx.fillStyle = fGrad;
+    fCtx.fillRect(0, 0, 64, 64);
+    const flashTex = new THREE.CanvasTexture(flashCanvas);
+
+    this.muzzleSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: flashTex,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      transparent: true
+    }));
+    this.muzzleSprite.name = 'MP_LocalPlayerMuzzleSprite';
+    this.muzzleSprite.scale.set(0.55, 0.55, 1);
+    this.muzzleSprite.visible = false;
+    this.gunGroup.add(this.muzzleSprite);
+    this._muzzleTimer = null;
+  }
+
+  _triggerMuzzleFlash(weaponIdx) {
+    if (!this.muzzleSprite || !this.muzzleLight) return;
+    if (weaponIdx === 0) { // Pistol
+      this.muzzleSprite.position.set(0, 0.08, -0.36);
+      this.muzzleLight.position.set(0.25, -0.18, -0.92);
+      this.muzzleLight.intensity = 3.2;
+    } else if (weaponIdx === 1) { // Shotgun
+      this.muzzleSprite.position.set(0, 0.02, -0.44);
+      this.muzzleLight.position.set(0.25, -0.24, -1.02);
+      this.muzzleLight.intensity = 4.2;
+    }
+    this.muzzleSprite.material.rotation = Math.random() * Math.PI * 2;
+    this.muzzleSprite.visible = true;
+
+    if (this._muzzleTimer) clearTimeout(this._muzzleTimer);
+    this._muzzleTimer = setTimeout(() => {
+      if (this.muzzleSprite) this.muzzleSprite.visible = false;
+      if (this.muzzleLight) this.muzzleLight.intensity = 0;
+      this._muzzleTimer = null;
+    }, 45);
   }
 
   _updateViewmodelVisibility() {
@@ -224,11 +291,21 @@ export class LocalPlayerController {
     if (this.heldItemContainer) {
       this.heldItemContainer.visible = (this.weapon === -1 && this.heldItemMesh !== null);
     }
+    this._notifyStateChange();
+  }
+
+  _notifyStateChange() {
+    if (window.survivalHUD && typeof window.survivalHUD.updatePlayer === 'function') {
+      window.survivalHUD.updatePlayer(this);
+    }
   }
 
   setWeapon(idx) {
     if (idx < 0 || idx > 2) return;
-    if (this.weapon === idx) return;
+    if (this.weapon === idx) {
+      this._updateViewmodelVisibility();
+      return;
+    }
     this.weapon = idx;
     this.reloadT = 0;
     this.reloadWeapon = -1;
@@ -368,52 +445,140 @@ export class LocalPlayerController {
     }
   }
 
+  getFiringDiagnostics() {
+    return { ...this.firingDiagnostics };
+  }
+
   fire() {
-    if (this.isEditorActive || this.isInventoryOpen) return false;
-    if (this.cool > 0 || this.reloadT > 0) return false;
-    if (this.weapon === 0) { // PISTOL
+    this.firingDiagnostics.lastFiringInput = 'LMB at ' + new Date().toTimeString().split(' ')[0];
+
+    if (this.isEditorActive) {
+      this.firingDiagnostics.lastRejectionReason = 'EDITOR_ACTIVE';
+      return false;
+    }
+    if (this.isInventoryOpen) {
+      this.firingDiagnostics.lastRejectionReason = 'INVENTORY_OPEN';
+      return false;
+    }
+    if (this.isDowned || this.isDead || this.hp <= 0) {
+      this.firingDiagnostics.lastRejectionReason = 'PLAYER_DOWNED_OR_ELIMINATED';
+      return false;
+    }
+    if (this.reloadT > 0) {
+      this.firingDiagnostics.lastRejectionReason = `RELOAD_IN_PROGRESS (${this.reloadT.toFixed(2)}s)`;
+      return false;
+    }
+    if (this.cool > 0) {
+      this.firingDiagnostics.lastRejectionReason = `COOLDOWN_ACTIVE (${this.cool.toFixed(2)}s)`;
+      return false;
+    }
+
+    if (this.weapon === 0) { // PISTOL (Beretta Px4)
       if (this.mag.bullets <= 0) {
-        this.startReload();
+        if (this.bullets > 0) {
+          this.startReload();
+          this.firingDiagnostics.lastRejectionReason = 'MAGAZINE_EMPTY_RELOADING';
+        } else {
+          this.firingDiagnostics.lastRejectionReason = 'OUT_OF_AMMO';
+        }
         return false;
       }
-      this.mag.bullets--;
+
+      this.mag.bullets = Math.max(0, this.mag.bullets - 1);
       this.cool = 0.21;
+      this.recoilKick = 0.04;
+      this.pitch = Math.max(-1.48, Math.min(1.48, this.pitch + 0.016));
+      this._triggerMuzzleFlash(0);
+
+      this.firingDiagnostics.lastRejectionReason = 'NONE';
+
       if (this.mag.bullets === 0 && this.bullets > 0) {
         this.startReload();
       }
+      this._notifyStateChange();
       return true;
-    } else if (this.weapon === 1) { // SHOTGUN
+    } else if (this.weapon === 1) { // SHOTGUN (Stagecoach Coach Gun)
       if (this.mag.shells <= 0) {
-        this.startReload();
+        if (this.shells > 0) {
+          this.startReload();
+          this.firingDiagnostics.lastRejectionReason = 'MAGAZINE_EMPTY_RELOADING';
+        } else {
+          this.firingDiagnostics.lastRejectionReason = 'OUT_OF_AMMO';
+        }
         return false;
       }
-      this.mag.shells--;
+
+      this.mag.shells = Math.max(0, this.mag.shells - 1);
       this.cool = 0.95;
+      this.recoilKick = 0.09;
+      this.pitch = Math.max(-1.48, Math.min(1.48, this.pitch + 0.038));
+      this._triggerMuzzleFlash(1);
+
+      this.firingDiagnostics.lastRejectionReason = 'NONE';
+
       if (this.mag.shells === 0 && this.shells > 0) {
         this.startReload();
       }
+      this._notifyStateChange();
       return true;
     } else if (this.weapon === 2) { // TORCH
       this.cool = 0.3;
+      this.firingDiagnostics.lastRejectionReason = 'NONE';
+      this._notifyStateChange();
       return true;
+    } else {
+      this.firingDiagnostics.lastRejectionReason = 'NO_WEAPON_EQUIPPED';
+      return false;
     }
-    return false;
   }
 
   startReload() {
-    if (this.isEditorActive || this.isInventoryOpen) return false;
-    if (this.reloadT > 0) return false;
+    if (this.isEditorActive) {
+      this.firingDiagnostics.lastRejectionReason = 'EDITOR_ACTIVE';
+      return false;
+    }
+    if (this.isInventoryOpen) {
+      this.firingDiagnostics.lastRejectionReason = 'INVENTORY_OPEN';
+      return false;
+    }
+    if (this.isDowned || this.isDead || this.hp <= 0) {
+      this.firingDiagnostics.lastRejectionReason = 'PLAYER_DOWNED_OR_ELIMINATED';
+      return false;
+    }
+    if (this.reloadT > 0) {
+      this.firingDiagnostics.lastRejectionReason = `RELOAD_ALREADY_IN_PROGRESS (${this.reloadT.toFixed(2)}s)`;
+      return false;
+    }
+
     if (this.weapon === 0) {
       const needed = 12 - this.mag.bullets;
-      if (needed <= 0 || this.bullets <= 0) return false;
+      if (needed <= 0) {
+        this.firingDiagnostics.lastRejectionReason = 'MAGAZINE_ALREADY_FULL';
+        return false;
+      }
+      if (this.bullets <= 0) {
+        this.firingDiagnostics.lastRejectionReason = 'NO_RESERVE_AMMO';
+        return false;
+      }
       this.reloadT = 1.15;
       this.reloadWeapon = 0;
+      this.firingDiagnostics.lastRejectionReason = 'NONE';
+      this._notifyStateChange();
       return true;
     } else if (this.weapon === 1) {
       const needed = 6 - this.mag.shells;
-      if (needed <= 0 || this.shells <= 0) return false;
+      if (needed <= 0) {
+        this.firingDiagnostics.lastRejectionReason = 'MAGAZINE_ALREADY_FULL';
+        return false;
+      }
+      if (this.shells <= 0) {
+        this.firingDiagnostics.lastRejectionReason = 'NO_RESERVE_AMMO';
+        return false;
+      }
       this.reloadT = 1.6;
       this.reloadWeapon = 1;
+      this.firingDiagnostics.lastRejectionReason = 'NONE';
+      this._notifyStateChange();
       return true;
     }
     return false;
@@ -421,17 +586,18 @@ export class LocalPlayerController {
 
   _finishReload() {
     if (this.reloadWeapon === 0) {
-      const needed = 12 - this.mag.bullets;
-      const loaded = Math.min(needed, this.bullets);
+      const needed = Math.max(0, 12 - this.mag.bullets);
+      const loaded = Math.min(needed, Math.max(0, this.bullets));
       this.bullets -= loaded;
       this.mag.bullets += loaded;
     } else if (this.reloadWeapon === 1) {
-      const needed = 6 - this.mag.shells;
-      const loaded = Math.min(needed, this.shells);
+      const needed = Math.max(0, 6 - this.mag.shells);
+      const loaded = Math.min(needed, Math.max(0, this.shells));
       this.shells -= loaded;
       this.mag.shells += loaded;
     }
     this.reloadWeapon = -1;
+    this._notifyStateChange();
   }
 
   setHp(hp) {
@@ -496,17 +662,17 @@ export class LocalPlayerController {
       this.keys[e.code] = true;
 
       // Hotbar selection shortcuts (1-9, 0)
-      if (e.code === 'Digit1') this.selectHotbarSlot(0);
-      else if (e.code === 'Digit2') this.selectHotbarSlot(1);
-      else if (e.code === 'Digit3') this.selectHotbarSlot(2);
-      else if (e.code === 'Digit4') this.selectHotbarSlot(3);
-      else if (e.code === 'Digit5') this.selectHotbarSlot(4);
-      else if (e.code === 'Digit6') this.selectHotbarSlot(5);
-      else if (e.code === 'Digit7') this.selectHotbarSlot(6);
-      else if (e.code === 'Digit8') this.selectHotbarSlot(7);
-      else if (e.code === 'Digit9') this.selectHotbarSlot(8);
-      else if (e.code === 'Digit0') this.selectHotbarSlot(9);
-      else if (e.code === 'KeyR') this.startReload();
+      if (e.code === 'Digit1' || e.code === 'Numpad1' || e.key === '1') this.selectHotbarSlot(0);
+      else if (e.code === 'Digit2' || e.code === 'Numpad2' || e.key === '2') this.selectHotbarSlot(1);
+      else if (e.code === 'Digit3' || e.code === 'Numpad3' || e.key === '3') this.selectHotbarSlot(2);
+      else if (e.code === 'Digit4' || e.code === 'Numpad4' || e.key === '4') this.selectHotbarSlot(3);
+      else if (e.code === 'Digit5' || e.code === 'Numpad5' || e.key === '5') this.selectHotbarSlot(4);
+      else if (e.code === 'Digit6' || e.code === 'Numpad6' || e.key === '6') this.selectHotbarSlot(5);
+      else if (e.code === 'Digit7' || e.code === 'Numpad7' || e.key === '7') this.selectHotbarSlot(6);
+      else if (e.code === 'Digit8' || e.code === 'Numpad8' || e.key === '8') this.selectHotbarSlot(7);
+      else if (e.code === 'Digit9' || e.code === 'Numpad9' || e.key === '9') this.selectHotbarSlot(8);
+      else if (e.code === 'Digit0' || e.code === 'Numpad0' || e.key === '0') this.selectHotbarSlot(9);
+      else if (e.code === 'KeyR' || e.key === 'r' || e.key === 'R') this.startReload();
     };
 
     this._onKeyUp = (e) => {
@@ -524,7 +690,18 @@ export class LocalPlayerController {
     };
 
     this._onMouseDown = (e) => {
-      if (this.isEditorActive || this.isInventoryOpen) return;
+      if (this.isEditorActive) {
+        this.firingDiagnostics.lastRejectionReason = 'EDITOR_ACTIVE';
+        return;
+      }
+      if (this.isInventoryOpen) {
+        this.firingDiagnostics.lastRejectionReason = 'INVENTORY_OPEN';
+        return;
+      }
+      if (this.isDowned || this.isDead || this.hp <= 0) {
+        this.firingDiagnostics.lastRejectionReason = 'PLAYER_DOWNED_OR_ELIMINATED';
+        return;
+      }
       if (this.isPointerLocked) {
         if (e.button === 0) { // Left click
           if (this.weapon >= 0) {
@@ -535,6 +712,10 @@ export class LocalPlayerController {
         } else if (e.button === 2) { // Right click
           e.preventDefault();
           this.dropHeldItem();
+        }
+      } else {
+        if (e.button === 0) {
+          this.firingDiagnostics.lastRejectionReason = 'NO_POINTER_LOCK';
         }
       }
     };
@@ -606,8 +787,11 @@ export class LocalPlayerController {
       return;
     }
 
-    // 0. Update firing cooldown, reload, and battery
+    // 0. Update firing cooldown, reload, battery, and recoil recovery
     if (this.cool > 0) this.cool = Math.max(0, this.cool - dt);
+    if (this.recoilKick > 0) {
+      this.recoilKick = Math.max(0, this.recoilKick - dt * 0.45);
+    }
     if (this.reloadT > 0) {
       this.reloadT = Math.max(0, this.reloadT - dt);
       if (this.reloadT === 0 && this.reloadWeapon >= 0) {
@@ -623,6 +807,13 @@ export class LocalPlayerController {
         this.speedMultiplier = 1.0;
       }
     }
+
+    // Update telemetry firing diagnostics
+    this.firingDiagnostics.cooldown = `${this.cool.toFixed(2)}s`;
+    this.firingDiagnostics.selectedWeapon = this.weapon === 0 ? 'PISTOL (0)' : (this.weapon === 1 ? 'SHOTGUN (1)' : (this.weapon === 2 ? 'TORCH (2)' : 'UNARMED (-1)'));
+    this.firingDiagnostics.magAmmo = this.weapon === 0 ? this.mag.bullets : (this.weapon === 1 ? this.mag.shells : 0);
+    this.firingDiagnostics.reserveAmmo = this.weapon === 0 ? this.bullets : (this.weapon === 1 ? this.shells : 0);
+    this.firingDiagnostics.reloadState = this.reloadT > 0 ? `RELOADING (${this.reloadT.toFixed(2)}s)` : 'IDLE';
 
     // 1. Movement and stamina drain/regeneration
     let fx = 0, fz = 0;
@@ -683,9 +874,9 @@ export class LocalPlayerController {
     this.camera.rotation.y = this.yaw;
     this.camera.rotation.x = this.pitch;
 
-    // 3. Gun bobbing
+    // 3. Gun bobbing + recoil kick
     const gb = len > 0 ? Math.sin(this.bob) * 0.01 : 0;
-    this.gunGroup.position.set(0.34 + gb, -0.32 + Math.abs(Math.cos(this.bob)) * 0.01, -0.62);
+    this.gunGroup.position.set(0.34 + gb, -0.32 + Math.abs(Math.cos(this.bob)) * 0.01, -0.62 + this.recoilKick);
 
     // 4. Send network updates at 20Hz
     this.updateTimer += dt;
@@ -712,6 +903,16 @@ export class LocalPlayerController {
   }
 
   dispose() {
+    if (this._muzzleTimer) {
+      clearTimeout(this._muzzleTimer);
+      this._muzzleTimer = null;
+    }
+    if (this.muzzleLight && this.muzzleLight.parent) {
+      this.muzzleLight.parent.remove(this.muzzleLight);
+    }
+    if (this.muzzleSprite && this.muzzleSprite.parent) {
+      this.muzzleSprite.parent.remove(this.muzzleSprite);
+    }
     window.removeEventListener('keydown', this._onKeyDown, { capture: true });
     window.removeEventListener('keyup', this._onKeyUp, { capture: true });
     window.removeEventListener('mousemove', this._onMouseMove);

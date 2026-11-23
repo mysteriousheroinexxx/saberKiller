@@ -225,6 +225,14 @@ async function init() {
 
   // 4. Initialize MPManager
   const devToolsEnabled = await checkDevToolsConfig();
+  if (!devToolsEnabled) {
+    console.log('[DEV TOOLS] Developer tools disabled by server. Removing panels from DOM.');
+    document.getElementById('dev-comparison-panel')?.remove();
+    document.getElementById('dev-panel-toggle')?.remove();
+    document.getElementById('world-editor-overlay')?.remove();
+    document.getElementById('dev-pickup-hud-diag')?.remove();
+    document.getElementById('dev-weapon-hud-diag')?.remove();
+  }
 
   mpManager = new MPManager(scene, camera, {
     onStatusChange: ({ status, message }) => {
@@ -449,6 +457,12 @@ async function init() {
     });
     window.worldEditor = worldEditor;
     initDevComparisonUI();
+
+    // Developer weapon firing diagnostic HUD element
+    const devWeaponHud = document.getElementById('dev-weapon-hud-diag');
+    if (devWeaponHud) {
+      devWeaponHud.style.display = 'block';
+    }
   } else {
     // If not enabled by server flag, completely remove dev panel elements and do not bind dev keys
     console.log('[DEV TOOLS] Developer tools disabled by server. Removing panel from DOM.');
@@ -456,6 +470,7 @@ async function init() {
     document.getElementById('dev-panel-toggle')?.remove();
     document.getElementById('world-editor-overlay')?.remove();
     document.getElementById('dev-pickup-hud-diag')?.remove();
+    document.getElementById('dev-weapon-hud-diag')?.remove();
   }
 
   // Check URL query parameters for verification suite
@@ -1744,6 +1759,26 @@ function loop(timestamp) {
   // Update Survival Mode HUD (Health, Resources, Stamina)
   if (sanityHUD && mpManager?.localPlayer) {
     sanityHUD.updatePlayer(mpManager.localPlayer);
+  }
+
+  // Update developer weapon firing diagnostics HUD (under --dev-rendering)
+  if (devToolsEnabled && mpManager?.localPlayer) {
+    const diag = mpManager.localPlayer.getFiringDiagnostics();
+    const elWeapon = document.getElementById('dev-diag-weapon');
+    const elAmmo = document.getElementById('dev-diag-ammo');
+    const elCool = document.getElementById('dev-diag-cool');
+    const elReload = document.getElementById('dev-diag-reload');
+    const elInput = document.getElementById('dev-diag-input');
+    const elRej = document.getElementById('dev-diag-rejection');
+    if (elWeapon) elWeapon.textContent = diag.selectedWeapon;
+    if (elAmmo) elAmmo.textContent = `${diag.magAmmo} / ${diag.reserveAmmo}`;
+    if (elCool) elCool.textContent = diag.cooldown;
+    if (elReload) elReload.textContent = diag.reloadState;
+    if (elInput) elInput.textContent = diag.lastFiringInput;
+    if (elRej) {
+      elRej.textContent = diag.lastRejectionReason;
+      elRej.style.color = (diag.lastRejectionReason !== 'NONE') ? '#ff6666' : '#9c9a92';
+    }
   }
 
   // Update Reusable Interaction Framework

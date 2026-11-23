@@ -69,6 +69,9 @@ export class MPManager {
         this.inventory.deserialize(payload.inventory);
       }
 
+      // Synchronize local player viewmodel and weapon with active hotbar slot
+      this.localPlayer.selectHotbarSlot(this.localPlayer.selectedHotbarSlot);
+
       // Spawn any players who were already in the room
       if (Array.isArray(payload.existingPlayers)) {
         for (const ep of payload.existingPlayers) {
