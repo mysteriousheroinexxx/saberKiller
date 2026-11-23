@@ -827,6 +827,26 @@ wss.on('connection', (ws, req) => {
             itemId,
             reason: res.error
           });
+        } else if (res.dispensedItem) {
+          console.log(`[VENDING DISPENSE VIA PICKUP ${requestId}] Dispensed item ${res.dispensedItem.id} from ${res.machineId}`);
+          const acceptPayload = {
+            requestId,
+            success: true,
+            itemId: res.machineId,
+            itemType: 'vending_almond',
+            playerId: res.player.id,
+            roomCode: res.room.code,
+            dispensedItem: res.dispensedItem
+          };
+          send(ws, MSG_TYPES.ITEM_PICKUP_RESPONSE, acceptPayload);
+          send(ws, MSG_TYPES.VENDING_DISPENSE_RESPONSE, acceptPayload);
+
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.ITEM_SPAWNED, {
+              item: res.dispensedItem,
+              dispensedFrom: res.machineId
+            });
+          }
         } else {
           console.log(`[STAGE 11/19] [SERVER] Inventory update executed for player '${res.player.id}', added '${res.item.type}'`);
           console.log(`[STAGE 12/19] [SERVER] Pickup ACCEPTED: reqId=${requestId}, item='${res.item.id}', player='${res.player.id}'`);
@@ -865,6 +885,59 @@ wss.on('connection', (ws, req) => {
               type: res.item.type
             }
           });
+        }
+        break;
+      }
+
+      case MSG_TYPES.VENDING_DISPENSE_REQUEST: {
+        const requestId = payload?.requestId || `disp_${Date.now()}`;
+        const machineId = payload?.machineId;
+        const clientPos = payload?.clientPosition;
+
+        const session = roomManager.getPlayer(ws);
+        const playerId = session ? session.player.id : 'unknown';
+        const roomCode = session ? session.room.code : 'unknown';
+
+        console.log(`[VENDING ${requestId}] Dispense requested: player=${playerId}, room=${roomCode}, machine=${machineId}`);
+        const res = roomManager.handleVendingDispense(ws, machineId, clientPos);
+        if (res.error) {
+          console.log(`[VENDING ${requestId}] Rejected: ${res.error}`);
+          const rejectPayload = {
+            requestId,
+            success: false,
+            machineId,
+            reason: res.error
+          };
+          send(ws, MSG_TYPES.VENDING_DISPENSE_RESPONSE, rejectPayload);
+          send(ws, MSG_TYPES.ITEM_PICKUP_RESPONSE, {
+            requestId,
+            success: false,
+            itemId: machineId,
+            reason: res.error
+          });
+        } else {
+          console.log(`[VENDING ${requestId}] Accepted: spawned ${res.dispensedItem.id} at [${res.dispensedItem.position.join(', ')}]`);
+          const acceptPayload = {
+            requestId,
+            success: true,
+            machineId: res.machineId,
+            dispensedItem: res.dispensedItem
+          };
+          send(ws, MSG_TYPES.VENDING_DISPENSE_RESPONSE, acceptPayload);
+          send(ws, MSG_TYPES.ITEM_PICKUP_RESPONSE, {
+            requestId,
+            success: true,
+            itemId: res.machineId,
+            dispensedItem: res.dispensedItem
+          });
+
+          // Broadcast newly spawned world item to all players in the room
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.ITEM_SPAWNED, {
+              item: res.dispensedItem,
+              dispensedFrom: res.machineId
+            });
+          }
         }
         break;
       }

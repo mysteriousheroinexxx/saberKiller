@@ -21,7 +21,9 @@ export const MSG_TYPES = {
   ITEM_DROP_REQUEST: 'ITEM_DROP_REQUEST',
   ITEM_DROP_RESPONSE: 'ITEM_DROP_RESPONSE',
   ITEM_SPAWNED: 'ITEM_SPAWNED',
-  INVENTORY_SWAP_REQUEST: 'INVENTORY_SWAP_REQUEST'
+  INVENTORY_SWAP_REQUEST: 'INVENTORY_SWAP_REQUEST',
+  VENDING_DISPENSE_REQUEST: 'VENDING_DISPENSE_REQUEST',
+  VENDING_DISPENSE_RESPONSE: 'VENDING_DISPENSE_RESPONSE'
 };
 
 function resolveWebSocketUrl(input) {
@@ -67,6 +69,7 @@ export class NetworkClient {
     this.onItemUseResponse = null;
     this.onItemDropResponse = null;
     this.onItemSpawned = null;
+    this.onVendingDispenseResponse = null;
   }
 
   connect(url) {
@@ -257,6 +260,10 @@ export class NetworkClient {
         if (this.onItemSpawned) this.onItemSpawned(payload);
         break;
 
+      case MSG_TYPES.VENDING_DISPENSE_RESPONSE:
+        if (this.onVendingDispenseResponse) this.onVendingDispenseResponse(payload);
+        break;
+
       default:
         console.log('[NetworkClient] Unhandled packet type:', type);
         break;
@@ -320,6 +327,18 @@ export class NetworkClient {
 
   requestItemSwap(fromSlot, toSlot) {
     return this.send(MSG_TYPES.INVENTORY_SWAP_REQUEST, { fromSlot, toSlot });
+  }
+
+  requestVendingDispense(machineId, requestId = null, clientPosition = null) {
+    if (!requestId) {
+      requestId = 'disp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    }
+    const payload = { machineId, requestId };
+    if (clientPosition) {
+      payload.clientPosition = clientPosition;
+    }
+    const sent = this.send(MSG_TYPES.VENDING_DISPENSE_REQUEST, payload);
+    return { sent, requestId };
   }
 
   sendUpdate(x, y, z, yaw, pitch, weapon = 0) {

@@ -322,6 +322,28 @@ export class InteractionManager {
     this._notifyDiagnostics();
   }
 
+  /**
+   * Handles server vending machine dispense acknowledgement
+   */
+  handleVendingDispenseResponse(payload) {
+    if (!payload) return;
+    const { requestId, success, machineId, reason } = payload;
+    console.log(`[InteractionManager] Vending dispense response: reqId=${requestId}, success=${success}, machine=${machineId}`);
+
+    if (this.pendingRequestId && (this.pendingRequestId === requestId || this.pendingTargetId === machineId)) {
+      this._finishPickupRequest(requestId);
+      const timeStr = new Date().toLocaleTimeString();
+      if (success) {
+        this.diagnostics.serverResult = `ACCEPTED — Dispensed from ${machineId} at ${timeStr}`;
+        this.diagnostics.lastRejection = 'NONE';
+      } else {
+        this.diagnostics.serverResult = `REJECTED — ${reason || 'Dispense failed'} at ${timeStr}`;
+        this.diagnostics.lastRejection = reason || 'Dispense failed';
+      }
+      this._notifyDiagnostics();
+    }
+  }
+
   _finishPickupRequest(requestId) {
     if (requestId && this.pendingRequestId && requestId !== this.pendingRequestId) return false;
     if (this.pendingTimeout) {

@@ -71,6 +71,7 @@ export class RoomManager {
           type: p.type,
           category: p.category || (layoutData.catalog?.[p.type]?.category) || 'prop',
           position: Array.isArray(p.position) ? [p.position[0], p.position[1], p.position[2]] : [0, 0, 0],
+          rotation: Array.isArray(p.rotation) ? [p.rotation[0], p.rotation[1], p.rotation[2]] : [0, 0, 0],
           isPickup,
           available: isPickup,
           collectedBy: null,
@@ -140,7 +141,7 @@ export class RoomManager {
     for (const [id, item] of room.worldItems) {
       if (item.isPickup && !item.available) {
         collectedItems.push(id);
-      } else if (item.isDropped && item.available) {
+      } else if ((item.isDropped || item.isDispensed) && item.available) {
         spawnedItems.push(item);
       }
     }
@@ -181,6 +182,10 @@ export class RoomManager {
     const item = room.worldItems.get(itemId);
     if (!item) {
       return { error: `Item '${itemId}' does not exist in room layout`, room, player };
+    }
+
+    if (item.type === 'vending_almond') {
+      return this.handleVendingDispense(ws, itemId, clientPosition);
     }
 
     if (!item.isPickup) {
@@ -288,6 +293,9 @@ export class RoomManager {
       return { error: 'Failed to consume item from slot', room, player };
     }
 
+    const remainingItem = player.inventory.getItem(targetSlot);
+    const remainingQuantity = remainingItem ? remainingItem.quantity : 0;
+
     return {
       success: true,
       room,
@@ -296,7 +304,7 @@ export class RoomManager {
       itemName: item.name,
       slotIndex: targetSlot,
       effect: effectConfig,
-      remainingQuantity: removeRes.item?.quantity || 0,
+      remainingQuantity,
       inventory: player.inventory.serialize()
     };
   }
@@ -386,6 +394,97 @@ export class RoomManager {
       droppedQuantity: dropQty,
       slotIndex: targetSlot,
       inventory: player.inventory.serialize()
+    };
+  }
+
+  /**
+   * Authoritative Almond Water vending machine dispense validation and spawning
+   */
+  handleVendingDispense(ws, machineId, clientPosition = null) {
+    const meta = this.clientToRoom.get(ws);
+    if (!meta) return { error: 'Client not associated with any active room session' };
+
+    const room = this.rooms.get(meta.roomCode);
+    if (!room) return { error: `Room ${meta.roomCode} does not exist` };
+
+    const player = room.players.get(meta.playerId);
+    if (!player) return { error: `Player ${meta.playerId} not found in room` };
+
+    const machine = room.worldItems.get(machineId);
+    if (!machine) {
+      return { error: `Vending machine '${machineId}' not found in room layout`, room, player };
+    }
+
+    if (machine.type !== 'vending_almond') {
+      return { error: `Object '${machineId}' (${machine.type}) is not a vending machine`, room, player };
+    }
+
+    // Cooldown check on vending machine (1.0s debounced)
+    const now = Date.now();
+    if (machine.lastDispenseTime && (now - machine.lastDispenseTime < 1000)) {
+      return { error: 'Vending machine is dispensing, please wait...', room, player };
+    }
+
+    // Proximity check (2.8m limit with network latency tolerance)
+    let pPos = player.position || player.spawn;
+    if (clientPosition && isValidNumber(clientPosition.x) && isValidNumber(clientPosition.z)) {
+      const sDx = clientPosition.x - pPos.x;
+      const sDz = clientPosition.z - pPos.z;
+      if (Math.hypot(sDx, sDz) < 2.5) {
+        pPos = {
+          x: clientPosition.x,
+          y: (typeof clientPosition.y === 'number') ? clientPosition.y : pPos.y,
+          z: clientPosition.z
+        };
+      }
+    }
+
+    const mPos = machine.position || [41.5, 0.0, -185.45];
+    const dx = pPos.x - mPos[0];
+    const dy = (pPos.y || 0) - mPos[1];
+    const dz = pPos.z - mPos[2];
+    const eyeDy = ((pPos.y || 0) + 1.62) - mPos[1];
+    const dist = Math.min(Math.hypot(dx, dy, dz), Math.hypot(dx, eyeDy, dz));
+
+    if (dist > 2.8) {
+      return { error: `Player too far from vending machine (${dist.toFixed(2)}m > 2.1m limit)`, room, player };
+    }
+
+    machine.lastDispenseTime = now;
+
+    // Calculate dispense position: in front of machine
+    // Machine is facing southward in Level 0 (Z decreasing towards -186)
+    // Offset ~0.65m in front of machine
+    const rotY = (machine.rotation && machine.rotation[1]) ? machine.rotation[1] : 0;
+    const dispenseX = +(mPos[0] - Math.sin(rotY) * 0.65).toFixed(3);
+    const dispenseZ = +(mPos[2] - Math.cos(rotY) * 0.65).toFixed(3);
+    const dispenseY = 0.02;
+
+    const dispenseId = `dispensed_almond_${now}_${Math.floor(Math.random() * 1000)}`;
+    const worldItem = {
+      id: dispenseId,
+      type: 'almond_can',
+      category: 'consumable',
+      position: [dispenseX, dispenseY, dispenseZ],
+      rotation: [0, +(Math.random() * 3.14).toFixed(3), 0],
+      isPickup: true,
+      available: true,
+      isDropped: false,
+      isDispensed: true,
+      dispensedFrom: machineId,
+      quantity: 1,
+      collectedBy: null,
+      collectedAt: null
+    };
+
+    room.worldItems.set(dispenseId, worldItem);
+
+    return {
+      success: true,
+      room,
+      player,
+      machineId,
+      dispensedItem: worldItem
     };
   }
 

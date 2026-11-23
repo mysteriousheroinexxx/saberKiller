@@ -133,6 +133,9 @@ export class MPManager {
     this.network.onInventoryUpdate = (payload) => {
       if (payload && payload.inventory) {
         this.inventory.deserialize(payload.inventory);
+        if (this.localPlayer) {
+          this.localPlayer.refreshHeldItem();
+        }
       }
       if (window.interactionManager) {
         window.interactionManager.recordServerResponse('INVENTORY_UPDATE', payload);
@@ -159,10 +162,26 @@ export class MPManager {
     };
 
     this.network.onItemUseResponse = (payload) => {
-      if (payload && payload.success && payload.effect && this.localPlayer) {
-        this.localPlayer.applyItemEffect(payload.effect);
+      if (payload && payload.success) {
+        if (payload.effect && this.localPlayer) {
+          this.localPlayer.applyItemEffect(payload.effect);
+        }
+        if (this.localPlayer) {
+          this.localPlayer.onItemUseAccepted(payload);
+        }
+      } else if (payload && !payload.success) {
+        if (this.localPlayer) {
+          this.localPlayer.onItemUseRejected(payload);
+        }
       }
       if (this.ui.onItemUseResponse) this.ui.onItemUseResponse(payload);
+    };
+
+    this.network.onVendingDispenseResponse = (payload) => {
+      if (window.interactionManager) {
+        window.interactionManager.handleVendingDispenseResponse(payload);
+      }
+      if (this.ui.onVendingDispenseResponse) this.ui.onVendingDispenseResponse(payload);
     };
 
     this.network.onItemDropResponse = (payload) => {

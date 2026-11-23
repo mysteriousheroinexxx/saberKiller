@@ -224,7 +224,7 @@ export const ITEM_DEFINITIONS = {
     metadata: {
       requiresPower: true,
       dispensesItem: 'almond_can',
-      promptText: 'Inspect Vending Machine',
+      promptText: 'Use',
       description: 'Vintage commercial vending unit. Dispenses cold Almond Water.'
     }
   }

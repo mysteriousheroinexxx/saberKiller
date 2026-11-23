@@ -77,6 +77,7 @@ export class LocalPlayerController {
     this.gunGroup.add(this.heldItemContainer);
     this.heldItemMesh = null;
     this.heldItemTypeId = null;
+    this.activeThrowAnimations = [];
 
     // Tactical Flashlight for Torch (matches Story Mode spotlight setup)
     this.flashlight = new THREE.SpotLight(0xfffae0, 24.0, 38.0, Math.PI / 6.5, 0.45, 1.8);
@@ -364,6 +365,36 @@ export class LocalPlayerController {
     const def = getItemDefinition(typeId);
     if (!def || !def.modelUrl) return;
 
+    // Use preloaded template from itemManager for instant zero-latency viewmodel creation
+    if (window.itemManager && window.itemManager.templates && window.itemManager.templates.has(def.modelUrl)) {
+      const template = window.itemManager.templates.get(def.modelUrl);
+      const mesh = template.clone(true);
+      mesh.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(mesh);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      const s = 0.16 / maxDim;
+
+      mesh.position.set(-center.x, -center.y, -center.z);
+      mesh.traverse(o => {
+        if (o.isMesh) {
+          o.castShadow = true;
+          o.receiveShadow = true;
+        }
+      });
+      const wrap = new THREE.Group();
+      wrap.add(mesh);
+      wrap.scale.setScalar(s);
+      wrap.position.set(0.04, -0.06, -0.16);
+      wrap.rotation.set(0.2, -0.4, 0.1);
+
+      this.heldItemContainer.add(wrap);
+      this.heldItemMesh = wrap;
+      this._updateViewmodelVisibility();
+      return;
+    }
+
     const loader = new THREE.GLTFLoader();
     loader.load(def.modelUrl, (gltf) => {
       if (this.heldItemTypeId !== typeId) return;
@@ -443,6 +474,118 @@ export class LocalPlayerController {
     if (typeof effect.speedMultiplier === 'number') {
       this.speedMultiplier = effect.speedMultiplier;
       this.speedBoostTimer = Math.max(this.speedBoostTimer, effect.durationSeconds || 15);
+    }
+  }
+
+  onItemUseAccepted(payload) {
+    if (!payload) return;
+    const { slotIndex, itemType, remainingQuantity } = payload;
+
+    // After successful Almond Water consumption, play can-throw animation
+    if (itemType === 'almond_can') {
+      this.playCanThrowAnimation();
+    }
+
+    // Immediately update hand if the consumed slot was currently equipped
+    if (this.selectedHotbarSlot === slotIndex) {
+      if (typeof remainingQuantity === 'number' && remainingQuantity <= 0) {
+        this._clearHeldItem();
+      }
+    }
+  }
+
+  onItemUseRejected(payload) {
+    console.warn('[PlayerController] Item use rejected by server:', payload?.reason);
+    this._updateViewmodelVisibility();
+  }
+
+  refreshHeldItem() {
+    if (this.selectedHotbarSlot >= 0 && this.selectedHotbarSlot <= 9) {
+      const slotItem = this.inventory ? this.inventory.getItem(this.selectedHotbarSlot) : null;
+      if (!slotItem) {
+        if (this.heldItemMesh || this.heldItemTypeId) {
+          this._clearHeldItem();
+        }
+      } else if (slotItem.typeId !== this.heldItemTypeId && !['weapon_pistol', 'weapon_shotgun', 'equipment_torch'].includes(slotItem.typeId)) {
+        this._setHeldItem(slotItem.typeId);
+      }
+    }
+  }
+
+  playCanThrowAnimation() {
+    if (!this.scene) return;
+
+    let throwMesh = null;
+    if (this.heldItemMesh) {
+      throwMesh = this.heldItemMesh.clone(true);
+    } else {
+      const canGeo = new THREE.CylinderGeometry(0.033, 0.033, 0.12, 16);
+      const canMat = new THREE.MeshStandardMaterial({ color: 0xd4a373, roughness: 0.4, metalness: 0.6 });
+      throwMesh = new THREE.Mesh(canGeo, canMat);
+    }
+
+    const startPos = new THREE.Vector3();
+    if (this.heldItemContainer) {
+      this.heldItemContainer.getWorldPosition(startPos);
+    } else {
+      this.camera.getWorldPosition(startPos);
+      startPos.y -= 0.15;
+    }
+
+    const forward = new THREE.Vector3();
+    this.camera.getWorldDirection(forward);
+    const horizForward = new THREE.Vector3(forward.x, 0, forward.z).normalize();
+    if (horizForward.lengthSq() < 0.001) horizForward.set(0, 0, -1);
+
+    const startRot = new THREE.Euler().copy(this.camera.rotation);
+
+    throwMesh.position.copy(startPos);
+    throwMesh.rotation.copy(startRot);
+    this.scene.add(throwMesh);
+
+    const anim = {
+      mesh: throwMesh,
+      startPos: startPos.clone(),
+      forward: horizForward.clone(),
+      startRot: startRot.clone(),
+      elapsed: 0,
+      duration: 0.75
+    };
+
+    if (!this.activeThrowAnimations) this.activeThrowAnimations = [];
+    this.activeThrowAnimations.push(anim);
+  }
+
+  _updateThrowAnimations(dt) {
+    if (!this.activeThrowAnimations || this.activeThrowAnimations.length === 0) return;
+
+    for (let i = this.activeThrowAnimations.length - 1; i >= 0; i--) {
+      const anim = this.activeThrowAnimations[i];
+      anim.elapsed += dt;
+      const progress = Math.min(1.0, anim.elapsed / anim.duration);
+
+      const forwardDist = 1.1 * progress;
+      anim.mesh.position.x = anim.startPos.x + anim.forward.x * forwardDist;
+      anim.mesh.position.z = anim.startPos.z + anim.forward.z * forwardDist;
+
+      const floorY = 0.03;
+      const dropY = anim.startPos.y - (0.85 * (progress * progress));
+      anim.mesh.position.y = Math.max(floorY, dropY);
+
+      anim.mesh.rotation.x = anim.startRot.x + (1.05 * progress);
+      anim.mesh.rotation.z = anim.startRot.z + (0.55 * progress);
+
+      if (progress >= 1.0) {
+        if (anim.mesh.parent) anim.mesh.parent.remove(anim.mesh);
+        anim.mesh.traverse(o => {
+          if (o.geometry) o.geometry.dispose?.();
+          if (o.material) {
+            if (Array.isArray(o.material)) o.material.forEach(m => m.dispose?.());
+            else o.material.dispose?.();
+          }
+        });
+        this.activeThrowAnimations.splice(i, 1);
+      }
     }
   }
 
@@ -769,6 +912,8 @@ export class LocalPlayerController {
   }
 
   update(dt) {
+    this._updateThrowAnimations(dt);
+
     if (this.isEditorActive || this.isInventoryOpen) {
       // Suspend movement and firing, but maintain 20Hz network sync
       this.updateTimer += dt;
