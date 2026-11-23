@@ -2,15 +2,16 @@
  * Saber Killer — Survival Mode Refined Two-Panel Inventory UI
  *
  * Clean, minimal interface built around authentic 1920x1080 two-panel SVG artwork:
- * - Left Panel:
- *     - 20 Storage Slots (4 columns x 5 rows) in the main grid
- *     - 10 Quick-Access Hotbar Slots in a vertical column on the far-right side
- * - Right Panel: Equipment silhouette & 10 empty gear slots (retained from artwork)
+ * - INVENTORY Panel (Left):
+ *     - 20 Backpack Storage Slots (4 columns x 5 rows) in the main grid
+ * - EQUIPMENT Panel (Right):
+ *     - 10 Quick-Access Hotbar Slots in the baked-in vertical column at X = 1020px
+ *     - Human silhouette and equipment artwork preserved
  * - Dual Yellow X Close Buttons (one in each panel, both fully functional)
  * - Interaction modes:
  *     - Hover: Tooltip describing item in <= 10 words
  *     - Right-click: Contextual action menu (Use, Drop, Assign to Hotbar)
- *     - Left-click and hold: Drag-and-drop between slots / hotbar
+ *     - Left-click and hold: Drag-and-drop between storage and hotbar
  * - Context menu auto-close:
  *     - Left-clicking empty inventory space
  *     - Cursor moves away and remains outside for > 3 seconds (stays open while interacting)
@@ -282,7 +283,7 @@ export class InventoryUI {
         height: 95px;
       }
 
-      /* 10 Quick-Access Hotbar Slots (Vertical Column on Far-Right of Left Panel) */
+      /* 10 Quick-Access Hotbar Slots (Vertical Column in the EQUIPMENT Panel at X = 1020px) */
       .bb-grid-slot.hotbar-slot {
         width: 68px;
         height: 68px;
@@ -602,13 +603,13 @@ export class InventoryUI {
     this.stageEl.appendChild(this.closeBtnRight);
 
     // Build 30 slots:
-    // Slots 0..9: 10 Quick-Access Hotbar slots in a vertical column on far-right of left panel
-    // Slots 10..29: 20 Storage slots (4 columns x 5 rows) in main inventory grid
+    // Slots 0..9: 10 Quick-Access Hotbar slots in the EQUIPMENT Panel at X = 1020px
+    // Slots 10..29: 20 Storage slots (4 columns x 5 rows) in the INVENTORY Panel at X = [245, 354, 463, 572]
     this.slotElements = new Array(30);
 
-    // 10 Hotbar Slots (Indexes 0..9)
+    // 10 Hotbar Slots (Indexes 0..9) in the EQUIPMENT Panel
     for (let i = 0; i < 10; i++) {
-      const x = 832;
+      const x = 1020;
       const y = 164 + i * 82;
       const slot = this._createGridSlot(i, true);
       slot.style.left = `${x}px`;
@@ -777,8 +778,8 @@ export class InventoryUI {
 
     const isHotbar = slotIdx < 10;
     if (isHotbar) {
-      // Position to the left of the hotbar column
-      this.tooltipEl.style.left = `${slotEl.offsetLeft - 240}px`;
+      // Position to the right of the hotbar column in the EQUIPMENT panel
+      this.tooltipEl.style.left = `${slotEl.offsetLeft + 78}px`;
       this.tooltipEl.style.top = `${slotEl.offsetTop + 4}px`;
     } else {
       // Storage slots: position above (or below for top row)
