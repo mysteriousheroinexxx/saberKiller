@@ -37,6 +37,27 @@ export const VENDING_CONFIG = {
   maxInteractionDistance: 2.8
 };
 
+// Fixed Ammunition Economy Configuration (Level 0 Room Budget)
+export const AMMO_CONFIG = {
+  pistol: {
+    maxTotal: 48,
+    magCapacity: 12,
+    roundsPerBox: 2,
+    boxType: 'pistol_ammo',
+    ammoKey: 'bullets',
+    requiredBoxes: 18 // 18 boxes * 2 rounds = 36 rounds (+ 12 loaded in weapon = 48)
+  },
+  shotgun: {
+    maxTotal: 12,
+    magCapacity: 6,
+    roundsPerBox: 2,
+    boxType: 'shotgun_ammo',
+    ammoKey: 'shells',
+    requiredBoxes: 3 // 3 boxes * 2 rounds = 6 rounds (+ 6 loaded in weapon = 12)
+  },
+  totalBudget: 60
+};
+
 export function configureVendingMachine(opts = {}) {
   if (typeof opts.defaultMaxStock === 'number') {
     VENDING_CONFIG.defaultMaxStock = Math.max(0, opts.defaultMaxStock);
@@ -103,6 +124,10 @@ export class RoomManager {
       revivalsUsed: 0,
       isDead: false,
       isDowned: false,
+      bullets: 0,
+      shells: 0,
+      mag: { bullets: 0, shells: 0 },
+      discoveredWeapons: new Set(),
       lastUpdate: 0,
       seq: 0
     };
@@ -153,6 +178,9 @@ export class RoomManager {
     if (options && typeof options.startingPlayers === 'number' && options.startingPlayers > 0) {
       this._freezeRoomHealthPacks(room, options.startingPlayers);
     }
+
+    // Fixed Ammunition Economy: Initialize and enforce Level 0 room budget
+    this._initializeRoomAmmo(room);
 
     this.rooms.set(roomCode, room);
     this.clientToRoom.set(ws, { roomCode, playerId });
@@ -215,6 +243,185 @@ export class RoomManager {
     return this._freezeRoomHealthPacks(room, startingCount);
   }
 
+  /**
+   * Fixed Ammunition Economy: Initializes room world items to guarantee exactly
+   * 48 pistol bullets (12 in weapon magazine + 18 boxes * 2 rounds) and
+   * 12 shotgun shells (6 in weapon magazine + 3 boxes * 2 rounds).
+   * Total budget: 60 ammunition units.
+   */
+  _initializeRoomAmmo(room) {
+    // 1. Ensure weapon pickups exist in room
+    if (![...room.worldItems.values()].some(i => i.type === 'weapon_pistol')) {
+      room.worldItems.set('floor_weapon_pistol_01', {
+        id: 'floor_weapon_pistol_01',
+        type: 'weapon_pistol',
+        category: 'weapon',
+        position: [44.2, 0.0, -187.5],
+        rotation: [0, 0, 0],
+        isPickup: true,
+        available: true,
+        collectedBy: null,
+        collectedAt: null
+      });
+    }
+    if (![...room.worldItems.values()].some(i => i.type === 'weapon_shotgun')) {
+      room.worldItems.set('floor_weapon_shotgun_01', {
+        id: 'floor_weapon_shotgun_01',
+        type: 'weapon_shotgun',
+        category: 'weapon',
+        position: [40.5, 0.0, -179.8],
+        rotation: [0, 0, 0],
+        isPickup: true,
+        available: true,
+        collectedBy: null,
+        collectedAt: null
+      });
+    }
+
+    // Convert any legacy ammo_box items to pistol_ammo
+    for (const [_, item] of room.worldItems) {
+      if (item.type === 'ammo_box') {
+        item.type = 'pistol_ammo';
+      }
+    }
+
+    // 2. Default Level 0 positions for pistol_ammo boxes (18 total needed)
+    const defaultPistolPositions = [
+      [43.3, 0.0, -188.70], [44.35, 0.936, -185.45], [45.1, 0.0, -186.2], [42.1, 0.0, -185.8],
+      [46.5, 0.0, -184.2], [47.8, 0.0, -187.0], [41.2, 0.0, -188.0], [43.9, 0.0, -183.5],
+      [45.8, 0.0, -188.5], [48.2, 0.0, -185.0], [40.8, 0.0, -186.5], [42.9, 0.0, -184.0],
+      [46.2, 0.0, -186.8], [47.1, 0.0, -183.0], [41.9, 0.0, -187.2], [44.8, 0.0, -189.0],
+      [48.9, 0.0, -186.0], [43.6, 0.0, -185.1]
+    ];
+
+    // Default Level 0 positions for shotgun_ammo boxes (3 total needed)
+    const defaultShotgunPositions = [
+      [44.3, 0.715, -189.50], [41.0, 0.0, -180.5], [39.8, 0.0, -178.9]
+    ];
+
+    let pCount = [...room.worldItems.values()].filter(i => i.type === 'pistol_ammo').length;
+    let pIdx = pCount + 1;
+    while (pCount < AMMO_CONFIG.pistol.requiredBoxes) {
+      const pos = defaultPistolPositions[pCount] || [45.0 + pCount * 0.3, 0.0, -186.0];
+      const id = `floor_pistol_ammo_${String(pIdx++).padStart(2, '0')}`;
+      room.worldItems.set(id, {
+        id,
+        type: 'pistol_ammo',
+        category: 'ammunition',
+        position: pos,
+        rotation: [0, 0, 0],
+        isPickup: true,
+        available: true,
+        collectedBy: null,
+        collectedAt: null
+      });
+      pCount++;
+    }
+
+    let sCount = [...room.worldItems.values()].filter(i => i.type === 'shotgun_ammo').length;
+    let sIdx = sCount + 1;
+    while (sCount < AMMO_CONFIG.shotgun.requiredBoxes) {
+      const pos = defaultShotgunPositions[sCount] || [41.0 + sCount * 0.5, 0.0, -180.0];
+      const id = `floor_shotgun_ammo_${String(sIdx++).padStart(2, '0')}`;
+      room.worldItems.set(id, {
+        id,
+        type: 'shotgun_ammo',
+        category: 'ammunition',
+        position: pos,
+        rotation: [0, 0, 0],
+        isPickup: true,
+        available: true,
+        collectedBy: null,
+        collectedAt: null
+      });
+      sCount++;
+    }
+  }
+
+  /**
+   * Room-wide authoritative ammunition accounting
+   * Counts all ammunition across:
+   * 1. Loaded weapon magazines (held by players or in unclaimed world weapons)
+   * 2. Player reserve ammunition (bullets & shells across all players)
+   * 3. Unclaimed ammunition boxes in the world (at exactly 2 rounds per box)
+   */
+  getRoomAmmoAccounting(roomCode) {
+    const room = this.rooms.get(roomCode);
+    if (!room) return null;
+
+    let pistolLoaded = 0;
+    let shotgunLoaded = 0;
+    let pistolReserve = 0;
+    let shotgunReserve = 0;
+
+    let anyPlayerDiscoveredPistol = false;
+    let anyPlayerDiscoveredShotgun = false;
+
+    for (const [_, p] of room.players) {
+      pistolReserve += (p.bullets || 0);
+      shotgunReserve += (p.shells || 0);
+      pistolLoaded += (p.mag?.bullets || 0);
+      shotgunLoaded += (p.mag?.shells || 0);
+      if (p.discoveredWeapons?.has('weapon_pistol') || p.inventory?.hasItem('weapon_pistol')) {
+        anyPlayerDiscoveredPistol = true;
+      }
+      if (p.discoveredWeapons?.has('weapon_shotgun') || p.inventory?.hasItem('weapon_shotgun')) {
+        anyPlayerDiscoveredShotgun = true;
+      }
+    }
+
+    // If weapon is still in the world (unclaimed), count its loaded magazine rounds
+    for (const [_, item] of room.worldItems) {
+      if (item.available) {
+        if (item.type === 'weapon_pistol' && !anyPlayerDiscoveredPistol) {
+          pistolLoaded += AMMO_CONFIG.pistol.magCapacity;
+        } else if (item.type === 'weapon_shotgun' && !anyPlayerDiscoveredShotgun) {
+          shotgunLoaded += AMMO_CONFIG.shotgun.magCapacity;
+        }
+      }
+    }
+
+    let unclaimedPistolBoxes = 0;
+    let unclaimedShotgunBoxes = 0;
+
+    for (const [_, item] of room.worldItems) {
+      if (item.available) {
+        if (item.type === 'pistol_ammo' || item.type === 'ammo_box') {
+          unclaimedPistolBoxes++;
+        } else if (item.type === 'shotgun_ammo') {
+          unclaimedShotgunBoxes++;
+        }
+      }
+    }
+
+    const unclaimedPistolRounds = unclaimedPistolBoxes * AMMO_CONFIG.pistol.roundsPerBox;
+    const unclaimedShotgunRounds = unclaimedShotgunBoxes * AMMO_CONFIG.shotgun.roundsPerBox;
+
+    const totalPistol = pistolLoaded + pistolReserve + unclaimedPistolRounds;
+    const totalShotgun = shotgunLoaded + shotgunReserve + unclaimedShotgunRounds;
+
+    return {
+      pistol: {
+        loaded: pistolLoaded,
+        reserve: pistolReserve,
+        unclaimedBoxes: unclaimedPistolBoxes,
+        unclaimedRounds: unclaimedPistolRounds,
+        total: totalPistol,
+        max: AMMO_CONFIG.pistol.maxTotal
+      },
+      shotgun: {
+        loaded: shotgunLoaded,
+        reserve: shotgunReserve,
+        unclaimedBoxes: unclaimedShotgunBoxes,
+        unclaimedRounds: unclaimedShotgunRounds,
+        total: totalShotgun,
+        max: AMMO_CONFIG.shotgun.maxTotal
+      },
+      totalBudget: AMMO_CONFIG.totalBudget,
+      totalUnits: totalPistol + totalShotgun
+    };
+  }
+
   joinRoom(ws, roomCode, options = {}) {
     const code = (roomCode || '').trim().toUpperCase();
     const room = this.rooms.get(code);
@@ -248,6 +455,10 @@ export class RoomManager {
       revivalsUsed: 0,
       isDead: false,
       isDowned: false,
+      bullets: 0,
+      shells: 0,
+      mag: { bullets: 0, shells: 0 },
+      discoveredWeapons: new Set(),
       lastUpdate: 0,
       seq: 0
     };
@@ -375,6 +586,41 @@ export class RoomManager {
       return { error: `Player too far from item (${dist.toFixed(2)}m > 2.1m limit)`, room, player };
     }
 
+    // Weapon discovery logic: Discovered weapons start with loaded magazine, no reserve ammo
+    if (item.type === 'weapon_pistol') {
+      if (!player.discoveredWeapons.has('weapon_pistol')) {
+        player.discoveredWeapons.add('weapon_pistol');
+        player.mag.bullets = AMMO_CONFIG.pistol.magCapacity;
+      }
+    } else if (item.type === 'weapon_shotgun') {
+      if (!player.discoveredWeapons.has('weapon_shotgun')) {
+        player.discoveredWeapons.add('weapon_shotgun');
+        player.mag.shells = AMMO_CONFIG.shotgun.magCapacity;
+      }
+    }
+
+    // Ammunition box pickups: exactly 2 rounds added to compatible weapon reserve
+    let ammoUpdate = null;
+    if (item.type === 'pistol_ammo' || item.type === 'ammo_box') {
+      player.bullets = (player.bullets || 0) + AMMO_CONFIG.pistol.roundsPerBox;
+      ammoUpdate = {
+        type: 'pistol_ammo',
+        ammoKey: 'bullets',
+        rounds: AMMO_CONFIG.pistol.roundsPerBox,
+        bullets: player.bullets,
+        shells: player.shells
+      };
+    } else if (item.type === 'shotgun_ammo') {
+      player.shells = (player.shells || 0) + AMMO_CONFIG.shotgun.roundsPerBox;
+      ammoUpdate = {
+        type: 'shotgun_ammo',
+        ammoKey: 'shells',
+        rounds: AMMO_CONFIG.shotgun.roundsPerBox,
+        bullets: player.bullets,
+        shells: player.shells
+      };
+    }
+
     // Add item to player's authoritative inventory
     const addResult = player.inventory.addItem(item.type, 1);
     if (!addResult.success) {
@@ -391,7 +637,8 @@ export class RoomManager {
       room,
       player,
       item,
-      inventory: player.inventory.serialize()
+      inventory: player.inventory.serialize(),
+      ammoUpdate
     };
   }
 

@@ -170,6 +170,17 @@ export class MPManager {
     };
 
     this.network.onItemPickupResponse = (payload) => {
+      if (payload && payload.success && this.localPlayer) {
+        if (payload.ammoUpdate) {
+          if (typeof payload.ammoUpdate.bullets === 'number') this.localPlayer.bullets = payload.ammoUpdate.bullets;
+          if (typeof payload.ammoUpdate.shells === 'number') this.localPlayer.shells = payload.ammoUpdate.shells;
+          this.localPlayer._notifyStateChange();
+        } else if (payload.itemType === 'pistol_ammo') {
+          this.localPlayer.addReserveAmmo('bullets', 2);
+        } else if (payload.itemType === 'shotgun_ammo') {
+          this.localPlayer.addReserveAmmo('shells', 2);
+        }
+      }
       if (window.interactionManager) {
         window.interactionManager.handlePickupResponse(payload);
       }
@@ -188,6 +199,11 @@ export class MPManager {
     };
 
     this.network.onInventoryUpdate = (payload) => {
+      if (payload && payload.ammoUpdate && this.localPlayer) {
+        if (typeof payload.ammoUpdate.bullets === 'number') this.localPlayer.bullets = payload.ammoUpdate.bullets;
+        if (typeof payload.ammoUpdate.shells === 'number') this.localPlayer.shells = payload.ammoUpdate.shells;
+        this.localPlayer._notifyStateChange();
+      }
       if (payload && payload.inventory) {
         this.inventory.deserialize(payload.inventory);
         if (this.localPlayer) {

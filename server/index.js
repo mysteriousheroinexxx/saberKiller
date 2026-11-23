@@ -888,7 +888,8 @@ wss.on('connection', (ws, req) => {
             itemId: res.item.id,
             itemType: res.item.type,
             playerId: res.player.id,
-            roomCode: res.room.code
+            roomCode: res.room.code,
+            ammoUpdate: res.ammoUpdate
           };
           if (res.room.pickupRequests) {
             res.room.pickupRequests.set(requestKey, acceptPayload);
@@ -914,7 +915,8 @@ wss.on('connection', (ws, req) => {
             addedItem: {
               id: res.item.id,
               type: res.item.type
-            }
+            },
+            ammoUpdate: res.ammoUpdate
           });
         }
         break;

@@ -119,14 +119,56 @@ export const ITEM_DEFINITIONS = {
     isPickup: true,
     stackable: true,
     maxStack: 5,
-    consumable: true,
+    consumable: false,
     equippable: false,
     droppable: true,
     metadata: {
       caliber: '.45 ACP',
-      roundsPerBox: 12,
+      roundsPerBox: 2,
       compatibleWeapons: ['pistol'],
-      description: 'Box of 12 rounds of .45 ACP ammunition for semi-automatic sidearm.'
+      description: 'Box containing 2 rounds of .45 ACP ammunition.'
+    }
+  },
+
+  pistol_ammo: {
+    id: 'pistol_ammo',
+    name: 'Pistol Ammunition',
+    category: ITEM_CATEGORIES.AMMUNITION,
+    modelUrl: 'assets/items/ammo_box.glb',
+    iconUrl: 'assets/ui/icons/item_ammo_box.svg',
+    isPickup: true,
+    stackable: true,
+    maxStack: 24,
+    consumable: false,
+    equippable: false,
+    droppable: true,
+    metadata: {
+      caliber: '.45 ACP',
+      rounds: 2,
+      compatibleWeapon: 'weapon_pistol',
+      ammoType: 'bullets',
+      description: 'Box containing 2 rounds of .45 ACP pistol ammunition.'
+    }
+  },
+
+  shotgun_ammo: {
+    id: 'shotgun_ammo',
+    name: 'Shotgun Ammunition',
+    category: ITEM_CATEGORIES.AMMUNITION,
+    modelUrl: 'assets/items/ammo_box.glb',
+    iconUrl: 'assets/ui/icons/item_ammo_box.svg',
+    isPickup: true,
+    stackable: true,
+    maxStack: 10,
+    consumable: false,
+    equippable: false,
+    droppable: true,
+    metadata: {
+      caliber: '12 Gauge',
+      rounds: 2,
+      compatibleWeapon: 'weapon_shotgun',
+      ammoType: 'shells',
+      description: 'Box containing 2 rounds of 12-gauge shotgun ammunition.'
     }
   },
 
@@ -278,11 +320,26 @@ export const ITEM_EFFECTS_CONFIG = {
     description: 'Recharges tactical flashlight battery by +50%'
   },
   ammo_box: {
-    rounds: 12,
+    rounds: 2,
     weapon: 'pistol',
-    maxReserve: 120,
+    ammoType: 'bullets',
+    maxReserve: 48,
     requiresMissingAmmo: true,
-    description: 'Adds 12 rounds of .45 ACP pistol ammunition'
+    description: 'Adds 2 rounds of .45 ACP pistol ammunition'
+  },
+  pistol_ammo: {
+    rounds: 2,
+    weapon: 'pistol',
+    ammoType: 'bullets',
+    maxReserve: 48,
+    description: 'Adds 2 rounds of .45 ACP pistol ammunition'
+  },
+  shotgun_ammo: {
+    rounds: 2,
+    weapon: 'shotgun',
+    ammoType: 'shells',
+    maxReserve: 12,
+    description: 'Adds 2 rounds of 12-gauge shotgun ammunition'
   }
 };
 

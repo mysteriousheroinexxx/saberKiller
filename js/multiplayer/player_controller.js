@@ -529,18 +529,31 @@ export class LocalPlayerController {
     if (hasPistol && !this._discoveredWeapons.has('weapon_pistol')) {
       this._discoveredWeapons.add('weapon_pistol');
       this.mag.bullets = 12;
-      this.bullets = Math.max(this.bullets, 36);
+      // Fixed Ammunition Economy: Do NOT generate additional reserve ammunition on discovery
       stateChanged = true;
     }
     if (hasShotgun && !this._discoveredWeapons.has('weapon_shotgun')) {
       this._discoveredWeapons.add('weapon_shotgun');
       this.mag.shells = 6;
-      this.shells = Math.max(this.shells, 6);
+      // Fixed Ammunition Economy: Do NOT generate additional reserve ammunition on discovery
       stateChanged = true;
     }
     if (stateChanged) {
       this._notifyStateChange();
     }
+  }
+
+  addReserveAmmo(ammoType, rounds = 2) {
+    if (ammoType === 'bullets' || ammoType === 'pistol_ammo' || ammoType === 'weapon_pistol') {
+      this.bullets = Math.min(48, (this.bullets || 0) + rounds);
+      this._notifyStateChange();
+      return this.bullets;
+    } else if (ammoType === 'shells' || ammoType === 'shotgun_ammo' || ammoType === 'weapon_shotgun') {
+      this.shells = Math.min(12, (this.shells || 0) + rounds);
+      this._notifyStateChange();
+      return this.shells;
+    }
+    return 0;
   }
 
   playCanThrowAnimation() {

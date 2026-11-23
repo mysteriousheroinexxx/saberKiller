@@ -143,6 +143,26 @@
         1,
         1
       ]
+    },
+    "pistol_ammo": {
+      "name": "Pistol Ammunition",
+      "category": "ammunition",
+      "modelUrl": "assets/items/ammo_box.glb",
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    "shotgun_ammo": {
+      "name": "Shotgun Ammunition",
+      "category": "ammunition",
+      "modelUrl": "assets/items/ammo_box.glb",
+      "scale": [
+        1,
+        1,
+        1
+      ]
     }
   },
   "placements": [
@@ -352,7 +372,7 @@
     },
     {
       "id": "floor_ammo_box_01",
-      "type": "ammo_box",
+      "type": "pistol_ammo",
       "category": "ammunition",
       "placementMode": "fixed",
       "position": [
@@ -557,7 +577,7 @@
     },
     {
       "id": "table_ammo_box_01",
-      "type": "ammo_box",
+      "type": "pistol_ammo",
       "category": "ammunition",
       "placementMode": "fixed",
       "position": [
@@ -768,7 +788,7 @@
     },
     {
       "id": "shelf_ammo_box_tier2",
-      "type": "ammo_box",
+      "type": "shotgun_ammo",
       "category": "ammunition",
       "placementMode": "fixed",
       "position": [
@@ -1089,6 +1109,330 @@
         "originalStatus": "valid",
         "reason": null
       }
+    },
+    {
+      "id": "floor_pistol_ammo_03",
+      "type": "pistol_ammo",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        45.1,
+        0,
+        -186.2
+      ],
+      "rotation": [
+        0,
+        0.1,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor"
+    },
+    {
+      "id": "floor_pistol_ammo_04",
+      "type": "pistol_ammo",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        42.1,
+        0,
+        -185.8
+      ],
+      "rotation": [
+        0,
+        -0.4,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor"
+    },
+    {
+      "id": "floor_pistol_ammo_05",
+      "type": "pistol_ammo",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        46.5,
+        0,
+        -184.2
+      ],
+      "rotation": [
+        0,
+        0.6,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor"
+    },
+    {
+      "id": "floor_pistol_ammo_06",
+      "type": "pistol_ammo",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        47.8,
+        0,
+        -187
+      ],
+      "rotation": [
+        0,
+        0.2,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor"
+    },
+    {
+      "id": "floor_pistol_ammo_07",
+      "type": "pistol_ammo",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        41.2,
+        0,
+        -188
+      ],
+      "rotation": [
+        0,
+        -0.2,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor"
+    },
+    {
+      "id": "floor_pistol_ammo_08",
+      "type": "pistol_ammo",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        43.9,
+        0,
+        -183.5
+      ],
+      "rotation": [
+        0,
+        0.8,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor"
+    },
+    {
+      "id": "floor_pistol_ammo_09",
+      "type": "pistol_ammo",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        45.8,
+        0,
+        -188.5
+      ],
+      "rotation": [
+        0,
+        0.3,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor"
+    },
+    {
+      "id": "floor_pistol_ammo_10",
+      "type": "pistol_ammo",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        48.2,
+        0,
+        -185
+      ],
+      "rotation": [
+        0,
+        -0.5,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor"
+    },
+    {
+      "id": "floor_pistol_ammo_11",
+      "type": "pistol_ammo",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        40.8,
+        0,
+        -186.5
+      ],
+      "rotation": [
+        0,
+        0.7,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor"
+    },
+    {
+      "id": "floor_pistol_ammo_12",
+      "type": "pistol_ammo",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        42.9,
+        0,
+        -184
+      ],
+      "rotation": [
+        0,
+        -0.1,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor"
+    },
+    {
+      "id": "floor_pistol_ammo_13",
+      "type": "pistol_ammo",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        46.2,
+        0,
+        -186.8
+      ],
+      "rotation": [
+        0,
+        0.4,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor"
+    },
+    {
+      "id": "floor_pistol_ammo_14",
+      "type": "pistol_ammo",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        47.1,
+        0,
+        -183
+      ],
+      "rotation": [
+        0,
+        -0.3,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor"
+    },
+    {
+      "id": "floor_pistol_ammo_15",
+      "type": "pistol_ammo",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        41.9,
+        0,
+        -187.2
+      ],
+      "rotation": [
+        0,
+        0.5,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor"
+    },
+    {
+      "id": "floor_pistol_ammo_16",
+      "type": "pistol_ammo",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        44.8,
+        0,
+        -189
+      ],
+      "rotation": [
+        0,
+        0.1,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor"
+    },
+    {
+      "id": "floor_pistol_ammo_17",
+      "type": "pistol_ammo",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        48.9,
+        0,
+        -186
+      ],
+      "rotation": [
+        0,
+        -0.6,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor"
+    },
+    {
+      "id": "floor_pistol_ammo_18",
+      "type": "pistol_ammo",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        43.6,
+        0,
+        -185.1
+      ],
+      "rotation": [
+        0,
+        0.2,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor"
+    },
+    {
+      "id": "floor_shotgun_ammo_02",
+      "type": "shotgun_ammo",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        41,
+        0,
+        -180.5
+      ],
+      "rotation": [
+        0,
+        0.3,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor"
+    },
+    {
+      "id": "floor_shotgun_ammo_03",
+      "type": "shotgun_ammo",
+      "category": "ammunition",
+      "placementMode": "fixed",
+      "position": [
+        39.8,
+        0,
+        -178.9
+      ],
+      "rotation": [
+        0,
+        -0.4,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor"
     }
   ],
   "spawnGroups": [
