@@ -620,9 +620,17 @@ const server = http.createServer((req, res) => {
   });
 });
 
-// 2. WebSocket Server attached to same HTTP server
+// 2. WebSocket Server attached to the same HTTP server and port
+server.on('upgrade', (req) => {
+  console.log(`[WS UPGRADE] ${req.method} ${req.url} origin=${req.headers.origin || '(none)'} host=${req.headers.host || '(none)'}`);
+});
+
 const wss = new WebSocketServer({ server });
 const roomManager = new RoomManager();
+
+wss.on('error', (err) => {
+  console.error(`[WS SERVER ERROR] code=${err.code || 'UNKNOWN'} message=${err.message}`);
+});
 
 function send(ws, type, payload) {
   if (ws.readyState === WebSocket.OPEN) {
@@ -631,6 +639,7 @@ function send(ws, type, payload) {
 }
 
 wss.on('connection', (ws, req) => {
+  console.log(`[WS CONNECTED] remote=${req.socket.remoteAddress || '(unknown)'} url=${req.url || '/'} origin=${req.headers.origin || '(none)'}`);
   // Ping/Pong keep-alive
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
@@ -889,7 +898,8 @@ wss.on('connection', (ws, req) => {
     }
   });
 
-  ws.on('close', () => {
+  ws.on('close', (code, reason) => {
+    console.log(`[WS CLOSED] remote=${req.socket.remoteAddress || '(unknown)'} code=${code} reason=${reason.toString() || '(none)'}`);
     const res = roomManager.handleDisconnect(ws);
     if (res && !res.roomDeleted && res.room) {
       for (const [otherId, otherPlayer] of res.room.players) {
@@ -902,7 +912,7 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('error', (err) => {
-    console.warn(`[WS Error] ${err.message}`);
+    console.warn(`[WS ERROR] remote=${req.socket.remoteAddress || '(unknown)'} code=${err.code || 'UNKNOWN'} message=${err.message}`);
   });
 });
 
@@ -914,6 +924,14 @@ const heartbeatInterval = setInterval(() => {
     ws.ping();
   });
 }, 25000);
+
+server.on('error', (err) => {
+  console.error(`[HTTP/WS LISTENER ERROR] ${HOST}:${PORT} code=${err.code || 'UNKNOWN'} message=${err.message}`);
+  if (err.code === 'EADDRINUSE' || err.code === 'EACCES' || err.code === 'EPERM') {
+    clearInterval(heartbeatInterval);
+    process.exitCode = 1;
+  }
+});
 
 wss.on('close', () => {
   clearInterval(heartbeatInterval);

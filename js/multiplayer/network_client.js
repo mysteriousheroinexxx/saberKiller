@@ -18,6 +18,19 @@ export const MSG_TYPES = {
   ROOM_ITEMS_STATE: 'ROOM_ITEMS_STATE'
 };
 
+function resolveWebSocketUrl(input) {
+  const value = (input || '').trim();
+  const defaultScheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  if (!value) return `${defaultScheme}//${window.location.host}`;
+  if (/^wss?:\/\//i.test(value)) return new URL(value).toString();
+  if (/^https?:\/\//i.test(value)) {
+    const parsed = new URL(value);
+    parsed.protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+    return parsed.toString();
+  }
+  return `${defaultScheme}//${value.replace(/^\/+/, '')}`;
+}
+
 export class NetworkClient {
   constructor() {
     this.ws = null;
@@ -26,6 +39,10 @@ export class NetworkClient {
     this.myPlayerId = null;
     this.currentRoomCode = null;
     this.heartbeatTimer = null;
+    this.reconnectTimer = null;
+    this.reconnectAttempts = 0;
+    this.shouldReconnect = false;
+    this.openWaiters = new Set();
 
     // Event listeners
     this.onStatusChange = null;
@@ -42,40 +59,59 @@ export class NetworkClient {
   }
 
   connect(url) {
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
-      this.disconnect();
-    }
-
-    // Default to current host if unspecified
-    if (!url || url.trim() === '') {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      url = `${protocol}//${window.location.host}`;
-    }
-
-    // Format protocol if user entered raw IP:PORT
-    if (!url.startsWith('ws://') && !url.startsWith('wss://')) {
-      const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-      url = protocol + url;
-    }
-
-    this.serverUrl = url;
-    this._setStatus('connecting', `Connecting to ${url}...`);
-
+    let resolvedUrl;
     try {
-      this.ws = new WebSocket(url);
+      resolvedUrl = resolveWebSocketUrl(url);
     } catch (e) {
-      this._setStatus('disconnected', `Connection error: ${e.message}`);
+      this._setStatus('error', `Invalid WebSocket address: ${e.message}`);
       if (this.onError) this.onError(e.message);
-      return;
+      return null;
     }
 
-    this.ws.onopen = () => {
+    if (this.serverUrl === resolvedUrl && this.ws &&
+        (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      this.shouldReconnect = true;
+      return this.ws;
+    }
+
+    if (this.ws) this.disconnect();
+    this.serverUrl = resolvedUrl;
+    this.shouldReconnect = true;
+    this.reconnectAttempts = 0;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    return this._openSocket();
+  }
+
+  _openSocket() {
+    if (!this.serverUrl || !this.shouldReconnect || this.ws) return this.ws;
+    this._setStatus('connecting', `Connecting to ${this.serverUrl}...`);
+    console.info(`[NetworkClient] Opening WebSocket: ${this.serverUrl}`);
+
+    let socket;
+    try {
+      socket = new WebSocket(this.serverUrl);
+    } catch (e) {
+      console.error(`[NetworkClient] WebSocket construction failed for ${this.serverUrl}: ${e.message}`);
+      this._setStatus('error', `WebSocket connection failed: ${e.message}`);
+      if (this.onError) this.onError(e.message);
+      this._scheduleReconnect();
+      return null;
+    }
+    this.ws = socket;
+
+    socket.onopen = () => {
+      if (this.ws !== socket) return;
       this.isConnected = true;
-      this._setStatus('connected', 'Connected to server');
+      this.reconnectAttempts = 0;
+      console.info(`[NetworkClient] WebSocket open: ${this.serverUrl}`);
+      this._setStatus('connected', `Connected to ${this.serverUrl}`);
       this._startHeartbeat();
+      for (const waiter of this.openWaiters) waiter.resolve(socket);
+      this.openWaiters.clear();
     };
 
-    this.ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
       let msg = null;
       try {
         msg = JSON.parse(event.data);
@@ -87,17 +123,42 @@ export class NetworkClient {
       this._handleMessage(msg);
     };
 
-    this.ws.onclose = (event) => {
+    socket.onclose = (event) => {
+      console.warn(`[NetworkClient] WebSocket close: url=${this.serverUrl}, code=${event.code}, reason=${event.reason || '(none)'}, clean=${event.wasClean}`);
+      if (this.ws !== socket) return;
       this.isConnected = false;
       this._stopHeartbeat();
+      this.ws = null;
       this._setStatus('disconnected', `Disconnected (${event.code || 'Closed'})`);
+      if (this.shouldReconnect) this._scheduleReconnect();
     };
 
-    this.ws.onerror = (err) => {
-      console.warn('[NetworkClient] WebSocket error event');
-      this._setStatus('error', 'Connection encountered an error');
-      if (this.onError) this.onError('WebSocket connection error');
+    socket.onerror = () => {
+      if (this.ws !== socket) return;
+      console.error(`[NetworkClient] WebSocket error event for ${this.serverUrl}; browser does not expose handshake details here`);
+      this._setStatus('error', `WebSocket connection error: ${this.serverUrl}`);
+      if (this.onError) this.onError(`WebSocket connection error: ${this.serverUrl}`);
     };
+
+    return socket;
+  }
+
+  _scheduleReconnect() {
+    if (!this.shouldReconnect || this.reconnectTimer || this.ws) return;
+    this.reconnectAttempts++;
+    const delay = Math.min(500 * (2 ** Math.min(this.reconnectAttempts - 1, 5)), 15000);
+    this._setStatus('connecting', `Reconnecting to ${this.serverUrl} in ${Math.ceil(delay / 1000)}s...`);
+    console.warn(`[NetworkClient] Reconnect attempt ${this.reconnectAttempts} scheduled in ${delay}ms`);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this._openSocket();
+    }, delay);
+  }
+
+  whenOpen() {
+    if (this.isConnected && this.ws?.readyState === WebSocket.OPEN) return Promise.resolve(this.ws);
+    if (!this.shouldReconnect) return Promise.reject(new Error('WebSocket connection has not been requested'));
+    return new Promise((resolve, reject) => this.openWaiters.add({ resolve, reject }));
   }
 
   _startHeartbeat() {
@@ -214,14 +275,18 @@ export class NetworkClient {
   }
 
   disconnect() {
+    this.shouldReconnect = false;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     this._stopHeartbeat();
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
+    const socket = this.ws;
+    this.ws = null;
     this.isConnected = false;
     this.myPlayerId = null;
     this.currentRoomCode = null;
+    for (const waiter of this.openWaiters) waiter.reject(new Error('WebSocket connection cancelled'));
+    this.openWaiters.clear();
+    if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, 'Client disconnect');
     this._setStatus('disconnected', 'Disconnected');
   }
 }

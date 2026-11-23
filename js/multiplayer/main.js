@@ -282,6 +282,23 @@ async function init() {
   }
 
   // 5. Connect button actions
+  function connectThen(serverUrl, action) {
+    if (mpManager.network.isConnected) {
+      action();
+      return;
+    }
+    btnCreate.disabled = true;
+    btnJoin.disabled = true;
+    mpManager.connect(serverUrl);
+    mpManager.network.whenOpen()
+      .then(() => action())
+      .catch(err => showError(err.message))
+      .finally(() => {
+        btnCreate.disabled = false;
+        btnJoin.disabled = false;
+      });
+  }
+
   btnCreate.addEventListener('click', () => {
     const srv = serverInput.value.trim();
     const customCode = roomInput.value.trim().toUpperCase() || null;
@@ -289,14 +306,7 @@ async function init() {
       ? worldEditor.ui.layoutSelect.value
       : null;
 
-    if (!mpManager.network.isConnected) {
-      mpManager.connect(srv);
-      mpManager.network.ws.addEventListener('open', () => {
-        mpManager.createRoom(customCode, layoutRev);
-      }, { once: true });
-    } else {
-      mpManager.createRoom(customCode, layoutRev);
-    }
+    connectThen(srv, () => mpManager.createRoom(customCode, layoutRev));
   });
 
   btnJoin.addEventListener('click', () => {
@@ -306,14 +316,7 @@ async function init() {
       showError('Please enter a room code.');
       return;
     }
-    if (!mpManager.network.isConnected) {
-      mpManager.connect(srv);
-      mpManager.network.ws.addEventListener('open', () => {
-        mpManager.joinRoom(code);
-      }, { once: true });
-    } else {
-      mpManager.joinRoom(code);
-    }
+    connectThen(srv, () => mpManager.joinRoom(code));
   });
 
   // Click canvas to resume pointer lock
