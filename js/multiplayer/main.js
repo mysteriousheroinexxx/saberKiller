@@ -21,6 +21,8 @@ import { SanityController, SANITY_STATE, SANITY_EVENTS } from './sanity_controll
 import { SanityHUD } from './sanity_hud.js';
 import { WorldItemManager } from './item_manager.js';
 import { WorldPlacementEditor } from './world_editor.js';
+import { InteractionManager } from './interaction_manager.js';
+import { InventoryUI } from './inventory_ui.js';
 
 let scene, camera, renderer, mpManager, playerLight;
 let lastTime = performance.now();
@@ -28,6 +30,9 @@ let isGameActive = false;
 let isEnvReady = false;
 let itemManager = null;
 let worldEditor = null;
+let interactionManager = null;
+let inventoryUI = null;
+let devToolsEnabled = false;
 
 // Survival Mode Sanity System
 let sanityController = null;
@@ -220,17 +225,38 @@ async function init() {
   }
 
   // 4. Initialize MPManager
-  const devToolsEnabled = await checkDevToolsConfig();
+  devToolsEnabled = await checkDevToolsConfig();
+  if (!devToolsEnabled) {
+    console.log('[DEV TOOLS] Developer tools disabled by server. Removing panels from DOM.');
+    document.getElementById('dev-comparison-panel')?.remove();
+    document.getElementById('dev-panel-toggle')?.remove();
+    document.getElementById('world-editor-overlay')?.remove();
+    document.getElementById('dev-pickup-hud-diag')?.remove();
+    document.getElementById('dev-weapon-hud-diag')?.remove();
+  }
 
   mpManager = new MPManager(scene, camera, {
     onStatusChange: ({ status, message }) => {
       if (statusEl) statusEl.textContent = message;
+      if (status === 'disconnected') {
+        disableUnloadGuard();
+        isGameActive = false;
+      }
     },
     onRoomJoined: (payload) => {
       isGameActive = true;
+      enableUnloadGuard();
+      if (document.activeElement && typeof document.activeElement.blur === 'function') {
+        try { document.activeElement.blur(); } catch (e) {}
+      }
+      if (renderer && renderer.domElement) {
+        renderer.domElement.tabIndex = 0;
+        try { renderer.domElement.focus(); } catch (e) {}
+      }
       if (lobbyPanel) lobbyPanel.style.display = 'none';
       if (hudOverlay) hudOverlay.style.display = 'block';
       if (sanityHUD) sanityHUD.setVisible(true);
+      if (inventoryUI) inventoryUI.render();
       if (roomInfoEl) roomInfoEl.textContent = `ROOM: ${payload.roomCode}`;
       if (countEl) countEl.textContent = `PLAYERS: ${payload.totalPlayers || 1} / 2`;
 
@@ -265,60 +291,160 @@ async function init() {
     }
   });
 
+  window.mpManager = mpManager;
+  window.localPlayer = mpManager.localPlayer;
+
   if (sanityHUD && mpManager.localPlayer) {
     sanityHUD.setPlayer(mpManager.localPlayer);
   }
 
+  inventoryUI = new InventoryUI(mpManager.inventory, mpManager.localPlayer, mpManager.network, document.body);
+  window.inventoryUI = inventoryUI;
+
+  // Auto-connect to local server immediately on page load (runs concurrently with heavy 3D asset downloads)
+  mpManager.connect(defaultWsHost);
+
   // 5. Connect button actions
+  function connectThen(serverUrl, action) {
+    if (mpManager.network.isConnected) {
+      action();
+      return;
+    }
+    btnCreate.disabled = true;
+    btnJoin.disabled = true;
+    mpManager.connect(serverUrl);
+    mpManager.network.whenOpen()
+      .then(() => action())
+      .catch(err => showError(err.message))
+      .finally(() => {
+        btnCreate.disabled = false;
+        btnJoin.disabled = false;
+      });
+  }
+
   btnCreate.addEventListener('click', () => {
+    if (!isEnvReady) {
+      showError('Level environment is still loading, please wait...');
+      return;
+    }
     const srv = serverInput.value.trim();
     const customCode = roomInput.value.trim().toUpperCase() || null;
     const layoutRev = (devToolsEnabled && worldEditor?.ui?.layoutSelect?.value && worldEditor.ui.layoutSelect.value !== 'default')
       ? worldEditor.ui.layoutSelect.value
       : null;
 
-    if (!mpManager.network.isConnected) {
-      mpManager.connect(srv);
-      mpManager.network.ws.addEventListener('open', () => {
-        mpManager.createRoom(customCode, layoutRev);
-      }, { once: true });
-    } else {
-      mpManager.createRoom(customCode, layoutRev);
-    }
+    connectThen(srv, () => mpManager.createRoom(customCode, layoutRev));
   });
 
   btnJoin.addEventListener('click', () => {
+    if (!isEnvReady) {
+      showError('Level environment is still loading, please wait...');
+      return;
+    }
     const srv = serverInput.value.trim();
     const code = roomInput.value.trim().toUpperCase();
     if (!code) {
       showError('Please enter a room code.');
       return;
     }
-    if (!mpManager.network.isConnected) {
-      mpManager.connect(srv);
-      mpManager.network.ws.addEventListener('open', () => {
-        mpManager.joinRoom(code);
-      }, { once: true });
-    } else {
-      mpManager.joinRoom(code);
-    }
+    connectThen(srv, () => mpManager.joinRoom(code));
   });
 
   // Click canvas to resume pointer lock
+  renderer.domElement.tabIndex = 0;
   renderer.domElement.addEventListener('click', () => {
-    if (isGameActive && mpManager && !mpManager.localPlayer.isEditorActive && (!worldEditor || !worldEditor.isOpen)) {
+    try { renderer.domElement.focus(); } catch (e) {}
+    if (isGameActive && mpManager && !mpManager.localPlayer.isEditorActive && (!worldEditor || !worldEditor.isOpen) && !window.inventoryUI?.isOpen) {
       mpManager.localPlayer.requestPointerLock(renderer.domElement);
     }
   });
 
-  // 5b. Browser unload confirmation safeguard during active gameplay
-  window.addEventListener('beforeunload', (e) => {
+  // 5b. Browser unload confirmation safeguard and Ctrl+W capture protection
+  // Accidental Ctrl+W / Cmd+W Tab Closure Prevention (Capture Phase)
+  function handleCtrlWCapture(e) {
+    const isW = (e.key === 'w' || e.key === 'W' || e.code === 'KeyW' || e.keyCode === 87);
+    const isCtrlOrCmd = Boolean(e.ctrlKey || e.metaKey);
+
+    if (isCtrlOrCmd && isW) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') {
+        e.stopImmediatePropagation();
+      }
+      console.log('[INPUT GUARD] Intercepted Ctrl+W / Cmd+W in capture phase (prevented default & propagation)');
+      return false;
+    }
+  }
+
+  // Attach capture-phase listener directly to window
+  window.addEventListener('keydown', handleCtrlWCapture, true);
+
+  // Dynamic BeforeUnload Safeguard: Active ONLY during live multiplayer sessions
+  let isUnloadGuardActive = false;
+
+  function beforeUnloadHandler(e) {
     if (isGameActive && mpManager?.network?.isConnected) {
       e.preventDefault();
-      e.returnValue = 'You are currently in an active multiplayer room. Are you sure you want to disconnect?';
-      return e.returnValue;
+      const msg = 'You are currently in an active multiplayer session. Are you sure you want to disconnect?';
+      e.returnValue = msg;
+      return msg;
     }
+  }
+
+  function enableUnloadGuard() {
+    if (isUnloadGuardActive) return;
+    window.addEventListener('beforeunload', beforeUnloadHandler);
+    isUnloadGuardActive = true;
+    console.log('[SESSION] Unload guard enabled for active multiplayer session');
+  }
+
+  function disableUnloadGuard() {
+    if (!isUnloadGuardActive) return;
+    window.removeEventListener('beforeunload', beforeUnloadHandler);
+    isUnloadGuardActive = false;
+    console.log('[SESSION] Unload guard removed (session ended or intentionally leaving)');
+  }
+
+  // Intentional session exit handler: cleans up guard and returns to lobby cleanly
+  function leaveMultiplayerSession() {
+    disableUnloadGuard();
+    isGameActive = false;
+    if (mpManager) {
+      mpManager.disconnect();
+    }
+    if (hudOverlay) hudOverlay.style.display = 'none';
+    if (lobbyPanel) lobbyPanel.style.display = 'block';
+    if (sanityHUD) sanityHUD.setVisible(false);
+    if (document.pointerLockElement) {
+      try { document.exitPointerLock(); } catch (err) {}
+    }
+    if (statusEl) statusEl.textContent = 'Disconnected from session.';
+    console.log('[SESSION] Intentionally left multiplayer session; unload guard removed.');
+  }
+
+  // Hook intentional leave buttons and links
+  const btnLeaveRoom = document.getElementById('btn-leave-room');
+  if (btnLeaveRoom) {
+    btnLeaveRoom.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      leaveMultiplayerSession();
+    });
+  }
+
+  document.querySelectorAll('.back-link').forEach(link => {
+    link.addEventListener('click', () => {
+      leaveMultiplayerSession();
+    });
   });
+
+  // Expose helpers for verification and external integration
+  window.leaveMultiplayerSession = leaveMultiplayerSession;
+  window.enableUnloadGuard = enableUnloadGuard;
+  window.disableUnloadGuard = disableUnloadGuard;
+  window.handleCtrlWCapture = handleCtrlWCapture;
+  window.beforeUnloadHandler = beforeUnloadHandler;
+  window.isUnloadGuardActive = () => isUnloadGuardActive;
 
   // 6. Load Level 0 Environment
   statusEl.textContent = 'Loading Level 0 PBR Environment...';
@@ -347,6 +473,7 @@ async function init() {
 
     // Initialize world item placements with collision handler for intersection checks
     itemManager = new WorldItemManager(scene, ch);
+    mpManager.setItemManager(itemManager);
     window.itemManager = itemManager;
   });
 
@@ -359,11 +486,46 @@ async function init() {
     await itemManager.loadWorldItems('assets/data/world_items.json');
   }
 
-  isEnvReady = true;
-  statusEl.textContent = 'Ready to Connect';
+  // Initialize Reusable Interaction Framework
+  interactionManager = new InteractionManager(camera, scene, itemManager, {
+    maxDistance: 2.1,
+    onInteract: (target, requestId) => {
+      const pPos = mpManager.localPlayer ? mpManager.localPlayer.pos : null;
+      const clientPos = pPos ? { x: +pPos.x.toFixed(3), y: +(pPos.y || 0).toFixed(3), z: +pPos.z.toFixed(3) } : null;
 
-  // Auto-connect to local server on page load
-  mpManager.connect(defaultWsHost);
+      if (target.isPickup) {
+        console.log(`[STAGE 3/19] [CLIENT] Pickup request created: target=${target.id} (${target.type})`);
+        console.log(`[STAGE 4/19] [CLIENT] Request ID assigned: ${requestId} for item: ${target.id}`);
+        console.log(`[PICKUP ${requestId}] E received; constructing request for ${target.id}`);
+        console.log(`[PICKUP ${requestId}] Sending ITEM_PICKUP_REQUEST via WebSocket`);
+        const result = mpManager.network.requestItemPickup(target.id, requestId, clientPos);
+        if (result.sent) console.log(`[PICKUP ${requestId}] WebSocket send completed`);
+        else console.warn(`[PICKUP ${requestId}] WebSocket send did not occur (readyState=${mpManager.network.ws?.readyState ?? 'no socket'})`);
+        return result;
+      } else if (target.type === 'vending_almond' || target.id?.startsWith('prop_vending')) {
+        console.log(`[VENDING ${requestId}] E received on ${target.id}; constructing dispense request`);
+        const result = mpManager.network.requestVendingDispense(target.id, requestId, clientPos);
+        if (result.sent) console.log(`[VENDING ${requestId}] WebSocket send completed`);
+        else console.warn(`[VENDING ${requestId}] WebSocket send did not occur (readyState=${mpManager.network.ws?.readyState ?? 'no socket'})`);
+        return result;
+      }
+    },
+    onDiagnosticsChange: (diag) => {
+      updatePickupDiagnosticsUI(diag);
+    }
+  });
+  window.interactionManager = interactionManager;
+  window.inventory = mpManager.inventory;
+
+  isEnvReady = true;
+  window.isEnvReady = true;
+  if (mpManager?.network?.isConnected) {
+    statusEl.textContent = `Connected (${mpManager.network.serverUrl})`;
+  } else if (!mpManager?.network?.ws) {
+    mpManager.connect(defaultWsHost);
+  } else {
+    statusEl.textContent = 'Connecting to Server...';
+  }
 
   // Resize handling
   window.addEventListener('resize', () => {
@@ -401,12 +563,20 @@ async function init() {
     });
     window.worldEditor = worldEditor;
     initDevComparisonUI();
+
+    // Developer weapon firing diagnostic HUD element
+    const devWeaponHud = document.getElementById('dev-weapon-hud-diag');
+    if (devWeaponHud) {
+      devWeaponHud.style.display = 'block';
+    }
   } else {
     // If not enabled by server flag, completely remove dev panel elements and do not bind dev keys
     console.log('[DEV TOOLS] Developer tools disabled by server. Removing panel from DOM.');
     document.getElementById('dev-comparison-panel')?.remove();
     document.getElementById('dev-panel-toggle')?.remove();
     document.getElementById('world-editor-overlay')?.remove();
+    document.getElementById('dev-pickup-hud-diag')?.remove();
+    document.getElementById('dev-weapon-hud-diag')?.remove();
   }
 
   // Check URL query parameters for verification suite
@@ -884,6 +1054,238 @@ function initDevComparisonUI() {
   document.getElementById('dev-item-torch')?.addEventListener('click', () => mpManager?.localPlayer?.setWeapon(2));
   document.getElementById('dev-item-fire')?.addEventListener('click', () => mpManager?.localPlayer?.fire());
   document.getElementById('dev-item-reload')?.addEventListener('click', () => mpManager?.localPlayer?.startReload());
+
+  // Developer Inventory & Pickup Inspection UI
+  const invPlayerEl = document.getElementById('dev-inv-player');
+  const invSlotsEl = document.getElementById('dev-inv-slots');
+  const invGridEl = document.getElementById('dev-inventory-grid');
+  const btnToggleSlotDetails = document.getElementById('dev-btn-toggle-slot-details');
+  const btnQueryRoomItems = document.getElementById('dev-btn-query-room-items');
+  const slotDetailsEl = document.getElementById('dev-slot-details');
+  const pickupLogEl = document.getElementById('dev-pickup-log');
+
+  function appendPickupLog(html) {
+    if (!pickupLogEl) return;
+    const time = new Date().toLocaleTimeString();
+    const row = document.createElement('div');
+    row.style.marginBottom = '2px';
+    row.innerHTML = `<span style="color:#7a7872;">[${time}]</span> ${html}`;
+    pickupLogEl.appendChild(row);
+    pickupLogEl.scrollTop = pickupLogEl.scrollHeight;
+  }
+
+  function renderDevInventoryGrid() {
+    if (!invGridEl || !mpManager?.inventory) return;
+    const slots = mpManager.inventory.getSlots();
+    const occupied = slots.filter(s => s !== null).length;
+
+    if (invPlayerEl) {
+      invPlayerEl.textContent = `PLAYER: ${mpManager.myPlayerId || 'LOCAL'}`;
+    }
+    if (invSlotsEl) {
+      invSlotsEl.textContent = `SLOTS: ${occupied} / ${mpManager.inventory.capacity}`;
+    }
+
+    invGridEl.innerHTML = '';
+    slots.forEach((slot, idx) => {
+      const slotBox = document.createElement('div');
+      slotBox.style.aspectRatio = '1 / 1';
+      slotBox.style.background = slot ? 'rgba(30, 28, 22, 0.85)' : 'rgba(12, 12, 10, 0.6)';
+      slotBox.style.border = slot ? '1px solid #d4af37' : '1px solid rgba(212, 175, 55, 0.15)';
+      slotBox.style.borderRadius = '3px';
+      slotBox.style.position = 'relative';
+      slotBox.style.display = 'flex';
+      slotBox.style.flexDirection = 'column';
+      slotBox.style.alignItems = 'center';
+      slotBox.style.justifyContent = 'center';
+      slotBox.title = slot ? `${slot.name} (${slot.typeId})\nQty: ${slot.quantity}/${slot.maxStack}\nID: ${slot.instanceId}` : `Slot #${idx + 1} (Empty)`;
+
+      const numBadge = document.createElement('span');
+      numBadge.style.position = 'absolute';
+      numBadge.style.top = '1px';
+      numBadge.style.left = '3px';
+      numBadge.style.fontSize = '8px';
+      numBadge.style.color = '#7a7872';
+      numBadge.textContent = `${idx + 1}`;
+      slotBox.appendChild(numBadge);
+
+      if (slot) {
+        if (slot.iconUrl) {
+          const img = document.createElement('img');
+          img.src = slot.iconUrl;
+          img.style.width = '18px';
+          img.style.height = '18px';
+          img.style.objectFit = 'contain';
+          slotBox.appendChild(img);
+        } else {
+          const label = document.createElement('span');
+          label.style.fontSize = '9px';
+          label.style.fontWeight = 'bold';
+          label.textContent = slot.typeId.substring(0, 3).toUpperCase();
+          slotBox.appendChild(label);
+        }
+
+        if (slot.quantity > 1) {
+          const countBadge = document.createElement('span');
+          countBadge.style.position = 'absolute';
+          countBadge.style.bottom = '1px';
+          countBadge.style.right = '3px';
+          countBadge.style.fontSize = '9px';
+          countBadge.style.fontWeight = 'bold';
+          countBadge.style.color = '#edece6';
+          countBadge.textContent = `${slot.quantity}`;
+          slotBox.appendChild(countBadge);
+        }
+      }
+
+      invGridEl.appendChild(slotBox);
+    });
+
+    renderDevSlotDetails();
+  }
+
+  function renderDevSlotDetails() {
+    if (!slotDetailsEl || !mpManager?.inventory) return;
+    const slots = mpManager.inventory.getSlots();
+    const occupied = slots.filter(s => s !== null);
+    if (occupied.length === 0) {
+      slotDetailsEl.innerHTML = '<div style="color: #9c9a92;">No inventory items.</div>';
+      return;
+    }
+    let html = '<table style="width:100%; border-collapse:collapse; font-size:10px;">';
+    html += '<tr style="border-bottom: 1px solid rgba(212,175,55,0.3); color:#d4af37;"><th style="text-align:left;">#</th><th style="text-align:left;">Item</th><th style="text-align:center;">Qty</th><th style="text-align:left;">Instance</th></tr>';
+    slots.forEach((s, idx) => {
+      if (s) {
+        html += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+          <td>${idx + 1}</td>
+          <td>${s.name}</td>
+          <td style="text-align:center;">${s.quantity}/${s.maxStack}</td>
+          <td style="color:#9c9a92; font-size:9px;" title="${s.instanceId}">${s.instanceId.split('_').slice(-2).join('_')}</td>
+        </tr>`;
+      }
+    });
+    html += '</table>';
+    slotDetailsEl.innerHTML = html;
+  }
+
+  if (mpManager?.inventory) {
+    mpManager.inventory.subscribe((slots, event) => {
+      renderDevInventoryGrid();
+      if (event && event.type === 'item_added') {
+        appendPickupLog(`<span style="color:#a8ffb2;">+ Added ${event.added}x ${event.typeId}</span>`);
+      }
+    });
+  }
+
+  if (btnToggleSlotDetails) {
+    btnToggleSlotDetails.addEventListener('click', () => {
+      if (slotDetailsEl) {
+        const isHidden = slotDetailsEl.style.display === 'none';
+        slotDetailsEl.style.display = isHidden ? 'block' : 'none';
+        btnToggleSlotDetails.textContent = isHidden ? 'Hide Details' : 'Inspect Details';
+      }
+    });
+  }
+
+  if (btnQueryRoomItems) {
+    btnQueryRoomItems.addEventListener('click', () => {
+      if (mpManager?.network?.isConnected) {
+        mpManager.network.send('ROOM_ITEMS_STATE', {});
+        appendPickupLog('Requested room items state...');
+      } else {
+        appendPickupLog('<span style="color:#ff6b6b">Not connected to room</span>');
+      }
+    });
+  }
+
+  // Hook into mpManager ui events for dev pickup log
+  const prevItemCollected = mpManager.ui.onItemCollected;
+  mpManager.ui.onItemCollected = (payload) => {
+    if (prevItemCollected) prevItemCollected(payload);
+    appendPickupLog(`<span style="color:#d4af37;">[COLLECTED]</span> ${payload.itemId} (${payload.itemType}) by ${payload.collectedBy}`);
+  };
+
+  const prevPickupRejected = mpManager.ui.onPickupRejected;
+  mpManager.ui.onPickupRejected = (payload) => {
+    if (prevPickupRejected) prevPickupRejected(payload);
+    appendPickupLog(`<span style="color:#ff6b6b;">[REJECTED]</span> ${payload.itemId || 'unknown'}: ${payload.reason}`);
+  };
+
+  const prevRoomItemsState = mpManager.ui.onRoomItemsState;
+  mpManager.ui.onRoomItemsState = (payload) => {
+    if (prevRoomItemsState) prevRoomItemsState(payload);
+    const available = payload.items ? payload.items.filter(i => i.available).length : 0;
+    const total = payload.items ? payload.items.length : 0;
+    appendPickupLog(`<span style="color:#a0e0ff;">[ROOM STATE]</span> ${payload.roomCode}: ${available}/${total} items available`);
+  };
+
+  // Real-time developer pickup pipeline diagnostics update
+  function updatePickupDiagnosticsUI(diag) {
+    if (!diag) return;
+    const targetIdEl = document.getElementById('diag-target-id');
+    const targetTypeEl = document.getElementById('diag-target-type');
+    const eligEl = document.getElementById('diag-target-eligibility');
+    const keyEl = document.getElementById('diag-last-key');
+    const reqEl = document.getElementById('diag-last-request');
+    const serverEl = document.getElementById('diag-server-result');
+    const invEl = document.getElementById('diag-inv-result');
+    const rejEl = document.getElementById('diag-last-rejection');
+
+    if (targetIdEl) targetIdEl.textContent = diag.targetId || 'NONE';
+    if (targetTypeEl) targetTypeEl.textContent = diag.targetType || '--';
+    if (eligEl) {
+      eligEl.textContent = diag.eligibility || 'NOT TARGETED';
+      eligEl.style.color = (diag.eligibility && diag.eligibility.startsWith('ELIGIBLE')) ? '#00ff88' : ((diag.eligibility && diag.eligibility.startsWith('OUT')) ? '#ff6b6b' : '#9c9a92');
+    }
+    if (keyEl) keyEl.textContent = diag.lastKey || 'NONE';
+    if (reqEl) reqEl.textContent = diag.lastRequest || 'NONE';
+    if (serverEl) {
+      serverEl.textContent = diag.serverResult || 'NONE';
+      if (diag.serverResult && diag.serverResult.startsWith('ACCEPTED')) {
+        serverEl.style.color = '#00ff88';
+      } else if (diag.serverResult && diag.serverResult.startsWith('REJECTED')) {
+        serverEl.style.color = '#ff6b6b';
+      } else if (diag.serverResult && (diag.serverResult.startsWith('TIMEOUT') || diag.serverResult.startsWith('DISCONNECTED'))) {
+        serverEl.style.color = '#ffaa00';
+      } else if (diag.serverResult && diag.serverResult.startsWith('PENDING')) {
+        serverEl.style.color = '#ffd700';
+      } else {
+        serverEl.style.color = '#edece6';
+      }
+    }
+    if (invEl) invEl.textContent = diag.inventoryResult || '0 / 12 slots';
+    if (rejEl) {
+      rejEl.textContent = diag.lastRejection || 'NONE';
+      rejEl.style.color = (diag.lastRejection && diag.lastRejection !== 'NONE') ? '#ff4444' : '#9c9a92';
+    }
+
+    // Live HUD reflection of pickup pipeline (only under --dev-rendering)
+    const hudDiag = document.getElementById('dev-pickup-hud-diag');
+    const hudTarget = document.getElementById('hud-diag-target');
+    const hudStatus = document.getElementById('hud-diag-status');
+    if (hudDiag && hudTarget && hudStatus) {
+      if (diag.targetId) {
+        hudDiag.style.display = 'block';
+        hudTarget.textContent = `${diag.targetId} (${diag.targetType || 'item'})`;
+        const shortKey = diag.lastKey ? diag.lastKey.split(' at ')[0] : 'NONE';
+        const shortServer = diag.serverResult ? diag.serverResult.split(' at ')[0] : 'NONE';
+        hudStatus.innerHTML = `${diag.eligibility} &middot; KEY: ${shortKey} &middot; ${shortServer}`;
+      } else if (diag.serverResult && diag.serverResult !== 'NONE') {
+        hudDiag.style.display = 'block';
+        hudTarget.textContent = 'NONE';
+        hudStatus.innerHTML = `${diag.serverResult.split(' at ')[0]}`;
+      } else {
+        hudDiag.style.display = 'none';
+      }
+    }
+  }
+  window.updatePickupDiagnosticsUI = updatePickupDiagnosticsUI;
+
+  // Initial render
+  renderDevInventoryGrid();
+  if (interactionManager?.diagnostics) {
+    updatePickupDiagnosticsUI(interactionManager.diagnostics);
+  }
 
   // Keyboard shortcut listener (Preserves WASD and eliminates single-letter hotkey conflicts)
   window.addEventListener('keydown', (e) => {
@@ -1463,6 +1865,31 @@ function loop(timestamp) {
   // Update Survival Mode HUD (Health, Resources, Stamina)
   if (sanityHUD && mpManager?.localPlayer) {
     sanityHUD.updatePlayer(mpManager.localPlayer);
+  }
+
+  // Update developer weapon firing diagnostics HUD (under --dev-rendering)
+  if (devToolsEnabled && mpManager?.localPlayer) {
+    const diag = mpManager.localPlayer.getFiringDiagnostics();
+    const elWeapon = document.getElementById('dev-diag-weapon');
+    const elAmmo = document.getElementById('dev-diag-ammo');
+    const elCool = document.getElementById('dev-diag-cool');
+    const elReload = document.getElementById('dev-diag-reload');
+    const elInput = document.getElementById('dev-diag-input');
+    const elRej = document.getElementById('dev-diag-rejection');
+    if (elWeapon) elWeapon.textContent = diag.selectedWeapon;
+    if (elAmmo) elAmmo.textContent = `${diag.magAmmo} / ${diag.reserveAmmo}`;
+    if (elCool) elCool.textContent = diag.cooldown;
+    if (elReload) elReload.textContent = diag.reloadState;
+    if (elInput) elInput.textContent = diag.lastFiringInput;
+    if (elRej) {
+      elRej.textContent = diag.lastRejectionReason;
+      elRej.style.color = (diag.lastRejectionReason !== 'NONE') ? '#ff6666' : '#9c9a92';
+    }
+  }
+
+  // Update Reusable Interaction Framework
+  if (interactionManager && isGameActive) {
+    interactionManager.update();
   }
 
   renderScene();

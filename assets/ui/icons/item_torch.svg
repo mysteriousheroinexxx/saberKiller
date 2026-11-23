@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48" fill="none">
+  <!-- Translucent tactical flashlight cylinder body -->
+  <path fill="#edece6" fill-opacity="0.35" d="M4 9h11v6H4z"/>
+  <!-- Flashlight bezel, body knurling, tailcap, and emitted light cone beam -->
+  <path fill="#edece6" d="M3 8h2v8H3zm3 1h9v6H6zm10-2h2v10h-2zm3 1.5l3-2.5v10l-3-2.5z"/>
+  <!-- Switch and grip texture ribs -->
+  <path fill="#edece6" d="M8 7h2v1H8zm0 4h1v2H8zm3 0h1v2h-1z"/>
+</svg>

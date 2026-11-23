@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48" fill="none">
+  <!-- Translucent box body -->
+  <path fill="#edece6" fill-opacity="0.35" d="M4 8h16v11H4z"/>
+  <!-- Ammo box case outline and latch -->
+  <path fill="#edece6" d="M20 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 14H4V7h16v12zm-9-10h2v2h-2z"/>
+  <!-- Bullet cartridges silhouette inside box -->
+  <path fill="#edece6" d="M8 11h2v5H8zm3 0h2v5h-2zm3 0h2v5h-2z"/>
+</svg>

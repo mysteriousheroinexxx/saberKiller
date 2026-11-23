@@ -455,7 +455,7 @@ export class SanityHUD {
         this.resourceGroup.style.display = 'flex';
         this.resourceIcon.src = 'assets/ui/icons/hud_ammo.png';
         this.resourceIcon.onerror = () => { this.resourceIcon.src = 'assets/ui/icons/hud_ammo.svg'; };
-        this.resourceLabel.textContent = 'Pistol';
+        this.resourceLabel.textContent = player.reloadT > 0 ? 'Reloading...' : 'Pistol';
         const mag = player.mag ? player.mag.bullets ?? 12 : 12;
         const res = player.bullets ?? 36;
         this.resourceVal.textContent = `${mag} / ${res}`;
@@ -465,7 +465,7 @@ export class SanityHUD {
         this.resourceGroup.style.display = 'flex';
         this.resourceIcon.src = 'assets/ui/icons/hud_ammo.png';
         this.resourceIcon.onerror = () => { this.resourceIcon.src = 'assets/ui/icons/hud_ammo.svg'; };
-        this.resourceLabel.textContent = 'Shotgun';
+        this.resourceLabel.textContent = player.reloadT > 0 ? 'Reloading...' : 'Shotgun';
         const mag = player.mag ? player.mag.shells ?? 6 : 6;
         const res = player.shells ?? 2;
         this.resourceVal.textContent = `${mag} / ${res}`;

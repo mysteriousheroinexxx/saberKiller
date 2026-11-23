@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { MSG_TYPES, MAX_PAYLOAD_SIZE, validatePlayerUpdate } from './protocol.js';
-import { RoomManager } from './room_manager.js';
+import { RoomManager, VENDING_CONFIG, configureVendingMachine } from './room_manager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,12 +16,28 @@ const CLIENT_DIR = fs.existsSync(path.resolve(__dirname, '../multiplayer.html'))
   : path.resolve(__dirname, '../doom-zombies');
 
 const PORT = parseInt(process.env.PORT, 10) || 8749;
-const HOST = '0.0.0.0';
+const HOST = process.env.HOST || '::';
 
 // Parse optional startup flag for developer rendering comparison panel
 const DEV_RENDERING = process.argv.includes('--dev-rendering');
 if (DEV_RENDERING) {
   console.log('[SERVER CONFIG] Developer rendering tools enabled (--dev-rendering)');
+}
+
+// Configurable vending machine maximum dispense count
+const stockArg = process.argv.find(a => a.startsWith('--vending-stock='));
+if (stockArg) {
+  const stockVal = parseInt(stockArg.split('=')[1], 10);
+  if (!isNaN(stockVal)) {
+    configureVendingMachine({ defaultMaxStock: stockVal });
+    console.log(`[SERVER CONFIG] Vending machine max stock set to: ${stockVal} (--vending-stock)`);
+  }
+} else if (process.env.VENDING_MAX_STOCK) {
+  const stockVal = parseInt(process.env.VENDING_MAX_STOCK, 10);
+  if (!isNaN(stockVal)) {
+    configureVendingMachine({ defaultMaxStock: stockVal });
+    console.log(`[SERVER CONFIG] Vending machine max stock set to: ${stockVal} (VENDING_MAX_STOCK)`);
+  }
 }
 
 const MIME_TYPES = {
@@ -110,6 +126,37 @@ function loadStartupLayout() {
 
 // Initial layout load on server startup
 loadStartupLayout();
+
+function getLayoutDataForRevision(requestedRev) {
+  const layoutDir = path.join(CLIENT_DIR, 'world-layouts/level0');
+  const defaultPath = path.join(CLIENT_DIR, 'assets/data/world_items.json');
+
+  if (requestedRev && requestedRev !== 'default') {
+    if (activeDevLayout && activeDevLayout.filename === requestedRev && activeDevLayout.data) {
+      return activeDevLayout.data;
+    }
+    const targetPath = path.join(layoutDir, path.basename(requestedRev));
+    if (fs.existsSync(targetPath)) {
+      try {
+        return JSON.parse(fs.readFileSync(targetPath, 'utf8'));
+      } catch (err) {
+        console.warn(`[WORLD LAYOUT] Error reading requested revision ${requestedRev}:`, err.message);
+      }
+    }
+  }
+
+  if (activeDevLayout && activeDevLayout.data) {
+    return activeDevLayout.data;
+  }
+  if (fs.existsSync(defaultPath)) {
+    try {
+      return JSON.parse(fs.readFileSync(defaultPath, 'utf8'));
+    } catch (err) {
+      console.warn(`[WORLD LAYOUT] Error reading default layout:`, err.message);
+    }
+  }
+  return null;
+}
 
 // 1. Static HTTP File Server
 const server = http.createServer((req, res) => {
@@ -589,9 +636,17 @@ const server = http.createServer((req, res) => {
   });
 });
 
-// 2. WebSocket Server attached to same HTTP server
+// 2. WebSocket Server attached to the same HTTP server and port
+server.on('upgrade', (req) => {
+  console.log(`[WS UPGRADE] ${req.method} ${req.url} origin=${req.headers.origin || '(none)'} host=${req.headers.host || '(none)'}`);
+});
+
 const wss = new WebSocketServer({ server });
 const roomManager = new RoomManager();
+
+wss.on('error', (err) => {
+  console.error(`[WS SERVER ERROR] code=${err.code || 'UNKNOWN'} message=${err.message}`);
+});
 
 function send(ws, type, payload) {
   if (ws.readyState === WebSocket.OPEN) {
@@ -600,6 +655,7 @@ function send(ws, type, payload) {
 }
 
 wss.on('connection', (ws, req) => {
+  console.log(`[WS CONNECTED] remote=${req.socket.remoteAddress || '(unknown)'} url=${req.url || '/'} origin=${req.headers.origin || '(none)'}`);
   // Ping/Pong keep-alive
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
@@ -628,7 +684,8 @@ wss.on('connection', (ws, req) => {
         const requestedRev = (typeof payload?.layoutRevision === 'string' && payload.layoutRevision.trim())
           ? payload.layoutRevision.trim()
           : defaultRev;
-        const res = roomManager.createRoom(ws, payload?.roomCode, requestedRev);
+        const layoutData = getLayoutDataForRevision(requestedRev);
+        const res = roomManager.createRoom(ws, payload?.roomCode, requestedRev, layoutData);
         if (res.error) {
           send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error });
         } else {
@@ -638,7 +695,10 @@ wss.on('connection', (ws, req) => {
             slot: res.player.slot,
             spawn: res.spawn,
             totalPlayers: res.totalPlayers,
-            layoutRevision: res.layoutRevision
+            layoutRevision: res.layoutRevision,
+            collectedItems: res.collectedItems || [],
+            spawnedItems: res.spawnedItems || [],
+            inventory: res.inventory
           });
         }
         break;
@@ -657,7 +717,10 @@ wss.on('connection', (ws, req) => {
             spawn: res.spawn,
             existingPlayers: res.existingPlayers,
             totalPlayers: res.totalPlayers,
-            layoutRevision: res.layoutRevision
+            layoutRevision: res.layoutRevision,
+            collectedItems: res.collectedItems || [],
+            spawnedItems: res.spawnedItems || [],
+            inventory: res.inventory
           });
 
           // Notify existing players in room about new arrival
@@ -694,6 +757,10 @@ wss.on('connection', (ws, req) => {
           return; // reject malformed update
         }
 
+        // Cache authoritative player coordinates for proximity validation
+        player.position = { x: payload.x, y: payload.y, z: payload.z };
+        // console.log(`[SERVER PLAYER_UPDATE] Cached pos:`, player.position);
+
         player.seq++;
         const updatePayload = {
           playerId: player.id,
@@ -716,6 +783,312 @@ wss.on('connection', (ws, req) => {
         break;
       }
 
+      case MSG_TYPES.ITEM_PICKUP_REQUEST: {
+        const requestId = payload?.requestId || `req_${Date.now()}`;
+        const itemId = payload?.itemId;
+        const clientPos = payload?.clientPosition;
+
+        const session = roomManager.getPlayer(ws);
+        const playerId = session ? session.player.id : 'unknown';
+        const roomCode = session ? session.room.code : 'unknown';
+
+        console.log(`[PICKUP ${requestId}] Message received: player=${playerId}, room=${roomCode}, item=${itemId}`);
+        console.log(`[STAGE 6/19] [SERVER] Pickup request received: reqId=${requestId}, player=${playerId}, room=${roomCode}, item=${itemId}`);
+        console.log(`[STAGE 7/19] [SERVER] Request ID parsed: ${requestId}`);
+        console.log(`[STAGE 8/19] [SERVER] Player and room resolved: player=${playerId}, room=${roomCode}`);
+        console.log(`[STAGE 9/19] [SERVER] Item ID resolved: ${itemId}`);
+
+        console.log(`[STAGE 10/19] [SERVER] Validation executing for item '${itemId}' by player '${playerId}'...`);
+        const requestKey = `${playerId}:${requestId}`;
+        const activeRoom = session?.room;
+        const cached = activeRoom?.pickupRequests?.get(requestKey);
+        if (cached) {
+          console.log(`[PICKUP ${requestId}] Duplicate request; replaying prior acknowledgement`);
+          send(ws, MSG_TYPES.ITEM_PICKUP_RESPONSE, cached);
+          if (cached.success && activeRoom) {
+            const player = activeRoom.players.get(playerId);
+            send(ws, MSG_TYPES.INVENTORY_UPDATE, {
+              requestId,
+              inventory: player?.inventory.serialize(),
+              addedItem: { id: cached.itemId, type: cached.itemType }
+            });
+          }
+          break;
+        }
+
+        let res;
+        try {
+          res = roomManager.handlePickupRequest(ws, itemId, clientPos);
+        } catch (err) {
+          console.error(`[PICKUP ${requestId}] Pickup processing exception:`, err);
+          res = { error: `Pickup processing failed: ${err.message}`, room: session?.room, player: session?.player };
+        }
+
+        if (res.error) {
+          console.log(`[STAGE 12/19] [SERVER] Pickup REJECTED: reqId=${requestId}, item='${itemId}', reason='${res.error}'`);
+          const rejectPayload = {
+            requestId,
+            success: false,
+            itemId,
+            playerId: res.player ? res.player.id : playerId,
+            roomCode: res.room ? res.room.code : roomCode,
+            reason: res.error
+          };
+          if (activeRoom?.pickupRequests) activeRoom.pickupRequests.set(requestKey, rejectPayload);
+          console.log(`[PICKUP ${requestId}] Acknowledgement sent: rejected (${rejectPayload.reason})`);
+          console.log(`[STAGE 13/19] [SERVER] Transmitting rejection response to client:`, rejectPayload);
+          send(ws, MSG_TYPES.ITEM_PICKUP_RESPONSE, rejectPayload);
+          send(ws, MSG_TYPES.PICKUP_REJECTED, {
+            requestId,
+            itemId,
+            reason: res.error
+          });
+        } else if (res.dispensedItem) {
+          console.log(`[VENDING DISPENSE VIA PICKUP ${requestId}] Dispensed item ${res.dispensedItem.id} from ${res.machineId}`);
+          const acceptPayload = {
+            requestId,
+            success: true,
+            itemId: res.machineId,
+            itemType: 'vending_almond',
+            playerId: res.player.id,
+            roomCode: res.room.code,
+            dispensedItem: res.dispensedItem
+          };
+          send(ws, MSG_TYPES.ITEM_PICKUP_RESPONSE, acceptPayload);
+          send(ws, MSG_TYPES.VENDING_DISPENSE_RESPONSE, acceptPayload);
+
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.ITEM_SPAWNED, {
+              item: res.dispensedItem,
+              dispensedFrom: res.machineId
+            });
+          }
+        } else {
+          console.log(`[STAGE 11/19] [SERVER] Inventory update executed for player '${res.player.id}', added '${res.item.type}'`);
+          console.log(`[STAGE 12/19] [SERVER] Pickup ACCEPTED: reqId=${requestId}, item='${res.item.id}', player='${res.player.id}'`);
+
+          const acceptPayload = {
+            requestId,
+            success: true,
+            itemId: res.item.id,
+            itemType: res.item.type,
+            playerId: res.player.id,
+            roomCode: res.room.code
+          };
+          if (res.room.pickupRequests) {
+            res.room.pickupRequests.set(requestKey, acceptPayload);
+            if (res.room.pickupRequests.size > 500) res.room.pickupRequests.delete(res.room.pickupRequests.keys().next().value);
+          }
+          console.log(`[PICKUP ${requestId}] Acknowledgement sent: accepted item=${res.item.id}, player=${res.player.id}`);
+          console.log(`[STAGE 13/19] [SERVER] Transmitting success response to client:`, acceptPayload);
+          send(ws, MSG_TYPES.ITEM_PICKUP_RESPONSE, acceptPayload);
+
+          console.log(`[STAGE 14/19] [SERVER] Broadcasting world-item removal to room ${res.room.code} for item ${res.item.id}`);
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.ITEM_COLLECTED, {
+              requestId,
+              itemId: res.item.id,
+              itemType: res.item.type,
+              collectedBy: res.player.id
+            });
+          }
+
+          send(ws, MSG_TYPES.INVENTORY_UPDATE, {
+            requestId,
+            inventory: res.inventory,
+            addedItem: {
+              id: res.item.id,
+              type: res.item.type
+            }
+          });
+        }
+        break;
+      }
+
+      case MSG_TYPES.VENDING_DISPENSE_REQUEST: {
+        const requestId = payload?.requestId || `disp_${Date.now()}`;
+        const machineId = payload?.machineId;
+        const clientPos = payload?.clientPosition;
+
+        const session = roomManager.getPlayer(ws);
+        const playerId = session ? session.player.id : 'unknown';
+        const roomCode = session ? session.room.code : 'unknown';
+
+        console.log(`[VENDING ${requestId}] Dispense requested: player=${playerId}, room=${roomCode}, machine=${machineId}`);
+        const res = roomManager.handleVendingDispense(ws, machineId, clientPos);
+        if (res.error) {
+          console.log(`[VENDING ${requestId}] Rejected: ${res.error} (remainingStock=${res.remainingStock !== undefined ? res.remainingStock : 'n/a'})`);
+          const rejectPayload = {
+            requestId,
+            success: false,
+            machineId,
+            reason: res.error,
+            remainingStock: res.remainingStock !== undefined ? res.remainingStock : undefined
+          };
+          send(ws, MSG_TYPES.VENDING_DISPENSE_RESPONSE, rejectPayload);
+          send(ws, MSG_TYPES.ITEM_PICKUP_RESPONSE, {
+            requestId,
+            success: false,
+            itemId: machineId,
+            reason: res.error,
+            remainingStock: res.remainingStock !== undefined ? res.remainingStock : undefined
+          });
+        } else {
+          console.log(`[VENDING ${requestId}] Accepted: spawned ${res.dispensedItem.id} at [${res.dispensedItem.position.join(', ')}] (remainingStock=${res.remainingStock})`);
+          const acceptPayload = {
+            requestId,
+            success: true,
+            machineId: res.machineId,
+            dispensedItem: res.dispensedItem,
+            remainingStock: res.remainingStock,
+            maxStock: res.maxStock
+          };
+          send(ws, MSG_TYPES.VENDING_DISPENSE_RESPONSE, acceptPayload);
+          send(ws, MSG_TYPES.ITEM_PICKUP_RESPONSE, {
+            requestId,
+            success: true,
+            itemId: res.machineId,
+            dispensedItem: res.dispensedItem,
+            remainingStock: res.remainingStock
+          });
+
+          // Broadcast newly spawned world item and updated machine stock to all players in the room
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.ITEM_SPAWNED, {
+              item: res.dispensedItem,
+              dispensedFrom: res.machineId,
+              remainingStock: res.remainingStock
+            });
+          }
+        }
+        break;
+      }
+
+      case MSG_TYPES.ITEM_USE_REQUEST: {
+        const requestId = payload?.requestId || `use_${Date.now()}`;
+        const slotIndex = payload?.slotIndex;
+        const instanceId = payload?.instanceId;
+
+        const session = roomManager.getPlayer(ws);
+        const playerId = session ? session.player.id : 'unknown';
+        const roomCode = session ? session.room.code : 'unknown';
+
+        console.log(`[ITEM USE ${requestId}] Received from player=${playerId}, room=${roomCode}, slot=${slotIndex}`);
+
+        const res = roomManager.handleUseItem(ws, slotIndex, instanceId);
+        if (res.error) {
+          console.log(`[ITEM USE ${requestId}] Rejected: ${res.error}`);
+          send(ws, MSG_TYPES.ITEM_USE_RESPONSE, {
+            requestId,
+            success: false,
+            slotIndex,
+            reason: res.error
+          });
+        } else {
+          console.log(`[ITEM USE ${requestId}] Accepted for player=${res.player.id}, item=${res.itemType}`);
+          send(ws, MSG_TYPES.ITEM_USE_RESPONSE, {
+            requestId,
+            success: true,
+            slotIndex: res.slotIndex,
+            itemType: res.itemType,
+            itemName: res.itemName,
+            effect: res.effect,
+            remainingQuantity: res.remainingQuantity
+          });
+
+          send(ws, MSG_TYPES.INVENTORY_UPDATE, {
+            requestId,
+            inventory: res.inventory,
+            usedItem: { type: res.itemType }
+          });
+        }
+        break;
+      }
+
+      case MSG_TYPES.ITEM_DROP_REQUEST: {
+        const requestId = payload?.requestId || `drop_${Date.now()}`;
+        const slotIndex = payload?.slotIndex;
+        const instanceId = payload?.instanceId;
+        const quantity = payload?.quantity || 1;
+        const clientPos = payload?.playerPosition;
+        const clientYaw = payload?.playerYaw;
+
+        const session = roomManager.getPlayer(ws);
+        const playerId = session ? session.player.id : 'unknown';
+        const roomCode = session ? session.room.code : 'unknown';
+
+        console.log(`[ITEM DROP ${requestId}] Received from player=${playerId}, room=${roomCode}, slot=${slotIndex}, qty=${quantity}`);
+
+        const res = roomManager.handleDropItem(ws, slotIndex, instanceId, quantity, clientPos, clientYaw);
+        if (res.error) {
+          console.log(`[ITEM DROP ${requestId}] Rejected: ${res.error}`);
+          send(ws, MSG_TYPES.ITEM_DROP_RESPONSE, {
+            requestId,
+            success: false,
+            slotIndex,
+            reason: res.error
+          });
+        } else {
+          console.log(`[ITEM DROP ${requestId}] Accepted: spawned ${res.droppedItem.id} (${res.droppedItem.type}) at [${res.droppedItem.position.join(', ')}]`);
+          send(ws, MSG_TYPES.ITEM_DROP_RESPONSE, {
+            requestId,
+            success: true,
+            dropId: res.droppedItem.id,
+            slotIndex: res.slotIndex,
+            quantity: res.droppedQuantity
+          });
+
+          // Broadcast spawned world item to ALL players in room
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.ITEM_SPAWNED, {
+              item: res.droppedItem,
+              droppedBy: res.player.id
+            });
+          }
+
+          send(ws, MSG_TYPES.INVENTORY_UPDATE, {
+            requestId,
+            inventory: res.inventory,
+            droppedItem: { id: res.droppedItem.id, type: res.droppedItem.type, quantity: res.droppedQuantity }
+          });
+        }
+        break;
+      }
+
+      case MSG_TYPES.INVENTORY_SWAP_REQUEST: {
+        const fromSlot = payload?.fromSlot;
+        const toSlot = payload?.toSlot;
+        const res = roomManager.handleSwapSlots(ws, fromSlot, toSlot);
+        if (!res.error && res.success) {
+          send(ws, MSG_TYPES.INVENTORY_UPDATE, {
+            inventory: res.inventory
+          });
+        }
+        break;
+      }
+
+      case MSG_TYPES.ROOM_ITEMS_STATE: {
+        const session = roomManager.getPlayer(ws);
+        if (!session) return;
+        const { room } = session;
+        const items = [];
+        for (const [id, item] of room.worldItems) {
+          items.push({
+            id: item.id,
+            type: item.type,
+            isPickup: item.isPickup,
+            available: item.available,
+            collectedBy: item.collectedBy
+          });
+        }
+        send(ws, MSG_TYPES.ROOM_ITEMS_STATE, {
+          roomCode: room.code,
+          layoutRevision: room.layoutRevision,
+          items
+        });
+        break;
+      }
+
       case MSG_TYPES.HEARTBEAT: {
         send(ws, MSG_TYPES.HEARTBEAT, { serverTime: Date.now() });
         break;
@@ -727,7 +1100,8 @@ wss.on('connection', (ws, req) => {
     }
   });
 
-  ws.on('close', () => {
+  ws.on('close', (code, reason) => {
+    console.log(`[WS CLOSED] remote=${req.socket.remoteAddress || '(unknown)'} code=${code} reason=${reason.toString() || '(none)'}`);
     const res = roomManager.handleDisconnect(ws);
     if (res && !res.roomDeleted && res.room) {
       for (const [otherId, otherPlayer] of res.room.players) {
@@ -740,7 +1114,7 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('error', (err) => {
-    console.warn(`[WS Error] ${err.message}`);
+    console.warn(`[WS ERROR] remote=${req.socket.remoteAddress || '(unknown)'} code=${err.code || 'UNKNOWN'} message=${err.message}`);
   });
 });
 
@@ -753,12 +1127,29 @@ const heartbeatInterval = setInterval(() => {
   });
 }, 25000);
 
+server.on('error', (err) => {
+  if (err.code === 'EADDRNOTAVAIL' && HOST === '::') {
+    console.warn(`[SABER KILLER SERVER] IPv6 '::' not available, falling back to '0.0.0.0'`);
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`[SABER KILLER SERVER] Listening on http://0.0.0.0:${PORT}`);
+      console.log(`[SABER KILLER SERVER] Serving client files from: ${CLIENT_DIR}`);
+    });
+    return;
+  }
+  console.error(`[HTTP/WS LISTENER ERROR] ${HOST}:${PORT} code=${err.code || 'UNKNOWN'} message=${err.message}`);
+  if (err.code === 'EADDRINUSE' || err.code === 'EACCES' || err.code === 'EPERM') {
+    clearInterval(heartbeatInterval);
+    process.exitCode = 1;
+  }
+});
+
 wss.on('close', () => {
   clearInterval(heartbeatInterval);
 });
 
 // 4. Start Server
 server.listen(PORT, HOST, () => {
-  console.log(`[SABER KILLER SERVER] Listening on http://${HOST}:${PORT}`);
+  const displayHost = HOST === '::' ? 'localhost' : HOST;
+  console.log(`[SABER KILLER SERVER] Listening on http://${displayHost}:${PORT} (bound to ${HOST})`);
   console.log(`[SABER KILLER SERVER] Serving client files from: ${CLIENT_DIR}`);
 });

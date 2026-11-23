@@ -1,5 +1,27 @@
 // Saber Killer Room & Player Session Manager
-import { MAX_PLAYERS_PER_ROOM } from './protocol.js';
+import { MAX_PLAYERS_PER_ROOM, isValidNumber } from './protocol.js';
+import { InventoryController } from '../js/multiplayer/inventory_controller.js';
+import { isPickupItem, getItemDefinition, ITEM_EFFECTS_CONFIG } from '../js/multiplayer/item_catalog.js';
+
+// Configurable Vending Machine Parameters
+export const VENDING_CONFIG = {
+  defaultMaxStock: 5,
+  cooldownMs: 1000,
+  maxInteractionDistance: 2.8
+};
+
+export function configureVendingMachine(opts = {}) {
+  if (typeof opts.defaultMaxStock === 'number') {
+    VENDING_CONFIG.defaultMaxStock = Math.max(0, opts.defaultMaxStock);
+  }
+  if (typeof opts.cooldownMs === 'number') {
+    VENDING_CONFIG.cooldownMs = Math.max(0, opts.cooldownMs);
+  }
+  if (typeof opts.maxInteractionDistance === 'number') {
+    VENDING_CONFIG.maxInteractionDistance = Math.max(0, opts.maxInteractionDistance);
+  }
+  return { ...VENDING_CONFIG };
+}
 
 // Predefined verified Level 0 spawn slots (safe from walls, 2.8m apart)
 const SPAWN_SLOTS = [
@@ -27,7 +49,7 @@ export class RoomManager {
     return 'ROOM' + Math.floor(Math.random() * 1000);
   }
 
-  createRoom(ws, customCode = null, layoutRevision = null) {
+  createRoom(ws, customCode = null, layoutRevision = null, layoutData = null) {
     const roomCode = (customCode && typeof customCode === 'string' && customCode.trim().length > 0)
       ? customCode.trim().toUpperCase()
       : this.generateRoomCode();
@@ -44,21 +66,60 @@ export class RoomManager {
       ws,
       slot: 0,
       spawn,
+      position: { ...spawn },
+      inventory: new InventoryController(30),
       lastUpdate: 0,
       seq: 0
     };
+    player.inventory.initDefaultLoadout();
 
     const room = {
       code: roomCode,
       createdAt: Date.now(),
       layoutRevision: (typeof layoutRevision === 'string' && layoutRevision.trim()) ? layoutRevision.trim() : 'default',
-      players: new Map([[playerId, player]])
+      players: new Map([[playerId, player]]),
+      worldItems: new Map(),
+      pickupRequests: new Map()
     };
+
+    // Initialize room world pickup state from frozen layout
+    if (layoutData && Array.isArray(layoutData.placements)) {
+      for (const p of layoutData.placements) {
+        const isPickup = isPickupItem(p.type);
+        const isVending = (p.type === 'vending_almond');
+        const maxStock = isVending
+          ? ((p.metadata && typeof p.metadata.maxStock === 'number') ? p.metadata.maxStock : VENDING_CONFIG.defaultMaxStock)
+          : undefined;
+
+        room.worldItems.set(p.id, {
+          id: p.id,
+          type: p.type,
+          category: p.category || (layoutData.catalog?.[p.type]?.category) || 'prop',
+          position: Array.isArray(p.position) ? [p.position[0], p.position[1], p.position[2]] : [0, 0, 0],
+          rotation: Array.isArray(p.rotation) ? [p.rotation[0], p.rotation[1], p.rotation[2]] : [0, 0, 0],
+          isPickup,
+          available: isPickup,
+          collectedBy: null,
+          collectedAt: null,
+          stock: maxStock,
+          maxStock: maxStock
+        });
+      }
+    }
 
     this.rooms.set(roomCode, room);
     this.clientToRoom.set(ws, { roomCode, playerId });
 
-    return { roomCode, player, spawn, totalPlayers: 1, layoutRevision: room.layoutRevision };
+    return {
+      roomCode,
+      player,
+      spawn,
+      totalPlayers: 1,
+      layoutRevision: room.layoutRevision,
+      collectedItems: [],
+      spawnedItems: [],
+      inventory: player.inventory.serialize()
+    };
   }
 
   joinRoom(ws, roomCode) {
@@ -84,9 +145,12 @@ export class RoomManager {
       ws,
       slot,
       spawn,
+      position: { ...spawn },
+      inventory: new InventoryController(30),
       lastUpdate: 0,
       seq: 0
     };
+    player.inventory.initDefaultLoadout();
 
     // Collect existing players to return to newly joined client
     const existingPlayers = [];
@@ -98,6 +162,17 @@ export class RoomManager {
       });
     }
 
+    // Collect already picked up items and dynamically spawned items in this room
+    const collectedItems = [];
+    const spawnedItems = [];
+    for (const [id, item] of room.worldItems) {
+      if (item.isPickup && !item.available) {
+        collectedItems.push(id);
+      } else if ((item.isDropped || item.isDispensed) && item.available) {
+        spawnedItems.push(item);
+      }
+    }
+
     room.players.set(playerId, player);
     this.clientToRoom.set(ws, { roomCode: code, playerId });
 
@@ -107,7 +182,372 @@ export class RoomManager {
       spawn,
       existingPlayers,
       totalPlayers: room.players.size,
-      layoutRevision: room.layoutRevision || 'default'
+      layoutRevision: room.layoutRevision || 'default',
+      collectedItems,
+      spawnedItems,
+      inventory: player.inventory.serialize()
+    };
+  }
+
+  /**
+   * Authoritative pickup validation and atomic claiming
+   */
+  handlePickupRequest(ws, itemId, clientPosition = null) {
+    const meta = this.clientToRoom.get(ws);
+    if (!meta) return { error: 'Client not associated with any active room session' };
+
+    const room = this.rooms.get(meta.roomCode);
+    if (!room) return { error: `Room ${meta.roomCode} does not exist` };
+
+    const player = room.players.get(meta.playerId);
+    if (!player) return { error: `Player ${meta.playerId} not found in room` };
+
+    if (!itemId || typeof itemId !== 'string') {
+      return { error: 'Invalid or missing item ID', room, player };
+    }
+
+    const item = room.worldItems.get(itemId);
+    if (!item) {
+      return { error: `Item '${itemId}' does not exist in room layout`, room, player };
+    }
+
+    if (item.type === 'vending_almond') {
+      return this.handleVendingDispense(ws, itemId, clientPosition);
+    }
+
+    if (!item.isPickup) {
+      return { error: `Object '${itemId}' (${item.type}) is not a collectible pickup`, room, player };
+    }
+
+    if (!item.available) {
+      return { error: `Item '${itemId}' has already been collected by player ${item.collectedBy}`, room, player };
+    }
+
+    // Server-side proximity check
+    let pPos = player.position || player.spawn;
+    if (clientPosition && isValidNumber(clientPosition.x) && isValidNumber(clientPosition.z)) {
+      const sDx = clientPosition.x - pPos.x;
+      const sDz = clientPosition.z - pPos.z;
+      const discrepancy = Math.sqrt(sDx * sDx + sDz * sDz);
+      if (discrepancy < 2.5) {
+        // Safe to use client position for interaction verification
+        pPos = {
+          x: clientPosition.x,
+          y: (typeof clientPosition.y === 'number') ? clientPosition.y : pPos.y,
+          z: clientPosition.z
+        };
+      }
+    }
+
+    const iPos = item.position;
+    console.log(`[HANDLE PICKUP] player ${player.id} pPos:`, pPos, 'itemPos:', iPos);
+    const dx = pPos.x - iPos[0];
+    const dy = (pPos.y || 0) - iPos[1];
+    const dz = pPos.z - iPos[2];
+
+    // Distance from camera eye (approx y + 1.62) vs distance from feet
+    const eyeDy = ((pPos.y || 0) + 1.62) - iPos[1];
+    const eyeDist = Math.sqrt(dx * dx + eyeDy * eyeDy + dz * dz);
+    const feetDist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const dist = Math.min(eyeDist, feetDist);
+
+    // Initial interaction distance is 2.1m. With network tolerance: 2.6m
+    const MAX_PICKUP_DIST = 2.6;
+    if (dist > MAX_PICKUP_DIST) {
+      return { error: `Player too far from item (${dist.toFixed(2)}m > 2.1m limit)`, room, player };
+    }
+
+    // Add item to player's authoritative inventory
+    const addResult = player.inventory.addItem(item.type, 1);
+    if (!addResult.success) {
+      return { error: addResult.reason || 'Player inventory is full', room, player };
+    }
+
+    // Atomically claim item
+    item.available = false;
+    item.collectedBy = player.id;
+    item.collectedAt = Date.now();
+
+    return {
+      success: true,
+      room,
+      player,
+      item,
+      inventory: player.inventory.serialize()
+    };
+  }
+
+  /**
+   * Authoritative item consumption validation and processing
+   */
+  handleUseItem(ws, slotIndex, instanceId = null) {
+    const meta = this.clientToRoom.get(ws);
+    if (!meta) return { error: 'Client not associated with any active room session' };
+
+    const room = this.rooms.get(meta.roomCode);
+    if (!room) return { error: `Room ${meta.roomCode} does not exist` };
+
+    const player = room.players.get(meta.playerId);
+    if (!player) return { error: `Player ${meta.playerId} not found in room` };
+
+    let item = null;
+    let targetSlot = slotIndex;
+    if (typeof targetSlot === 'number' && targetSlot >= 0 && targetSlot < player.inventory.capacity) {
+      item = player.inventory.getItem(targetSlot);
+    } else if (instanceId) {
+      const slots = player.inventory.getSlots();
+      const idx = slots.findIndex(s => s && s.instanceId === instanceId);
+      if (idx !== -1) {
+        targetSlot = idx;
+        item = slots[idx];
+      }
+    }
+
+    if (!item) {
+      return { error: 'Item not found in player inventory', room, player };
+    }
+
+    const def = getItemDefinition(item.typeId);
+    if (!def || !def.consumable) {
+      return { error: `Item '${item.name}' cannot be consumed`, room, player };
+    }
+
+    const effectConfig = ITEM_EFFECTS_CONFIG[item.typeId] || def.metadata || {};
+
+    // Remove exactly 1 unit from inventory
+    const removeRes = player.inventory.removeItem(targetSlot, 1);
+    if (!removeRes.success) {
+      return { error: 'Failed to consume item from slot', room, player };
+    }
+
+    const remainingItem = player.inventory.getItem(targetSlot);
+    const remainingQuantity = remainingItem ? remainingItem.quantity : 0;
+
+    return {
+      success: true,
+      room,
+      player,
+      itemType: item.typeId,
+      itemName: item.name,
+      slotIndex: targetSlot,
+      effect: effectConfig,
+      remainingQuantity,
+      inventory: player.inventory.serialize()
+    };
+  }
+
+  /**
+   * Authoritative physical item dropping and room spawning
+   */
+  handleDropItem(ws, slotIndex, instanceId = null, requestedQty = 1, clientPos = null, clientYaw = 0) {
+    const meta = this.clientToRoom.get(ws);
+    if (!meta) return { error: 'Client not associated with any active room session' };
+
+    const room = this.rooms.get(meta.roomCode);
+    if (!room) return { error: `Room ${meta.roomCode} does not exist` };
+
+    const player = room.players.get(meta.playerId);
+    if (!player) return { error: `Player ${meta.playerId} not found in room` };
+
+    let item = null;
+    let targetSlot = slotIndex;
+    if (typeof targetSlot === 'number' && targetSlot >= 0 && targetSlot < player.inventory.capacity) {
+      item = player.inventory.getItem(targetSlot);
+    } else if (instanceId) {
+      const slots = player.inventory.getSlots();
+      const idx = slots.findIndex(s => s && s.instanceId === instanceId);
+      if (idx !== -1) {
+        targetSlot = idx;
+        item = slots[idx];
+      }
+    }
+
+    if (!item) {
+      return { error: 'Item not found in inventory', room, player };
+    }
+
+    const def = getItemDefinition(item.typeId);
+    if (!def || def.droppable === false) {
+      return { error: `Item '${item.name}' cannot be dropped`, room, player };
+    }
+
+    // Clamp requested drop quantity: minimum 1, max available in stack
+    const dropQty = Math.max(1, Math.min(item.quantity, Math.floor(requestedQty || 1)));
+
+    // Remove accepted quantity from inventory
+    const removeRes = player.inventory.removeItem(targetSlot, dropQty);
+    if (!removeRes.success) {
+      return { error: 'Failed to remove dropped item from inventory', room, player };
+    }
+
+    // Calculate safe world drop position in front of player
+    let pPos = player.position || player.spawn;
+    if (clientPos && isValidNumber(clientPos.x) && isValidNumber(clientPos.z)) {
+      const sDx = clientPos.x - pPos.x;
+      const sDz = clientPos.z - pPos.z;
+      if (Math.hypot(sDx, sDz) < 2.5) {
+        pPos = { x: clientPos.x, y: (typeof clientPos.y === 'number') ? clientPos.y : pPos.y, z: clientPos.z };
+      }
+    }
+    const yaw = isValidNumber(clientYaw) ? clientYaw : 0;
+    // Drop ~0.9m in front of player along eye heading
+    const dropX = +(pPos.x - Math.sin(yaw) * 0.9).toFixed(3);
+    const dropZ = +(pPos.z - Math.cos(yaw) * 0.9).toFixed(3);
+    const dropY = 0.02; // Rest on floor
+
+    const dropId = `drop_${item.typeId}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    const worldItem = {
+      id: dropId,
+      type: item.typeId,
+      category: def.category,
+      position: [dropX, dropY, dropZ],
+      rotation: [0, yaw, 0],
+      isPickup: true,
+      available: true,
+      isDropped: true,
+      droppedBy: player.id,
+      quantity: dropQty,
+      collectedBy: null,
+      collectedAt: null
+    };
+
+    room.worldItems.set(dropId, worldItem);
+
+    return {
+      success: true,
+      room,
+      player,
+      droppedItem: worldItem,
+      droppedQuantity: dropQty,
+      slotIndex: targetSlot,
+      inventory: player.inventory.serialize()
+    };
+  }
+
+  /**
+   * Authoritative Almond Water vending machine dispense validation and spawning
+   */
+  handleVendingDispense(ws, machineId, clientPosition = null) {
+    const meta = this.clientToRoom.get(ws);
+    if (!meta) return { error: 'Client not associated with any active room session' };
+
+    const room = this.rooms.get(meta.roomCode);
+    if (!room) return { error: `Room ${meta.roomCode} does not exist` };
+
+    const player = room.players.get(meta.playerId);
+    if (!player) return { error: `Player ${meta.playerId} not found in room` };
+
+    const machine = room.worldItems.get(machineId);
+    if (!machine) {
+      return { error: `Vending machine '${machineId}' not found in room layout`, room, player };
+    }
+
+    if (machine.type !== 'vending_almond') {
+      return { error: `Object '${machineId}' (${machine.type}) is not a vending machine`, room, player };
+    }
+
+    // Ensure stock is initialized if missing
+    if (machine.stock === undefined) {
+      machine.stock = VENDING_CONFIG.defaultMaxStock;
+      machine.maxStock = VENDING_CONFIG.defaultMaxStock;
+    }
+
+    // 1. Authoritative stock check: Reject if out of stock
+    if (machine.stock <= 0) {
+      return {
+        error: 'Vending machine is out of stock',
+        room,
+        player,
+        machineId,
+        remainingStock: 0,
+        maxStock: machine.maxStock
+      };
+    }
+
+    // 2. Cooldown check on vending machine (debounced per VENDING_CONFIG)
+    const now = Date.now();
+    if (machine.lastDispenseTime && (now - machine.lastDispenseTime < VENDING_CONFIG.cooldownMs)) {
+      return {
+        error: 'Vending machine is dispensing, please wait...',
+        room,
+        player,
+        machineId,
+        remainingStock: machine.stock,
+        maxStock: machine.maxStock
+      };
+    }
+
+    // 3. Proximity check (with network latency tolerance)
+    let pPos = player.position || player.spawn;
+    if (clientPosition && isValidNumber(clientPosition.x) && isValidNumber(clientPosition.z)) {
+      const sDx = clientPosition.x - pPos.x;
+      const sDz = clientPosition.z - pPos.z;
+      if (Math.hypot(sDx, sDz) < 2.5) {
+        pPos = {
+          x: clientPosition.x,
+          y: (typeof clientPosition.y === 'number') ? clientPosition.y : pPos.y,
+          z: clientPosition.z
+        };
+      }
+    }
+
+    const mPos = machine.position || [41.5, 0.0, -185.45];
+    const dx = pPos.x - mPos[0];
+    const dy = (pPos.y || 0) - mPos[1];
+    const dz = pPos.z - mPos[2];
+    const eyeDy = ((pPos.y || 0) + 1.62) - mPos[1];
+    const dist = Math.min(Math.hypot(dx, dy, dz), Math.hypot(dx, eyeDy, dz));
+
+    if (dist > VENDING_CONFIG.maxInteractionDistance) {
+      return {
+        error: `Player too far from vending machine (${dist.toFixed(2)}m > 2.1m limit)`,
+        room,
+        player,
+        machineId,
+        remainingStock: machine.stock,
+        maxStock: machine.maxStock
+      };
+    }
+
+    // All validations passed! Authorize dispense and consume exactly ONE use
+    machine.lastDispenseTime = now;
+    machine.stock = Math.max(0, machine.stock - 1);
+
+    // Calculate dispense position: in front of machine
+    // Machine is facing southward in Level 0 (Z decreasing towards -186)
+    // Offset ~0.65m in front of machine
+    const rotY = (machine.rotation && machine.rotation[1]) ? machine.rotation[1] : 0;
+    const dispenseX = +(mPos[0] - Math.sin(rotY) * 0.65).toFixed(3);
+    const dispenseZ = +(mPos[2] - Math.cos(rotY) * 0.65).toFixed(3);
+    const dispenseY = 0.02;
+
+    const dispenseId = `dispensed_almond_${now}_${Math.floor(Math.random() * 1000)}`;
+    const worldItem = {
+      id: dispenseId,
+      type: 'almond_can',
+      category: 'consumable',
+      position: [dispenseX, dispenseY, dispenseZ],
+      rotation: [0, +(Math.random() * 3.14).toFixed(3), 0],
+      isPickup: true,
+      available: true,
+      isDropped: false,
+      isDispensed: true,
+      dispensedFrom: machineId,
+      quantity: 1,
+      collectedBy: null,
+      collectedAt: null
+    };
+
+    room.worldItems.set(dispenseId, worldItem);
+
+    return {
+      success: true,
+      room,
+      player,
+      machineId,
+      dispensedItem: worldItem,
+      remainingStock: machine.stock,
+      maxStock: machine.maxStock
     };
   }
 
@@ -141,5 +581,27 @@ export class RoomManager {
     const room = this.rooms.get(meta.roomCode);
     if (!room) return null;
     return { room, player: room.players.get(meta.playerId) };
+  }
+
+  handleSwapSlots(ws, fromSlot, toSlot) {
+    const session = this.getPlayer(ws);
+    if (!session) return { error: 'Client not associated with any active room session' };
+
+    const { room, player } = session;
+    if (!player) return { error: 'Player not found in room' };
+
+    if (typeof fromSlot !== 'number' || typeof toSlot !== 'number') {
+      return { error: 'Invalid slot indices' };
+    }
+
+    const success = player.inventory.swapSlots(fromSlot, toSlot);
+    return {
+      success,
+      room,
+      player,
+      fromSlot,
+      toSlot,
+      inventory: player.inventory.serialize()
+    };
   }
 }
