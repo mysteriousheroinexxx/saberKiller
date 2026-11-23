@@ -1,17 +1,56 @@
 /**
- * Saber Killer — Survival Mode Two-Panel Inventory UI
+ * Saber Killer — Survival Mode Refined Two-Panel Inventory UI
  *
- * Rebuilt around the authentic 1920x1080 two-panel SVG artwork skin:
- * - Left Panel: 30-slot Survival Inventory Grid (10 Hotbar + 20 Backpack Storage)
- * - Right Panel: Equipment Silhouette & 10 empty gear slots (retained from artwork)
- * - Dual Yellow X Close Buttons (one in each panel, both calling the same close functionality)
- * - Subheader Capacity & Status Indicator
- * - Selected Item Inspection & Contextual Actions Panel
- * - Full Keyboard & Drag-and-Drop Management (Tab, Escape, 1–9, 0)
- * - Distressed Dark Gunmetal Palette with Restrained Gold (#f0c64a / #d7a51e) Accents
+ * Clean, minimal interface built around authentic 1920x1080 two-panel SVG artwork:
+ * - Left Panel:
+ *     - 20 Storage Slots (4 columns x 5 rows) in the main grid
+ *     - 10 Quick-Access Hotbar Slots in a vertical column on the far-right side
+ * - Right Panel: Equipment silhouette & 10 empty gear slots (retained from artwork)
+ * - Dual Yellow X Close Buttons (one in each panel, both fully functional)
+ * - Interaction modes:
+ *     - Hover: Tooltip describing item in <= 10 words
+ *     - Right-click: Contextual action menu (Use, Drop, Assign to Hotbar)
+ *     - Left-click and hold: Drag-and-drop between slots / hotbar
+ * - Context menu auto-close:
+ *     - Left-clicking empty inventory space
+ *     - Cursor moves away and remains outside for > 3 seconds (stays open while interacting)
+ * - Distressed dark gunmetal palette with restrained yellow (#f0c64a / #d7a51e) accents
  */
 
 import { getItemDefinition, ITEM_EFFECTS_CONFIG } from './item_catalog.js';
+
+/**
+ * Concise descriptions strictly under 10 words for every known survival item.
+ */
+const ITEM_TOOLTIP_DESCRIPTIONS = {
+  first_aid: 'Medical kit. Restores 50 physical health.',
+  almond_can: 'Almond Water. Stabilizes sanity and restores stamina.',
+  sanity_pill: 'Sedative pills. Restores 60 sanity and calms paranoia.',
+  energy_drink: 'Energy drink. Restores stamina and boosts sprint speed.',
+  aa_battery: 'Battery pack. Restores 50% flashlight charge.',
+  ammo_box: 'Ammunition box. 12 rounds of .45 ACP pistol ammo.',
+  weapon_pistol: 'Compact semi-automatic service pistol. Standard sidearm.',
+  weapon_shotgun: 'Break-action coach shotgun. High close-range pellet damage.',
+  equipment_torch: 'Tactical flashlight. Illuminates dense darkness.',
+  doorKey: 'Brass key. Unlocks secured level transit doors.',
+  vending_almond: 'Commercial vending machine. Dispenses Almond Water.'
+};
+
+/**
+ * Return a concise item description guaranteed to be 10 words or fewer.
+ * @param {Object} item
+ * @param {Object} def
+ * @returns {string}
+ */
+export function getShortItemDescription(item, def) {
+  if (item && item.typeId && ITEM_TOOLTIP_DESCRIPTIONS[item.typeId]) {
+    return ITEM_TOOLTIP_DESCRIPTIONS[item.typeId];
+  }
+  const raw = def?.metadata?.description || item?.metadata?.description || def?.description || 'Survival equipment.';
+  const words = raw.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 10) return words.join(' ');
+  return words.slice(0, 10).join(' ');
+}
 
 export class InventoryUI {
   /**
@@ -28,13 +67,14 @@ export class InventoryUI {
 
     this.isOpen = false;
     this.selectedHotbarSlot = 0; // 0..9
-    this.selectedInventorySlot = null; // 0..29
-    this.activeSwapSourceSlot = null; // For click-to-swap
+    this.hoveredSlotIndex = null;
+    this.contextSlotIdx = null;
+    this.draggedSlotIndex = null;
+    this.contextMenuTimer = null;
 
     // Drop quantity state
     this.dropModalSlotIndex = null;
     this.dropQuantity = 1;
-    this.draggedSlotIndex = null;
 
     // DOM Elements
     this.inventoryModalEl = null;
@@ -42,9 +82,11 @@ export class InventoryUI {
     this.bgArtwork = null;
     this.closeBtnLeft = null;
     this.closeBtnRight = null;
-    this.capacityBarEl = null;
     this.slotElements = [];
-    this.detailsPanelEl = null;
+
+    this.tooltipEl = null;
+    this.tooltipTitleEl = null;
+    this.tooltipDescEl = null;
 
     this.contextMenuEl = null;
     this.dropModalEl = null;
@@ -111,9 +153,11 @@ export class InventoryUI {
     if (this.inventoryModalEl) {
       this.inventoryModalEl.style.display = 'none';
     }
+    this._hideTooltip();
     this._hideContextMenu();
     this._hideDropModal();
-    this.activeSwapSourceSlot = null;
+    this.hoveredSlotIndex = null;
+    this.draggedSlotIndex = null;
 
     if (this.player) {
       this.player.isInventoryOpen = false;
@@ -217,46 +261,9 @@ export class InventoryUI {
         transform: scale(0.96);
       }
 
-      /* --- Subheader Capacity / Status Bar --- */
-      .bb-inv-capacity-bar {
-        position: absolute;
-        left: 245px;
-        top: 154px;
-        width: 640px;
-        height: 44px;
-        z-index: 15;
-        box-sizing: border-box;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0 16px;
-        background: rgba(14, 18, 25, 0.72);
-        border: 1px solid rgba(88, 97, 110, 0.35);
-        border-radius: 2px;
-        color: #c8c6bc;
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 1px;
-        text-transform: uppercase;
-        font-family: monospace;
-      }
-
-      .bb-inv-capacity-bar .gold-accent {
-        color: #f0c64a;
-        font-weight: 700;
-      }
-
-      .bb-inv-capacity-bar .hint-text {
-        font-size: 10px;
-        color: #77818f;
-        letter-spacing: 0.5px;
-      }
-
-      /* --- Interactive 30-Slot Grid Elements --- */
+      /* --- Interactive Slot Elements --- */
       .bb-grid-slot {
         position: absolute;
-        width: 95px;
-        height: 95px;
         z-index: 15;
         box-sizing: border-box;
         background: rgba(16, 22, 30, 0.28);
@@ -269,25 +276,27 @@ export class InventoryUI {
         transition: all 0.15s ease;
       }
 
+      /* 20 Storage Slots (4 columns x 5 rows) */
+      .bb-grid-slot.storage-slot {
+        width: 95px;
+        height: 95px;
+      }
+
+      /* 10 Quick-Access Hotbar Slots (Vertical Column on Far-Right of Left Panel) */
+      .bb-grid-slot.hotbar-slot {
+        width: 68px;
+        height: 68px;
+      }
+
       .bb-grid-slot:hover {
         border-color: rgba(240, 198, 74, 0.65);
         background: rgba(30, 38, 50, 0.4);
         box-shadow: inset 0 0 14px rgba(240, 198, 74, 0.2);
       }
 
-      .bb-grid-slot.selected {
-        border: 2px solid #edece6;
-        box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.2), 0 0 8px rgba(255, 255, 255, 0.3);
-      }
-
       .bb-grid-slot.active-equipped {
         border: 2px solid #f0c64a;
         box-shadow: inset 0 0 14px rgba(240, 198, 74, 0.35), 0 0 10px rgba(240, 198, 74, 0.5);
-      }
-
-      .bb-grid-slot.swap-source {
-        border: 2px dashed #f0c64a;
-        animation: bbPulse 1.2s infinite ease-in-out;
       }
 
       .bb-grid-slot.drag-over {
@@ -299,15 +308,10 @@ export class InventoryUI {
         opacity: 0.35;
       }
 
-      @keyframes bbPulse {
-        0%, 100% { border-color: #f0c64a; }
-        50% { border-color: rgba(240, 198, 74, 0.3); }
-      }
-
       .bb-slot-key-badge {
         position: absolute;
-        top: 4px;
-        left: 6px;
+        top: 3px;
+        left: 5px;
         font-size: 11px;
         font-weight: 700;
         font-family: monospace;
@@ -323,9 +327,9 @@ export class InventoryUI {
 
       .bb-slot-qty-badge {
         position: absolute;
-        bottom: 4px;
-        right: 6px;
-        font-size: 13px;
+        bottom: 3px;
+        right: 5px;
+        font-size: 11px;
         font-weight: 700;
         font-family: monospace;
         color: #edece6;
@@ -334,7 +338,7 @@ export class InventoryUI {
         line-height: 1;
       }
 
-      .bb-slot-icon {
+      .bb-grid-slot.storage-slot .bb-slot-icon {
         max-width: 58px;
         max-height: 58px;
         object-fit: contain;
@@ -343,190 +347,70 @@ export class InventoryUI {
         pointer-events: none;
       }
 
-      /* --- Selected Item Details & Actions Panel (Lower Left Panel) --- */
-      .bb-inv-details-panel {
-        position: absolute;
-        left: 245px;
-        top: 780px;
-        width: 640px;
-        height: 232px;
-        z-index: 15;
-        box-sizing: border-box;
-        background: rgba(14, 18, 25, 0.88);
-        border: 1px solid rgba(88, 97, 110, 0.38);
-        border-radius: 2px;
-        padding: 14px 18px;
-        display: flex;
-        gap: 18px;
-        color: #edece6;
-      }
-
-      .bb-details-left {
-        flex: 1.45;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        overflow: hidden;
-      }
-
-      .bb-details-header-row {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-
-      .bb-details-icon-box {
-        width: 52px;
-        height: 52px;
-        flex-shrink: 0;
-        background: rgba(8, 12, 18, 0.85);
-        border: 1px solid rgba(88, 97, 110, 0.45);
-        border-radius: 2px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .bb-details-icon {
-        max-width: 42px;
-        max-height: 42px;
+      .bb-grid-slot.hotbar-slot .bb-slot-icon {
+        max-width: 44px;
+        max-height: 44px;
         object-fit: contain;
-        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.8));
+        display: block;
+        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.85));
+        pointer-events: none;
       }
 
-      .bb-details-meta {
-        display: flex;
+      /* --- Lightweight Information Tooltip (Hover Interaction) --- */
+      #bb-inv-tooltip {
+        position: absolute;
+        pointer-events: none;
+        z-index: 1000;
+        display: none;
         flex-direction: column;
         gap: 3px;
-        overflow: hidden;
+        background: rgba(14, 18, 25, 0.95);
+        border: 1px solid rgba(240, 198, 74, 0.55);
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.88);
+        border-radius: 3px;
+        padding: 6px 10px;
+        max-width: 230px;
+        box-sizing: border-box;
+        font-family: 'Rubik', -apple-system, sans-serif;
+        color: #edece6;
+        transition: opacity 0.1s ease;
       }
 
-      .bb-details-name {
-        font-size: 15px;
+      .bb-tooltip-title {
+        font-size: 11px;
         font-weight: 700;
+        color: #f0c64a;
+        text-transform: uppercase;
         letter-spacing: 0.5px;
-        color: #f0f1f2;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        text-transform: uppercase;
       }
 
-      .bb-details-cat {
-        font-size: 10px;
-        font-weight: 600;
-        color: #9c9a92;
-        font-family: monospace;
-        letter-spacing: 0.8px;
-        text-transform: uppercase;
-      }
-
-      .bb-details-desc {
-        font-size: 11px;
-        color: #9c9a92;
-        line-height: 1.45;
-        max-height: 52px;
-        overflow-y: auto;
-      }
-
-      .bb-details-stats {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-top: auto;
-      }
-
-      .bb-stat-pill {
-        background: rgba(24, 32, 42, 0.85);
-        border: 1px solid rgba(240, 198, 74, 0.35);
-        color: #f0c64a;
-        font-size: 10px;
-        font-weight: 600;
-        font-family: monospace;
-        padding: 3px 8px;
-        border-radius: 2px;
-        letter-spacing: 0.5px;
-      }
-
-      .bb-details-actions {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        justify-content: center;
-        border-left: 1px solid rgba(88, 97, 110, 0.25);
-        padding-left: 18px;
-      }
-
-      .bb-action-btn {
-        width: 100%;
-        padding: 8px 12px;
-        border-radius: 2px;
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.8px;
-        cursor: pointer;
-        text-transform: uppercase;
-        transition: all 0.15s ease;
-        box-sizing: border-box;
-      }
-
-      .bb-action-btn.primary {
-        background: linear-gradient(135deg, #f0c64a 0%, #d7a51e 50%, #986d12 100%);
-        color: #0c1118;
-        border: none;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
-      }
-
-      .bb-action-btn.primary:not(:disabled):hover {
-        filter: brightness(1.15);
-        box-shadow: 0 0 10px rgba(240, 198, 74, 0.5);
-      }
-
-      .bb-action-btn.secondary {
-        background: rgba(22, 28, 38, 0.85);
-        border: 1px solid rgba(88, 97, 110, 0.45);
-        color: #edece6;
-      }
-
-      .bb-action-btn.secondary:not(:disabled):hover {
-        border-color: #edece6;
-        background: rgba(32, 40, 52, 0.95);
-        color: #ffffff;
-      }
-
-      .bb-action-btn:disabled {
-        opacity: 0.35;
-        cursor: not-allowed;
-        filter: grayscale(0.8);
-      }
-
-      .bb-actions-hint {
-        font-size: 9.5px;
-        color: #616b79;
-        font-family: monospace;
-        text-align: center;
-        margin-top: 2px;
-        letter-spacing: 0.3px;
+      .bb-tooltip-desc {
+        font-size: 10.5px;
+        line-height: 1.35;
+        color: #c8c6bc;
+        word-wrap: break-word;
       }
 
       /* --- Context Menu & Drop Quantity Modal --- */
       #bb-context-menu {
         position: fixed;
         background: rgba(18, 24, 33, 0.96);
-        border: 1px solid rgba(240, 198, 74, 0.4);
+        border: 1px solid rgba(240, 198, 74, 0.45);
         border-radius: 3px;
         padding: 4px 0;
         z-index: 1100;
         display: none;
         flex-direction: column;
-        min-width: 150px;
+        min-width: 155px;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.85);
         font-family: 'Rubik', -apple-system, sans-serif;
       }
 
       .bb-context-item {
-        padding: 7px 14px;
+        padding: 8px 14px;
         font-size: 11px;
         font-weight: 600;
         color: #edece6;
@@ -538,12 +422,6 @@ export class InventoryUI {
       .bb-context-item:hover {
         background: rgba(240, 198, 74, 0.18);
         color: #f0c64a;
-      }
-
-      .bb-context-divider {
-        height: 1px;
-        background: rgba(88, 97, 110, 0.25);
-        margin: 3px 0;
       }
 
       #bb-drop-modal {
@@ -625,6 +503,43 @@ export class InventoryUI {
         display: flex;
         gap: 8px;
       }
+
+      .bb-action-btn {
+        flex: 1;
+        padding: 8px 12px;
+        border-radius: 2px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.8px;
+        cursor: pointer;
+        text-transform: uppercase;
+        transition: all 0.15s ease;
+        box-sizing: border-box;
+      }
+
+      .bb-action-btn.primary {
+        background: linear-gradient(135deg, #f0c64a 0%, #d7a51e 50%, #986d12 100%);
+        color: #0c1118;
+        border: none;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+      }
+
+      .bb-action-btn.primary:hover {
+        filter: brightness(1.15);
+        box-shadow: 0 0 10px rgba(240, 198, 74, 0.5);
+      }
+
+      .bb-action-btn.secondary {
+        background: rgba(22, 28, 38, 0.85);
+        border: 1px solid rgba(88, 97, 110, 0.45);
+        color: #edece6;
+      }
+
+      .bb-action-btn.secondary:hover {
+        border-color: #edece6;
+        background: rgba(32, 40, 52, 0.95);
+        color: #ffffff;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -634,7 +549,7 @@ export class InventoryUI {
     this.inventoryModalEl.id = 'bb-inventory-modal';
     this.inventoryModalEl.style.display = 'none';
 
-    // Clicking backdrop outside stage closes inventory
+    // Left-clicking backdrop outside stage closes inventory
     this.inventoryModalEl.addEventListener('click', (e) => {
       if (e.target === this.inventoryModalEl) {
         this.close();
@@ -644,8 +559,12 @@ export class InventoryUI {
     // 1920x1080 Stage
     this.stageEl = document.createElement('div');
     this.stageEl.className = 'bb-inv-stage';
+
+    // Left-clicking empty stage space closes context menu
     this.stageEl.addEventListener('click', (e) => {
-      e.stopPropagation();
+      if (this.contextMenuEl && !this.contextMenuEl.contains(e.target)) {
+        this._hideContextMenu();
+      }
     });
 
     // SVG Background Artwork Skin
@@ -682,118 +601,47 @@ export class InventoryUI {
     });
     this.stageEl.appendChild(this.closeBtnRight);
 
-    // Subheader Capacity Bar (Above 30-slot grid on Left Panel)
-    this.capacityBarEl = document.createElement('div');
-    this.capacityBarEl.className = 'bb-inv-capacity-bar';
-    this.capacityBarEl.id = 'bb-inv-capacity-status';
-    this.capacityBarEl.innerHTML = `
-      <div>SLOTS: <span id="bb-inv-occupied" class="gold-accent">0</span> / 30 &middot; <span class="gold-accent">HOTBAR: 10</span> &middot; STORAGE: 20</div>
-      <div class="hint-text">[ESC / TAB] CLOSE &middot; [1–0] ASSIGN</div>
-    `;
-    this.stageEl.appendChild(this.capacityBarEl);
+    // Build 30 slots:
+    // Slots 0..9: 10 Quick-Access Hotbar slots in a vertical column on far-right of left panel
+    // Slots 10..29: 20 Storage slots (4 columns x 5 rows) in main inventory grid
+    this.slotElements = new Array(30);
 
-    // 30 Inventory Grid Slots (6 columns x 5 rows, matching exact SVG slot coordinates)
-    this.slotElements = [];
-    for (let i = 0; i < 30; i++) {
-      const col = i % 6;
-      const row = Math.floor(i / 6);
-      const x = 245 + col * 109;
-      const y = 228 + row * 109;
-
-      const slot = this._createGridSlot(i, i < 10);
+    // 10 Hotbar Slots (Indexes 0..9)
+    for (let i = 0; i < 10; i++) {
+      const x = 832;
+      const y = 164 + i * 82;
+      const slot = this._createGridSlot(i, true);
       slot.style.left = `${x}px`;
       slot.style.top = `${y}px`;
-
-      this.slotElements.push(slot);
+      this.slotElements[i] = slot;
       this.stageEl.appendChild(slot);
     }
 
-    // Selected Item Details & Actions Panel (Lower Left Panel, y: 780..1012)
-    this.detailsPanelEl = document.createElement('div');
-    this.detailsPanelEl.className = 'bb-inv-details-panel';
-    this.detailsPanelEl.id = 'bb-inv-details-panel';
+    // 20 Storage Slots (Indexes 10..29)
+    for (let k = 0; k < 20; k++) {
+      const slotIdx = 10 + k;
+      const col = k % 4;
+      const row = Math.floor(k / 4);
+      const x = 245 + col * 109;
+      const y = 228 + row * 109;
 
-    const detailsLeft = document.createElement('div');
-    detailsLeft.className = 'bb-details-left';
+      const slot = this._createGridSlot(slotIdx, false);
+      slot.style.left = `${x}px`;
+      slot.style.top = `${y}px`;
+      this.slotElements[slotIdx] = slot;
+      this.stageEl.appendChild(slot);
+    }
 
-    const previewRow = document.createElement('div');
-    previewRow.className = 'bb-details-header-row';
-
-    const iconBox = document.createElement('div');
-    iconBox.className = 'bb-details-icon-box';
-    this.detailIcon = document.createElement('img');
-    this.detailIcon.className = 'bb-details-icon';
-    this.detailIcon.id = 'bb-details-icon';
-    this.detailIcon.draggable = false;
-    this.detailIcon.style.display = 'none';
-    iconBox.appendChild(this.detailIcon);
-
-    const metaCol = document.createElement('div');
-    metaCol.className = 'bb-details-meta';
-    this.detailName = document.createElement('div');
-    this.detailName.className = 'bb-details-name';
-    this.detailName.id = 'bb-details-name';
-    this.detailName.textContent = 'SELECT AN ITEM';
-    this.detailCat = document.createElement('div');
-    this.detailCat.className = 'bb-details-cat';
-    this.detailCat.id = 'bb-details-cat';
-    this.detailCat.textContent = 'CLICK ANY SLOT TO INSPECT';
-    metaCol.appendChild(this.detailName);
-    metaCol.appendChild(this.detailCat);
-
-    previewRow.appendChild(iconBox);
-    previewRow.appendChild(metaCol);
-    detailsLeft.appendChild(previewRow);
-
-    this.detailDesc = document.createElement('div');
-    this.detailDesc.className = 'bb-details-desc';
-    this.detailDesc.id = 'bb-details-desc';
-    this.detailDesc.textContent = 'Inspect item specifications, consumable attributes, and contextual actions.';
-    detailsLeft.appendChild(this.detailDesc);
-
-    this.detailStats = document.createElement('div');
-    this.detailStats.className = 'bb-details-stats';
-    this.detailStats.id = 'bb-details-stats';
-    detailsLeft.appendChild(this.detailStats);
-
-    this.detailsPanelEl.appendChild(detailsLeft);
-
-    // Actions Column
-    const actionsCol = document.createElement('div');
-    actionsCol.className = 'bb-details-actions';
-
-    this.btnUse = document.createElement('button');
-    this.btnUse.className = 'bb-action-btn primary';
-    this.btnUse.id = 'bb-action-use';
-    this.btnUse.textContent = 'Use / Consume';
-    this.btnUse.disabled = true;
-    this.btnUse.addEventListener('click', () => this._handleUseSelected());
-
-    this.btnDrop = document.createElement('button');
-    this.btnDrop.className = 'bb-action-btn secondary';
-    this.btnDrop.id = 'bb-action-drop';
-    this.btnDrop.textContent = 'Drop Item';
-    this.btnDrop.disabled = true;
-    this.btnDrop.addEventListener('click', () => this._handleDropSelected());
-
-    this.btnAssignHotbar = document.createElement('button');
-    this.btnAssignHotbar.className = 'bb-action-btn secondary';
-    this.btnAssignHotbar.id = 'bb-action-assign';
-    this.btnAssignHotbar.textContent = 'Assign to Hotbar';
-    this.btnAssignHotbar.disabled = true;
-    this.btnAssignHotbar.addEventListener('click', () => this._handleAssignHotbar());
-
-    const hintEl = document.createElement('div');
-    hintEl.className = 'bb-actions-hint';
-    hintEl.textContent = 'HINT: Press 1–9, 0 to assign';
-
-    actionsCol.appendChild(this.btnUse);
-    actionsCol.appendChild(this.btnDrop);
-    actionsCol.appendChild(this.btnAssignHotbar);
-    actionsCol.appendChild(hintEl);
-
-    this.detailsPanelEl.appendChild(actionsCol);
-    this.stageEl.appendChild(this.detailsPanelEl);
+    // Tooltip Element (Hover interaction: <= 10 words description)
+    this.tooltipEl = document.createElement('div');
+    this.tooltipEl.id = 'bb-inv-tooltip';
+    this.tooltipTitleEl = document.createElement('div');
+    this.tooltipTitleEl.className = 'bb-tooltip-title';
+    this.tooltipDescEl = document.createElement('div');
+    this.tooltipDescEl.className = 'bb-tooltip-desc';
+    this.tooltipEl.appendChild(this.tooltipTitleEl);
+    this.tooltipEl.appendChild(this.tooltipDescEl);
+    this.stageEl.appendChild(this.tooltipEl);
 
     // Append stage to modal root and parent
     this.inventoryModalEl.appendChild(this.stageEl);
@@ -806,7 +654,7 @@ export class InventoryUI {
 
   _createGridSlot(slotIdx, isHotbar) {
     const slot = document.createElement('div');
-    slot.className = 'bb-grid-slot';
+    slot.className = `bb-grid-slot ${isHotbar ? 'hotbar-slot' : 'storage-slot'}`;
     slot.dataset.slotIndex = String(slotIdx);
     slot.id = `bb-slot-${slotIdx}`;
 
@@ -829,26 +677,44 @@ export class InventoryUI {
     iconImg.style.display = 'none';
     slot.appendChild(iconImg);
 
-    // Left click: select or click-to-swap
-    slot.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._handleSlotClick(slotIdx);
+    // Hover Interaction: Show lightweight info tooltip <= 10 words
+    slot.addEventListener('mouseenter', () => {
+      this.hoveredSlotIndex = slotIdx;
+      this._showTooltip(slotIdx, slot);
     });
 
-    // Right click: contextual menu
+    slot.addEventListener('mouseleave', () => {
+      if (this.hoveredSlotIndex === slotIdx) {
+        this.hoveredSlotIndex = null;
+      }
+      this._hideTooltip();
+    });
+
+    // Left click on empty slot closes context menu
+    slot.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const item = this.inventory ? this.inventory.getItem(slotIdx) : null;
+      if (!item) {
+        this._hideContextMenu();
+      }
+    });
+
+    // Right-click: Open contextual action menu
     slot.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
       this._handleSlotRightClick(slotIdx, e.clientX, e.clientY);
     });
 
-    // Drag & Drop
+    // Left-click and hold: Drag the item to another slot or hotbar slot
     slot.addEventListener('dragstart', (e) => {
       const item = this.inventory ? this.inventory.getItem(slotIdx) : null;
       if (!item) {
         e.preventDefault();
         return;
       }
+      this._hideTooltip();
+      this._hideContextMenu();
       this.draggedSlotIndex = slotIdx;
       e.dataTransfer.setData('text/plain', String(slotIdx));
       e.dataTransfer.effectAllowed = 'move';
@@ -893,53 +759,146 @@ export class InventoryUI {
     return slot;
   }
 
+  _showTooltip(slotIdx, slotEl) {
+    if (!this.inventory || !this.tooltipEl) return;
+    const item = this.inventory.getItem(slotIdx);
+    if (!item) {
+      this._hideTooltip();
+      return;
+    }
+
+    const def = getItemDefinition(item.typeId) || {};
+    const title = (item.name || def.name || 'Item').toUpperCase();
+    const desc = getShortItemDescription(item, def);
+
+    this.tooltipTitleEl.textContent = title;
+    this.tooltipDescEl.textContent = desc;
+    this.tooltipEl.style.display = 'flex';
+
+    const isHotbar = slotIdx < 10;
+    if (isHotbar) {
+      // Position to the left of the hotbar column
+      this.tooltipEl.style.left = `${slotEl.offsetLeft - 240}px`;
+      this.tooltipEl.style.top = `${slotEl.offsetTop + 4}px`;
+    } else {
+      // Storage slots: position above (or below for top row)
+      if (slotEl.offsetTop >= 240) {
+        this.tooltipEl.style.left = `${slotEl.offsetLeft}px`;
+        this.tooltipEl.style.top = `${slotEl.offsetTop - 54}px`;
+      } else {
+        this.tooltipEl.style.left = `${slotEl.offsetLeft}px`;
+        this.tooltipEl.style.top = `${slotEl.offsetTop + slotEl.offsetHeight + 6}px`;
+      }
+    }
+  }
+
+  _hideTooltip() {
+    if (this.tooltipEl) {
+      this.tooltipEl.style.display = 'none';
+    }
+  }
+
   _initContextMenuUI() {
     this.contextMenuEl = document.createElement('div');
     this.contextMenuEl.id = 'bb-context-menu';
+
+    // Keep context menu open while cursor interacts with it
+    this.contextMenuEl.addEventListener('mouseenter', () => {
+      this._clearContextMenuTimer();
+    });
+
+    // Close when cursor moves away and remains outside for > 3 seconds
+    this.contextMenuEl.addEventListener('mouseleave', () => {
+      this._startContextMenuTimer();
+    });
 
     this.ctxUse = document.createElement('div');
     this.ctxUse.className = 'bb-context-item';
     this.ctxUse.textContent = 'Use / Consume';
     this.ctxUse.addEventListener('click', () => {
+      const idx = this.contextSlotIdx;
       this._hideContextMenu();
-      if (this.contextSlotIdx !== null) this._executeUse(this.contextSlotIdx);
+      if (idx !== null) this._executeUse(idx);
     });
 
     this.ctxDrop = document.createElement('div');
     this.ctxDrop.className = 'bb-context-item';
     this.ctxDrop.textContent = 'Drop...';
     this.ctxDrop.addEventListener('click', () => {
+      const idx = this.contextSlotIdx;
       this._hideContextMenu();
-      if (this.contextSlotIdx !== null) this._executeDrop(this.contextSlotIdx);
+      if (idx !== null) this._executeDrop(idx);
     });
 
     this.ctxAssign = document.createElement('div');
     this.ctxAssign.className = 'bb-context-item';
     this.ctxAssign.textContent = 'Assign to Hotbar';
     this.ctxAssign.addEventListener('click', () => {
+      const idx = this.contextSlotIdx;
       this._hideContextMenu();
-      if (this.contextSlotIdx !== null) this._executeAssignHotbar(this.contextSlotIdx);
-    });
-
-    this.ctxInspect = document.createElement('div');
-    this.ctxInspect.className = 'bb-context-item';
-    this.ctxInspect.textContent = 'Inspect Details';
-    this.ctxInspect.addEventListener('click', () => {
-      this._hideContextMenu();
-      if (this.contextSlotIdx !== null) this._selectSlot(this.contextSlotIdx);
+      if (idx !== null) this._executeAssignHotbar(idx);
     });
 
     this.contextMenuEl.appendChild(this.ctxUse);
     this.contextMenuEl.appendChild(this.ctxDrop);
     this.contextMenuEl.appendChild(this.ctxAssign);
-    const div = document.createElement('div');
-    div.className = 'bb-context-divider';
-    this.contextMenuEl.appendChild(div);
-    this.contextMenuEl.appendChild(this.ctxInspect);
 
     document.body.appendChild(this.contextMenuEl);
 
-    document.addEventListener('click', () => this._hideContextMenu());
+    // Global click listener to close context menu when clicking outside
+    document.addEventListener('click', (e) => {
+      if (this.contextMenuEl && !this.contextMenuEl.contains(e.target)) {
+        this._hideContextMenu();
+      }
+    });
+  }
+
+  _startContextMenuTimer() {
+    this._clearContextMenuTimer();
+    this.contextMenuTimer = setTimeout(() => {
+      this._hideContextMenu();
+    }, 3000);
+  }
+
+  _clearContextMenuTimer() {
+    if (this.contextMenuTimer) {
+      clearTimeout(this.contextMenuTimer);
+      this.contextMenuTimer = null;
+    }
+  }
+
+  _handleSlotRightClick(slotIdx, clientX, clientY) {
+    const slot = this.inventory ? this.inventory.getItem(slotIdx) : null;
+    if (!slot) {
+      this._hideContextMenu();
+      return;
+    }
+
+    this.contextSlotIdx = slotIdx;
+
+    const def = getItemDefinition(slot.typeId);
+    const isConsumable = !!(def && def.consumable);
+    const isDroppable = !!(def && def.droppable !== false);
+    const isStorage = slotIdx >= 10;
+
+    this.ctxUse.style.display = isConsumable ? 'flex' : 'none';
+    this.ctxDrop.style.display = isDroppable ? 'flex' : 'none';
+    this.ctxAssign.style.display = isStorage ? 'flex' : 'none';
+
+    this.contextMenuEl.style.display = 'flex';
+    this.contextMenuEl.style.left = `${Math.min(window.innerWidth - 170, clientX)}px`;
+    this.contextMenuEl.style.top = `${Math.min(window.innerHeight - 130, clientY)}px`;
+
+    // Start 3-second auto-close timer (cancelled if mouse enters menu)
+    this._startContextMenuTimer();
+  }
+
+  _hideContextMenu() {
+    this._clearContextMenuTimer();
+    this.contextSlotIdx = null;
+    if (this.contextMenuEl) {
+      this.contextMenuEl.style.display = 'none';
+    }
   }
 
   _initDropModalUI() {
@@ -1054,17 +1013,32 @@ export class InventoryUI {
           return;
         }
       }
-      if (this.isOpen && this.selectedInventorySlot !== null && !e.repeat) {
-        const numMap = {
-          Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3, Digit5: 4,
-          Digit6: 5, Digit7: 6, Digit8: 7, Digit9: 8, Digit0: 9
-        };
-        if (numMap[e.code] !== undefined) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-          const targetSlot = numMap[e.code];
-          this.moveOrSwapSlots(this.selectedInventorySlot, targetSlot);
+
+      // Hotbar number key selection & assignment (1–9, 0)
+      const numMap = {
+        Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3, Digit5: 4,
+        Digit6: 5, Digit7: 6, Digit8: 7, Digit9: 8, Digit0: 9
+      };
+      if (numMap[e.code] !== undefined && !e.repeat) {
+        const targetHotbar = numMap[e.code];
+        if (this.isOpen) {
+          // If hovering over a storage item or right-clicked on storage item, assign it to hotbar slot
+          const sourceSlot = (this.hoveredSlotIndex !== null && this.hoveredSlotIndex >= 10)
+            ? this.hoveredSlotIndex
+            : (this.contextSlotIdx !== null && this.contextSlotIdx >= 10 ? this.contextSlotIdx : null);
+
+          if (sourceSlot !== null) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            this.moveOrSwapSlots(sourceSlot, targetHotbar);
+          } else {
+            // Also allow selecting active hotbar slot via number key
+            this.setSelectedSlot(targetHotbar);
+            if (this.player && this.player.selectHotbarSlot) {
+              this.player.selectHotbarSlot(targetHotbar);
+            }
+          }
         }
       }
     }, { capture: true });
@@ -1085,64 +1059,15 @@ export class InventoryUI {
       if (this.networkClient && this.networkClient.isConnected) {
         this.networkClient.send('INVENTORY_SWAP_REQUEST', { fromSlot: fromIdx, toSlot: toIdx });
       }
-      this._selectSlot(toIdx);
       if (this.player && (fromIdx === this.player.selectedHotbarSlot || toIdx === this.player.selectedHotbarSlot)) {
         this.player.selectHotbarSlot(this.player.selectedHotbarSlot);
       }
       this.render();
-    }
-    return success;
-  }
-
-  _handleSlotClick(slotIdx) {
-    this._hideContextMenu();
-
-    // If already in a swap operation
-    if (this.activeSwapSourceSlot !== null) {
-      const from = this.activeSwapSourceSlot;
-      this.activeSwapSourceSlot = null;
-      if (from !== slotIdx) {
-        this.moveOrSwapSlots(from, slotIdx);
-        return;
+      if (this.hoveredSlotIndex !== null && this.slotElements[this.hoveredSlotIndex]) {
+        this._showTooltip(this.hoveredSlotIndex, this.slotElements[this.hoveredSlotIndex]);
       }
     }
-
-    this._selectSlot(slotIdx);
-  }
-
-  _selectSlot(slotIdx) {
-    this.selectedInventorySlot = slotIdx;
-    this.render();
-  }
-
-  _handleSlotRightClick(slotIdx, clientX, clientY) {
-    this.contextSlotIdx = slotIdx;
-    this._selectSlot(slotIdx);
-
-    const slot = this.inventory ? this.inventory.getItem(slotIdx) : null;
-    if (!slot) {
-      this._hideContextMenu();
-      return;
-    }
-
-    const def = getItemDefinition(slot.typeId);
-    const isConsumable = !!(def && def.consumable);
-    const isDroppable = !!(def && def.droppable !== false);
-    const isBackpack = slotIdx >= 10;
-
-    this.ctxUse.style.display = isConsumable ? 'flex' : 'none';
-    this.ctxDrop.style.display = isDroppable ? 'flex' : 'none';
-    this.ctxAssign.style.display = isBackpack ? 'flex' : 'none';
-
-    this.contextMenuEl.style.display = 'flex';
-    this.contextMenuEl.style.left = `${Math.min(window.innerWidth - 160, clientX)}px`;
-    this.contextMenuEl.style.top = `${Math.min(window.innerHeight - 150, clientY)}px`;
-  }
-
-  _hideContextMenu() {
-    if (this.contextMenuEl) {
-      this.contextMenuEl.style.display = 'none';
-    }
+    return success;
   }
 
   _openDropModal(slotIdx) {
@@ -1222,27 +1147,9 @@ export class InventoryUI {
       }
     }
     if (targetSlot === -1) {
-      targetSlot = 3; // Default replace slot 4 if hotbar full
+      targetSlot = this.selectedHotbarSlot; // Replace currently selected hotbar slot if all full
     }
     this.moveOrSwapSlots(slotIdx, targetSlot);
-  }
-
-  _handleUseSelected() {
-    if (this.selectedInventorySlot !== null) {
-      this._executeUse(this.selectedInventorySlot);
-    }
-  }
-
-  _handleDropSelected() {
-    if (this.selectedInventorySlot !== null) {
-      this._executeDrop(this.selectedInventorySlot);
-    }
-  }
-
-  _handleAssignHotbar() {
-    if (this.selectedInventorySlot !== null && this.selectedInventorySlot >= 10) {
-      this._executeAssignHotbar(this.selectedInventorySlot);
-    }
   }
 
   render() {
@@ -1254,16 +1161,6 @@ export class InventoryUI {
   renderInventoryModal() {
     if (!this.inventory) return;
     const slots = this.inventory.getSlots();
-    const occupied = slots.filter(s => s !== null).length;
-
-    const occEl = document.getElementById('bb-inv-occupied');
-    if (occEl) {
-      occEl.textContent = String(occupied);
-    }
-    const capEl = document.getElementById('bb-inv-capacity-status');
-    if (capEl && !occEl) {
-      capEl.textContent = `SLOTS: ${occupied} / ${this.inventory.capacity} (HOTBAR: 10, BACKPACK: ${this.inventory.capacity - 10})`;
-    }
 
     // Render all 30 slots
     for (let i = 0; i < 30; i++) {
@@ -1271,16 +1168,11 @@ export class InventoryUI {
         this._renderGridSlotElement(i, slots[i], this.slotElements[i]);
       }
     }
-
-    // Render Details Panel for selected item
-    this._renderItemDetails();
   }
 
   _renderGridSlotElement(slotIdx, slotData, slotEl) {
     if (!slotEl) return;
 
-    slotEl.classList.toggle('selected', slotIdx === this.selectedInventorySlot);
-    slotEl.classList.toggle('swap-source', slotIdx === this.activeSwapSourceSlot);
     slotEl.classList.toggle('active-equipped', slotIdx < 10 && slotIdx === this.selectedHotbarSlot);
 
     if (slotData) {
@@ -1306,66 +1198,5 @@ export class InventoryUI {
       if (iconImg) iconImg.style.display = 'none';
       if (qtyBadge) qtyBadge.textContent = '';
     }
-  }
-
-  _renderItemDetails() {
-    if (this.selectedInventorySlot === null) {
-      this.detailIcon.style.display = 'none';
-      this.detailName.textContent = 'SELECT AN ITEM';
-      this.detailCat.textContent = 'CLICK ANY SLOT TO INSPECT';
-      this.detailDesc.textContent = 'Inspect item specifications, consumable attributes, and contextual actions.';
-      this.detailStats.innerHTML = '';
-      this.btnUse.disabled = true;
-      this.btnDrop.disabled = true;
-      this.btnAssignHotbar.disabled = true;
-      return;
-    }
-
-    const slot = this.inventory.getItem(this.selectedInventorySlot);
-    if (!slot) {
-      this.detailIcon.style.display = 'none';
-      this.detailName.textContent = `SLOT #${this.selectedInventorySlot + 1} (EMPTY)`;
-      this.detailCat.textContent = this.selectedInventorySlot < 10 ? 'HOTBAR SLOT (KEYS 1-9, 0)' : 'STORAGE SLOT';
-      this.detailDesc.textContent = 'This slot is currently empty. Collected world items will automatically occupy this slot.';
-      this.detailStats.innerHTML = '';
-      this.btnUse.disabled = true;
-      this.btnDrop.disabled = true;
-      this.btnAssignHotbar.disabled = true;
-      return;
-    }
-
-    const def = getItemDefinition(slot.typeId) || {};
-    const effect = ITEM_EFFECTS_CONFIG[slot.typeId] || def.metadata || {};
-
-    this.detailIcon.src = slot.iconUrl || def.iconUrl || 'assets/ui/icons/hud_ammo.svg';
-    this.detailIcon.style.display = 'block';
-    this.detailName.textContent = slot.name || def.name;
-    this.detailCat.textContent = `${(slot.category || def.category || 'ITEM').toUpperCase()} // STACK: ${slot.quantity}/${slot.maxStack || 1} ${this.selectedInventorySlot < 10 ? '(HOTBAR)' : '(BACKPACK)'}`;
-    this.detailDesc.textContent = def.metadata?.description || slot.metadata?.description || 'Standard Level 0 survival item.';
-
-    let statsHtml = '';
-    if (effect.healAmount) {
-      statsHtml += `<div class="bb-stat-pill">+${effect.healAmount} HEALTH RESTORATION</div>`;
-    }
-    if (effect.sanityRestore) {
-      statsHtml += `<div class="bb-stat-pill">+${effect.sanityRestore} SANITY RESTORATION</div>`;
-    }
-    if (effect.staminaBoost) {
-      statsHtml += `<div class="bb-stat-pill">+${effect.staminaBoost} STAMINA RECOVERY</div>`;
-    }
-    if (effect.speedMultiplier) {
-      statsHtml += `<div class="bb-stat-pill">+${Math.round((effect.speedMultiplier - 1) * 100)}% SPRINT SPEED (${effect.durationSeconds || 15}s)</div>`;
-    }
-    if (effect.batteryCharge) {
-      statsHtml += `<div class="bb-stat-pill">+${effect.batteryCharge}% FLASHLIGHT BATTERY</div>`;
-    }
-    if (effect.rounds) {
-      statsHtml += `<div class="bb-stat-pill">+${effect.rounds} ROUNDS (.45 ACP PISTOL)</div>`;
-    }
-    this.detailStats.innerHTML = statsHtml;
-
-    this.btnUse.disabled = !def.consumable;
-    this.btnDrop.disabled = def.droppable === false;
-    this.btnAssignHotbar.disabled = this.selectedInventorySlot < 10;
   }
 }
