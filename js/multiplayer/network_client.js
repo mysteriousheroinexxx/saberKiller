@@ -23,7 +23,22 @@ export const MSG_TYPES = {
   ITEM_SPAWNED: 'ITEM_SPAWNED',
   INVENTORY_SWAP_REQUEST: 'INVENTORY_SWAP_REQUEST',
   VENDING_DISPENSE_REQUEST: 'VENDING_DISPENSE_REQUEST',
-  VENDING_DISPENSE_RESPONSE: 'VENDING_DISPENSE_RESPONSE'
+  VENDING_DISPENSE_RESPONSE: 'VENDING_DISPENSE_RESPONSE',
+  // Health, Downed & Revival packet types
+  PLAYER_DAMAGE_REQUEST: 'PLAYER_DAMAGE_REQUEST',
+  PLAYER_HEALTH_UPDATE: 'PLAYER_HEALTH_UPDATE',
+  PLAYER_DOWNED: 'PLAYER_DOWNED',
+  PLAYER_ELIMINATED: 'PLAYER_ELIMINATED',
+  PLAYER_REVIVE_REQUEST: 'PLAYER_REVIVE_REQUEST',
+  PLAYER_REVIVE_RESPONSE: 'PLAYER_REVIVE_RESPONSE',
+  PLAYER_REVIVED: 'PLAYER_REVIVED',
+  GAME_OVER: 'GAME_OVER',
+  // Pre-Game Staging Lobby packet types
+  LOBBY_READY_TOGGLE: 'LOBBY_READY_TOGGLE',
+  LOBBY_STATE_UPDATE: 'LOBBY_STATE_UPDATE',
+  MATCH_START_REQUEST: 'MATCH_START_REQUEST',
+  MATCH_START_REJECTED: 'MATCH_START_REJECTED',
+  MATCH_STARTED: 'MATCH_STARTED'
 };
 
 function resolveWebSocketUrl(input) {
@@ -70,6 +85,15 @@ export class NetworkClient {
     this.onItemDropResponse = null;
     this.onItemSpawned = null;
     this.onVendingDispenseResponse = null;
+    this.onHealthUpdate = null;
+    this.onPlayerDowned = null;
+    this.onPlayerEliminated = null;
+    this.onPlayerReviveResponse = null;
+    this.onPlayerRevived = null;
+    this.onGameOver = null;
+    this.onLobbyStateUpdate = null;
+    this.onMatchStartRejected = null;
+    this.onMatchStarted = null;
   }
 
   connect(url) {
@@ -264,6 +288,42 @@ export class NetworkClient {
         if (this.onVendingDispenseResponse) this.onVendingDispenseResponse(payload);
         break;
 
+      case MSG_TYPES.PLAYER_HEALTH_UPDATE:
+        if (this.onHealthUpdate) this.onHealthUpdate(payload);
+        break;
+
+      case MSG_TYPES.PLAYER_DOWNED:
+        if (this.onPlayerDowned) this.onPlayerDowned(payload);
+        break;
+
+      case MSG_TYPES.PLAYER_ELIMINATED:
+        if (this.onPlayerEliminated) this.onPlayerEliminated(payload);
+        break;
+
+      case MSG_TYPES.PLAYER_REVIVE_RESPONSE:
+        if (this.onPlayerReviveResponse) this.onPlayerReviveResponse(payload);
+        break;
+
+      case MSG_TYPES.PLAYER_REVIVED:
+        if (this.onPlayerRevived) this.onPlayerRevived(payload);
+        break;
+
+      case MSG_TYPES.GAME_OVER:
+        if (this.onGameOver) this.onGameOver(payload);
+        break;
+
+      case MSG_TYPES.LOBBY_STATE_UPDATE:
+        if (this.onLobbyStateUpdate) this.onLobbyStateUpdate(payload);
+        break;
+
+      case MSG_TYPES.MATCH_START_REJECTED:
+        if (this.onMatchStartRejected) this.onMatchStartRejected(payload);
+        break;
+
+      case MSG_TYPES.MATCH_STARTED:
+        if (this.onMatchStarted) this.onMatchStarted(payload);
+        break;
+
       default:
         console.log('[NetworkClient] Unhandled packet type:', type);
         break;
@@ -278,8 +338,8 @@ export class NetworkClient {
     return true;
   }
 
-  createRoom(roomCode = null, layoutRevision = null) {
-    return this.send(MSG_TYPES.CREATE_ROOM, { roomCode, layoutRevision });
+  createRoom(roomCode = null, layoutRevision = null, options = {}) {
+    return this.send(MSG_TYPES.CREATE_ROOM, { roomCode, layoutRevision, ...options });
   }
 
   joinRoom(roomCode) {
@@ -339,6 +399,34 @@ export class NetworkClient {
     }
     const sent = this.send(MSG_TYPES.VENDING_DISPENSE_REQUEST, payload);
     return { sent, requestId };
+  }
+
+  requestDamage(amount, reason = 'DEFAULT', targetPlayerId = null) {
+    const payload = { amount, reason };
+    if (targetPlayerId) {
+      payload.targetPlayerId = targetPlayerId;
+    }
+    return this.send(MSG_TYPES.PLAYER_DAMAGE_REQUEST, payload);
+  }
+
+  requestRevive(targetPlayerId, requestId = null, clientPosition = null) {
+    if (!requestId) {
+      requestId = 'rev_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    }
+    const payload = { targetPlayerId, requestId };
+    if (clientPosition) {
+      payload.clientPosition = clientPosition;
+    }
+    const sent = this.send(MSG_TYPES.PLAYER_REVIVE_REQUEST, payload);
+    return { sent, requestId };
+  }
+
+  toggleReady(isReady = null) {
+    return this.send(MSG_TYPES.LOBBY_READY_TOGGLE, { isReady });
+  }
+
+  requestMatchStart() {
+    return this.send(MSG_TYPES.MATCH_START_REQUEST, {});
   }
 
   sendUpdate(x, y, z, yaw, pitch, weapon = 0) {

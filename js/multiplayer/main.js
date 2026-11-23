@@ -1,7 +1,7 @@
 // Saber Killer — Multiplayer Client Entrypoint
 // Loads Level 0 environment independently and initializes MPManager
 
-import { initLevel0Env, enterLevel0Env, updateLevel0Env, getCollisionHandler } from '../levels/level0_env.js';
+import { initLevel0Env, enterLevel0Env, leaveLevel0Env, updateLevel0Env, getCollisionHandler } from '../levels/level0_env.js';
 import { MPManager } from './mp_manager.js';
 import { RemotePlayer, preloadPlayerAssets } from './remote_player.js';
 import {
@@ -249,28 +249,69 @@ async function init() {
       if (document.activeElement && typeof document.activeElement.blur === 'function') {
         try { document.activeElement.blur(); } catch (e) {}
       }
-      if (renderer && renderer.domElement) {
-        renderer.domElement.tabIndex = 0;
-        try { renderer.domElement.focus(); } catch (e) {}
-      }
       if (lobbyPanel) lobbyPanel.style.display = 'none';
+
+      if (payload.runState === 'LOBBY') {
+        // Pre-game staging lobby flow:
+        // Hide Level 0 environment and in-game HUDs; do NOT lock mouse pointer
+        leaveLevel0Env(scene);
+        if (itemManager && itemManager.container) itemManager.container.visible = false;
+        if (playerLight) playerLight.visible = false;
+        if (hudOverlay) hudOverlay.style.display = 'none';
+        if (sanityHUD) sanityHUD.setVisible(false);
+      } else {
+        // Direct in-game match flow (e.g. late join or legacy room)
+        enterLevel0Env(scene);
+        if (itemManager && itemManager.container) itemManager.container.visible = true;
+        if (playerLight) playerLight.visible = true;
+        if (hudOverlay) hudOverlay.style.display = 'block';
+        if (sanityHUD) sanityHUD.setVisible(true);
+        if (inventoryUI) inventoryUI.render();
+        if (roomInfoEl) roomInfoEl.textContent = `ROOM: ${payload.roomCode}`;
+        if (countEl) countEl.textContent = `PLAYERS: ${payload.totalPlayers || 1} / 2`;
+
+        // Layout revision synchronization across room clients (dev mode)
+        if (devToolsEnabled && payload.layoutRevision && payload.layoutRevision !== 'default') {
+          console.log(`[ROOM LAYOUT SYNC] Synchronizing room ${payload.roomCode} to layout: ${payload.layoutRevision}`);
+          const revUrl = `/api/developer/world-layout/load?file=${encodeURIComponent(payload.layoutRevision)}`;
+          itemManager?.loadWorldItems(revUrl)
+            .then(() => {
+              if (worldEditor?.ui?.layoutSelect) {
+                worldEditor.ui.layoutSelect.value = payload.layoutRevision;
+              }
+            })
+            .catch(e => console.warn('[ROOM LAYOUT SYNC] Error:', e));
+        }
+
+        if (renderer && renderer.domElement) {
+          renderer.domElement.tabIndex = 0;
+          try { renderer.domElement.focus(); } catch (e) {}
+        }
+
+        if (!mpManager.localPlayer.isEditorActive && (!worldEditor || !worldEditor.isOpen)) {
+          mpManager.localPlayer.requestPointerLock(renderer.domElement);
+        }
+      }
+    },
+    onMatchStarted: (payload) => {
+      console.log(`[MATCH START] Transitioning room ${payload.roomCode} to Level 0...`);
+      enterLevel0Env(scene);
+      if (itemManager && itemManager.container) itemManager.container.visible = true;
+      if (playerLight) playerLight.visible = true;
       if (hudOverlay) hudOverlay.style.display = 'block';
       if (sanityHUD) sanityHUD.setVisible(true);
       if (inventoryUI) inventoryUI.render();
       if (roomInfoEl) roomInfoEl.textContent = `ROOM: ${payload.roomCode}`;
-      if (countEl) countEl.textContent = `PLAYERS: ${payload.totalPlayers || 1} / 2`;
+      if (countEl) countEl.textContent = `PLAYERS: ${payload.startingPlayers || 2} / 2`;
 
-      // Layout revision synchronization across room clients (dev mode)
       if (devToolsEnabled && payload.layoutRevision && payload.layoutRevision !== 'default') {
-        console.log(`[ROOM LAYOUT SYNC] Synchronizing room ${payload.roomCode} to layout: ${payload.layoutRevision}`);
         const revUrl = `/api/developer/world-layout/load?file=${encodeURIComponent(payload.layoutRevision)}`;
-        itemManager?.loadWorldItems(revUrl)
-          .then(() => {
-            if (worldEditor?.ui?.layoutSelect) {
-              worldEditor.ui.layoutSelect.value = payload.layoutRevision;
-            }
-          })
-          .catch(e => console.warn('[ROOM LAYOUT SYNC] Error:', e));
+        itemManager?.loadWorldItems(revUrl).catch(e => console.warn('[ROOM LAYOUT SYNC] Error:', e));
+      }
+
+      if (renderer && renderer.domElement) {
+        renderer.domElement.tabIndex = 0;
+        try { renderer.domElement.focus(); } catch (e) {}
       }
 
       if (!mpManager.localPlayer.isEditorActive && (!worldEditor || !worldEditor.isOpen)) {
@@ -300,6 +341,10 @@ async function init() {
 
   inventoryUI = new InventoryUI(mpManager.inventory, mpManager.localPlayer, mpManager.network, document.body);
   window.inventoryUI = inventoryUI;
+
+  if (mpManager.stagingLobby) {
+    mpManager.stagingLobby.setOnLeave(() => leaveMultiplayerSession());
+  }
 
   // Auto-connect to local server immediately on page load (runs concurrently with heavy 3D asset downloads)
   mpManager.connect(defaultWsHost);
@@ -411,10 +456,19 @@ async function init() {
     isGameActive = false;
     if (mpManager) {
       mpManager.disconnect();
+      mpManager.connect(defaultWsHost);
     }
     if (hudOverlay) hudOverlay.style.display = 'none';
+    const stagingOverlay = document.getElementById('staging-lobby-overlay');
+    if (stagingOverlay) stagingOverlay.style.display = 'none';
     if (lobbyPanel) lobbyPanel.style.display = 'block';
     if (sanityHUD) sanityHUD.setVisible(false);
+    const downedOverlay = document.getElementById('bb-downed-overlay');
+    if (downedOverlay) downedOverlay.style.display = 'none';
+    const elimOverlay = document.getElementById('bb-eliminated-overlay');
+    if (elimOverlay) elimOverlay.style.display = 'none';
+    const goOverlay = document.getElementById('bb-gameover-overlay');
+    if (goOverlay) goOverlay.style.display = 'none';
     if (document.pointerLockElement) {
       try { document.exitPointerLock(); } catch (err) {}
     }
@@ -426,6 +480,15 @@ async function init() {
   const btnLeaveRoom = document.getElementById('btn-leave-room');
   if (btnLeaveRoom) {
     btnLeaveRoom.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      leaveMultiplayerSession();
+    });
+  }
+
+  const btnGameOverLobby = document.getElementById('bb-btn-gameover-lobby');
+  if (btnGameOverLobby) {
+    btnGameOverLobby.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       leaveMultiplayerSession();
@@ -507,6 +570,16 @@ async function init() {
         const result = mpManager.network.requestVendingDispense(target.id, requestId, clientPos);
         if (result.sent) console.log(`[VENDING ${requestId}] WebSocket send completed`);
         else console.warn(`[VENDING ${requestId}] WebSocket send did not occur (readyState=${mpManager.network.ws?.readyState ?? 'no socket'})`);
+        return result;
+      } else if (target.type === 'revive_teammate') {
+        if (!target.hasRequiredItem) {
+          if (interactionManager) {
+            interactionManager.handleReviveRejected('You need a Health Pack in your inventory to revive teammate!');
+          }
+          return false;
+        }
+        console.log(`[REVIVE ${requestId}] Requesting teammate revival for target ${target.targetPlayerId}`);
+        const result = mpManager.network.requestRevive(target.targetPlayerId, requestId, clientPos);
         return result;
       }
     },
