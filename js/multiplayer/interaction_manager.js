@@ -215,8 +215,9 @@ export class InteractionManager {
     }
 
     // Proximity guard
-    if (this.currentTarget.distance > this.maxDistance) {
-      this.diagnostics.eligibility = `OUT OF RANGE (${this.currentTarget.distance.toFixed(2)}m > ${this.maxDistance}m)`;
+    const maxDist = (this.currentTarget.type === 'revive_teammate') ? 2.8 : this.maxDistance;
+    if (this.currentTarget.distance > maxDist) {
+      this.diagnostics.eligibility = `OUT OF RANGE (${this.currentTarget.distance.toFixed(2)}m > ${maxDist}m)`;
       this._notifyDiagnostics();
       return;
     }
@@ -345,6 +346,33 @@ export class InteractionManager {
     }
   }
 
+  /**
+   * Handles teammate revival response (PLAYER_REVIVE_RESPONSE)
+   */
+  handleReviveResponse(payload) {
+    if (!payload) return;
+    const { requestId, success, targetPlayerId, reason } = payload;
+    if (this.pendingRequestId && (this.pendingRequestId === requestId || this.pendingTargetId === targetPlayerId || this.pendingTargetId === `revive_${targetPlayerId}`)) {
+      this._finishPickupRequest(requestId || this.pendingRequestId);
+      const timeStr = new Date().toLocaleTimeString();
+      if (success) {
+        this.diagnostics.serverResult = `ACCEPTED — Teammate ${targetPlayerId || ''} revived at ${timeStr}`;
+        this.diagnostics.lastRejection = 'NONE';
+      } else {
+        this.diagnostics.serverResult = `REJECTED — ${reason || 'Revival failed'} at ${timeStr}`;
+        this.diagnostics.lastRejection = reason || 'Revival failed';
+      }
+      this._notifyDiagnostics();
+    }
+  }
+
+  handleReviveRejected(reason) {
+    this._finishPickupRequest();
+    this.diagnostics.serverResult = `REJECTED — ${reason}`;
+    this.diagnostics.lastRejection = reason;
+    this._notifyDiagnostics();
+  }
+
   _finishPickupRequest(requestId) {
     if (requestId && this.pendingRequestId && requestId !== this.pendingRequestId) return false;
     if (this.pendingTimeout) {
@@ -447,6 +475,12 @@ export class InteractionManager {
       return;
     }
 
+    // Do not interact when local player is downed or dead
+    if (window.localPlayer && (window.localPlayer.isDowned || window.localPlayer.isDead || window.localPlayer.state !== 'ACTIVE')) {
+      if (this.currentTarget) this._clearHoverTarget();
+      return;
+    }
+
     // Do not interact when editor is in Edit mode or inventory is open
     if ((window.worldEditor && window.worldEditor.editorMode === 'edit') || (window.inventoryUI && window.inventoryUI.isOpen)) {
       if (this.currentTarget) this._clearHoverTarget();
@@ -538,6 +572,40 @@ export class InteractionManager {
       }
     }
 
+    // Check for nearby downed teammates if no item/prop is currently targeted
+    if (!foundTarget && window.mpManager && window.mpManager.remotePlayers) {
+      for (const [peerId, peer] of window.mpManager.remotePlayers) {
+        if (peer.state === 'DOWNED' && peer.group) {
+          const pPos = peer.group.position;
+          const dx = this.camera.position.x - pPos.x;
+          const dy = this.camera.position.y - (pPos.y + 0.25);
+          const dz = this.camera.position.z - pPos.z;
+          const dist = Math.hypot(dx, dy, dz);
+          if (dist <= 2.8) {
+            const camDir = new THREE.Vector3();
+            this.camera.getWorldDirection(camDir);
+            const toPeer = new THREE.Vector3(pPos.x - this.camera.position.x, (pPos.y + 0.25) - this.camera.position.y, pPos.z - this.camera.position.z).normalize();
+            if (camDir.dot(toPeer) > 0.4) {
+              const hasFirstAid = Boolean(window.mpManager?.inventory?.getCount('first_aid') > 0);
+              foundTarget = {
+                id: `revive_${peer.id}`,
+                type: 'revive_teammate',
+                targetPlayerId: peer.id,
+                name: hasFirstAid ? 'Teammate (Uses Health Pack)' : 'Teammate (Needs Health Pack)',
+                actionText: 'Revive',
+                distance: dist,
+                point: pPos,
+                isPickup: false,
+                isEnvironmental: false,
+                hasRequiredItem: hasFirstAid
+              };
+              break;
+            }
+          }
+        }
+      }
+    }
+
     if (foundTarget) {
       if (!this.currentTarget || this.currentTarget.id !== foundTarget.id) {
         this._setHoverTarget(foundTarget);
@@ -545,9 +613,10 @@ export class InteractionManager {
         // Update distance and eligibility
         this.currentTarget.distance = foundTarget.distance;
         this.diagnostics.targetDistance = foundTarget.distance;
-        this.diagnostics.eligibility = (foundTarget.distance <= this.maxDistance)
+        const maxDist = (foundTarget.type === 'revive_teammate') ? 2.8 : this.maxDistance;
+        this.diagnostics.eligibility = (foundTarget.distance <= maxDist)
           ? `ELIGIBLE (${foundTarget.distance.toFixed(2)}m)`
-          : `OUT OF RANGE (${foundTarget.distance.toFixed(2)}m > ${this.maxDistance}m)`;
+          : `OUT OF RANGE (${foundTarget.distance.toFixed(2)}m > ${maxDist}m)`;
         this._notifyDiagnostics();
       }
     } else {
@@ -567,12 +636,13 @@ export class InteractionManager {
 
     console.log(`[STAGE 1/19] [CLIENT] Interaction target selected: id=${target.id}, type=${target.type}, dist=${target.distance.toFixed(2)}m`);
 
+    const maxDist = (target.type === 'revive_teammate') ? 2.8 : this.maxDistance;
     this.diagnostics.targetId = target.id;
     this.diagnostics.targetType = target.type;
     this.diagnostics.targetDistance = target.distance;
-    this.diagnostics.eligibility = (target.distance <= this.maxDistance)
+    this.diagnostics.eligibility = (target.distance <= maxDist)
       ? `ELIGIBLE (${target.distance.toFixed(2)}m)`
-      : `OUT OF RANGE (${target.distance.toFixed(2)}m > ${this.maxDistance}m)`;
+      : `OUT OF RANGE (${target.distance.toFixed(2)}m > ${maxDist}m)`;
     this._notifyDiagnostics();
 
     if (this.onHover) {

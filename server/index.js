@@ -685,7 +685,7 @@ wss.on('connection', (ws, req) => {
           ? payload.layoutRevision.trim()
           : defaultRev;
         const layoutData = getLayoutDataForRevision(requestedRev);
-        const res = roomManager.createRoom(ws, payload?.roomCode, requestedRev, layoutData);
+        const res = roomManager.createRoom(ws, payload?.roomCode, requestedRev, layoutData, { startingPlayers: payload?.startingPlayers });
         if (res.error) {
           send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error });
         } else {
@@ -1063,6 +1063,60 @@ wss.on('connection', (ws, req) => {
           send(ws, MSG_TYPES.INVENTORY_UPDATE, {
             inventory: res.inventory
           });
+        }
+        break;
+      }
+
+      case MSG_TYPES.PLAYER_DAMAGE_REQUEST: {
+        const amount = payload?.amount;
+        const reason = payload?.reason || 'DEFAULT';
+        const targetPlayerId = payload?.targetPlayerId;
+        const res = roomManager.applyDamage(targetPlayerId ? targetPlayerId : ws, amount, reason);
+        if (res.error) {
+          send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error });
+        } else if (res.events && res.room) {
+          for (const evt of res.events) {
+            for (const [_, p] of res.room.players) {
+              send(p.ws, evt.type, evt.payload);
+            }
+          }
+        }
+        break;
+      }
+
+      case MSG_TYPES.PLAYER_REVIVE_REQUEST: {
+        const requestId = payload?.requestId || `rev_${Date.now()}`;
+        const targetPlayerId = payload?.targetPlayerId;
+        const clientPos = payload?.clientPosition;
+        console.log(`[REVIVE ${requestId}] Request received: target=${targetPlayerId}`);
+        const res = roomManager.handleReviveRequest(ws, targetPlayerId, clientPos);
+        if (res.error) {
+          console.warn(`[REVIVE ${requestId}] Rejected: ${res.error}`);
+          send(ws, MSG_TYPES.PLAYER_REVIVE_RESPONSE, {
+            requestId,
+            success: false,
+            targetPlayerId,
+            reason: res.error
+          });
+        } else {
+          console.log(`[REVIVE ${requestId}] Accepted: revived ${targetPlayerId}`);
+          send(ws, MSG_TYPES.PLAYER_REVIVE_RESPONSE, {
+            requestId,
+            success: true,
+            targetPlayerId
+          });
+          send(ws, MSG_TYPES.INVENTORY_UPDATE, {
+            requestId,
+            inventory: res.reviverInventory,
+            usedItem: { type: 'first_aid', quantity: 1 }
+          });
+          if (res.events && res.room) {
+            for (const evt of res.events) {
+              for (const [_, p] of res.room.players) {
+                send(p.ws, evt.type, evt.payload);
+              }
+            }
+          }
         }
         break;
       }

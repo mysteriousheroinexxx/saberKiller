@@ -77,6 +77,7 @@ export class MPManager {
         for (const ep of payload.existingPlayers) {
           if (ep.id !== this.myPlayerId && !this.remotePlayers.has(ep.id)) {
             const rp = new RemotePlayer(ep.id, this.scene, ep.spawn);
+            if (ep.state) rp.setState(ep.state);
             this.remotePlayers.set(ep.id, rp);
           }
         }
@@ -188,6 +189,83 @@ export class MPManager {
       if (this.ui.onItemDropResponse) this.ui.onItemDropResponse(payload);
     };
 
+    this.network.onHealthUpdate = (payload) => {
+      if (payload && payload.playerId === this.myPlayerId) {
+        this.localPlayer.setHp(payload.hp);
+        if (window.survivalHUD) {
+          window.survivalHUD.updatePlayer(this.localPlayer);
+        }
+      }
+      if (this.ui.onHealthUpdate) this.ui.onHealthUpdate(payload);
+    };
+
+    this.network.onPlayerDowned = (payload) => {
+      if (payload && payload.playerId === this.myPlayerId) {
+        this.localPlayer.setState('DOWNED');
+        const downedOverlay = document.getElementById('bb-downed-overlay');
+        if (downedOverlay) downedOverlay.style.display = 'flex';
+      } else if (payload) {
+        const rp = this.remotePlayers.get(payload.playerId);
+        if (rp) rp.setState('DOWNED');
+      }
+      if (this.ui.onPlayerDowned) this.ui.onPlayerDowned(payload);
+    };
+
+    this.network.onPlayerEliminated = (payload) => {
+      if (payload && payload.playerId === this.myPlayerId) {
+        this.localPlayer.setState('ELIMINATED');
+        const downedOverlay = document.getElementById('bb-downed-overlay');
+        if (downedOverlay) downedOverlay.style.display = 'none';
+        const elimOverlay = document.getElementById('bb-eliminated-overlay');
+        if (elimOverlay) elimOverlay.style.display = 'flex';
+      } else if (payload) {
+        const rp = this.remotePlayers.get(payload.playerId);
+        if (rp) rp.setState('ELIMINATED');
+      }
+      if (this.ui.onPlayerEliminated) this.ui.onPlayerEliminated(payload);
+    };
+
+    this.network.onPlayerReviveResponse = (payload) => {
+      if (window.interactionManager) {
+        window.interactionManager.handleReviveResponse(payload);
+      }
+      if (this.ui.onPlayerReviveResponse) this.ui.onPlayerReviveResponse(payload);
+    };
+
+    this.network.onPlayerRevived = (payload) => {
+      if (payload && payload.targetId === this.myPlayerId) {
+        this.localPlayer.setState('ACTIVE', payload.revivalsUsed);
+        this.localPlayer.setHp(payload.hp);
+        const downedOverlay = document.getElementById('bb-downed-overlay');
+        if (downedOverlay) downedOverlay.style.display = 'none';
+        if (window.survivalHUD) {
+          window.survivalHUD.updatePlayer(this.localPlayer);
+        }
+      } else if (payload) {
+        const rp = this.remotePlayers.get(payload.targetId);
+        if (rp) rp.setState('ACTIVE');
+      }
+      if (this.ui.onPlayerRevived) this.ui.onPlayerRevived(payload);
+    };
+
+    this.network.onGameOver = (payload) => {
+      this.localPlayer.setState('ELIMINATED');
+      const downedOverlay = document.getElementById('bb-downed-overlay');
+      if (downedOverlay) downedOverlay.style.display = 'none';
+      const elimOverlay = document.getElementById('bb-eliminated-overlay');
+      if (elimOverlay) elimOverlay.style.display = 'none';
+
+      const goOverlay = document.getElementById('bb-gameover-overlay');
+      if (goOverlay) {
+        goOverlay.style.display = 'flex';
+        const reasonEl = document.getElementById('bb-gameover-reason');
+        if (reasonEl) {
+          reasonEl.textContent = payload.message || payload.reason || 'RUN FAILED';
+        }
+      }
+      if (this.ui.onGameOver) this.ui.onGameOver(payload);
+    };
+
     this.network.onError = (errMsg) => {
       if (this.ui.onError) this.ui.onError(errMsg);
     };
@@ -204,8 +282,8 @@ export class MPManager {
     this.network.connect(serverUrl);
   }
 
-  createRoom(roomCode = null, layoutRevision = null) {
-    this.network.createRoom(roomCode, layoutRevision);
+  createRoom(roomCode = null, layoutRevision = null, options = {}) {
+    this.network.createRoom(roomCode, layoutRevision, options);
   }
 
   joinRoom(roomCode) {

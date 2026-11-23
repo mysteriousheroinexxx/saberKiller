@@ -248,6 +248,107 @@
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
     }
 
+    /* Survival Mode Downed, Eliminated & Game Over Overlays */
+    #bb-downed-overlay {
+      display: none;
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: radial-gradient(circle at center, rgba(140, 20, 20, 0.45) 0%, rgba(20, 0, 0, 0.88) 100%);
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 950;
+      pointer-events: none;
+      box-shadow: inset 0 0 100px rgba(255, 0, 0, 0.6);
+    }
+    .bb-downed-title {
+      color: #ff4444;
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      text-shadow: 0 0 20px rgba(255, 0, 0, 0.8);
+      margin-bottom: 12px;
+    }
+    .bb-downed-subtitle {
+      color: #edece6;
+      font-size: 14px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      opacity: 0.85;
+    }
+
+    #bb-eliminated-overlay {
+      display: none;
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: radial-gradient(circle at center, rgba(40, 40, 40, 0.6) 0%, rgba(10, 10, 10, 0.92) 100%);
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 950;
+      pointer-events: none;
+    }
+    .bb-eliminated-title {
+      color: #bbbbbb;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .bb-eliminated-subtitle {
+      color: #888888;
+      font-size: 13px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+
+    #bb-gameover-overlay {
+      display: none;
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(10, 8, 8, 0.95);
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      pointer-events: auto;
+    }
+    .bb-gameover-title {
+      color: #cc2222;
+      font-size: 44px;
+      font-weight: 800;
+      letter-spacing: 6px;
+      text-transform: uppercase;
+      text-shadow: 0 0 25px rgba(200, 30, 30, 0.7);
+      margin-bottom: 14px;
+    }
+    #bb-gameover-reason {
+      color: #edece6;
+      font-size: 14px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 28px;
+    }
+    #bb-btn-gameover-lobby {
+      padding: 12px 28px;
+      background: rgba(180, 40, 40, 0.6);
+      border: 1px solid #ff4444;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 3px;
+      transition: all 0.2s;
+    }
+    #bb-btn-gameover-lobby:hover {
+      background: rgba(220, 50, 50, 0.85);
+      box-shadow: 0 0 16px rgba(255, 60, 60, 0.5);
+    }
+
     /* Developer-only Rendering Comparison Panel */
     #dev-panel-toggle {
       position: absolute;
@@ -701,6 +802,25 @@
   </div>
 
   <div id="error-banner"></div>
+
+  <!-- Downed Overlay -->
+  <div id="bb-downed-overlay">
+    <div class="bb-downed-title">YOU ARE DOWNED</div>
+    <div class="bb-downed-subtitle">WAITING FOR TEAMMATE TO REVIVE YOU</div>
+  </div>
+
+  <!-- Eliminated Overlay -->
+  <div id="bb-eliminated-overlay">
+    <div class="bb-eliminated-title">ELIMINATED</div>
+    <div class="bb-eliminated-subtitle">NO REVIVALS REMAINING &middot; SPECTATING RUN</div>
+  </div>
+
+  <!-- Game Over Overlay -->
+  <div id="bb-gameover-overlay">
+    <div class="bb-gameover-title">GAME OVER</div>
+    <div id="bb-gameover-reason">RUN FAILED</div>
+    <button id="bb-btn-gameover-lobby">RETURN TO LOBBY</button>
+  </div>
 
   <script>
     window.__errors = [];

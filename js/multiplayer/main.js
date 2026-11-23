@@ -411,10 +411,17 @@ async function init() {
     isGameActive = false;
     if (mpManager) {
       mpManager.disconnect();
+      mpManager.connect(defaultWsHost);
     }
     if (hudOverlay) hudOverlay.style.display = 'none';
     if (lobbyPanel) lobbyPanel.style.display = 'block';
     if (sanityHUD) sanityHUD.setVisible(false);
+    const downedOverlay = document.getElementById('bb-downed-overlay');
+    if (downedOverlay) downedOverlay.style.display = 'none';
+    const elimOverlay = document.getElementById('bb-eliminated-overlay');
+    if (elimOverlay) elimOverlay.style.display = 'none';
+    const goOverlay = document.getElementById('bb-gameover-overlay');
+    if (goOverlay) goOverlay.style.display = 'none';
     if (document.pointerLockElement) {
       try { document.exitPointerLock(); } catch (err) {}
     }
@@ -426,6 +433,15 @@ async function init() {
   const btnLeaveRoom = document.getElementById('btn-leave-room');
   if (btnLeaveRoom) {
     btnLeaveRoom.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      leaveMultiplayerSession();
+    });
+  }
+
+  const btnGameOverLobby = document.getElementById('bb-btn-gameover-lobby');
+  if (btnGameOverLobby) {
+    btnGameOverLobby.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       leaveMultiplayerSession();
@@ -507,6 +523,16 @@ async function init() {
         const result = mpManager.network.requestVendingDispense(target.id, requestId, clientPos);
         if (result.sent) console.log(`[VENDING ${requestId}] WebSocket send completed`);
         else console.warn(`[VENDING ${requestId}] WebSocket send did not occur (readyState=${mpManager.network.ws?.readyState ?? 'no socket'})`);
+        return result;
+      } else if (target.type === 'revive_teammate') {
+        if (!target.hasRequiredItem) {
+          if (interactionManager) {
+            interactionManager.handleReviveRejected('You need a Health Pack in your inventory to revive teammate!');
+          }
+          return false;
+        }
+        console.log(`[REVIVE ${requestId}] Requesting teammate revival for target ${target.targetPlayerId}`);
+        const result = mpManager.network.requestRevive(target.targetPlayerId, requestId, clientPos);
         return result;
       }
     },
