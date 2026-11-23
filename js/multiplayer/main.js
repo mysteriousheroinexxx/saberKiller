@@ -238,9 +238,14 @@ async function init() {
   mpManager = new MPManager(scene, camera, {
     onStatusChange: ({ status, message }) => {
       if (statusEl) statusEl.textContent = message;
+      if (status === 'disconnected') {
+        disableUnloadGuard();
+        isGameActive = false;
+      }
     },
     onRoomJoined: (payload) => {
       isGameActive = true;
+      enableUnloadGuard();
       if (document.activeElement && typeof document.activeElement.blur === 'function') {
         try { document.activeElement.blur(); } catch (e) {}
       }
@@ -354,14 +359,92 @@ async function init() {
     }
   });
 
-  // 5b. Browser unload confirmation safeguard during active gameplay
-  window.addEventListener('beforeunload', (e) => {
+  // 5b. Browser unload confirmation safeguard and Ctrl+W capture protection
+  // Accidental Ctrl+W / Cmd+W Tab Closure Prevention (Capture Phase)
+  function handleCtrlWCapture(e) {
+    const isW = (e.key === 'w' || e.key === 'W' || e.code === 'KeyW' || e.keyCode === 87);
+    const isCtrlOrCmd = Boolean(e.ctrlKey || e.metaKey);
+
+    if (isCtrlOrCmd && isW) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') {
+        e.stopImmediatePropagation();
+      }
+      console.log('[INPUT GUARD] Intercepted Ctrl+W / Cmd+W in capture phase (prevented default & propagation)');
+      return false;
+    }
+  }
+
+  // Attach capture-phase listener directly to window
+  window.addEventListener('keydown', handleCtrlWCapture, true);
+
+  // Dynamic BeforeUnload Safeguard: Active ONLY during live multiplayer sessions
+  let isUnloadGuardActive = false;
+
+  function beforeUnloadHandler(e) {
     if (isGameActive && mpManager?.network?.isConnected) {
       e.preventDefault();
-      e.returnValue = 'You are currently in an active multiplayer room. Are you sure you want to disconnect?';
-      return e.returnValue;
+      const msg = 'You are currently in an active multiplayer session. Are you sure you want to disconnect?';
+      e.returnValue = msg;
+      return msg;
     }
+  }
+
+  function enableUnloadGuard() {
+    if (isUnloadGuardActive) return;
+    window.addEventListener('beforeunload', beforeUnloadHandler);
+    isUnloadGuardActive = true;
+    console.log('[SESSION] Unload guard enabled for active multiplayer session');
+  }
+
+  function disableUnloadGuard() {
+    if (!isUnloadGuardActive) return;
+    window.removeEventListener('beforeunload', beforeUnloadHandler);
+    isUnloadGuardActive = false;
+    console.log('[SESSION] Unload guard removed (session ended or intentionally leaving)');
+  }
+
+  // Intentional session exit handler: cleans up guard and returns to lobby cleanly
+  function leaveMultiplayerSession() {
+    disableUnloadGuard();
+    isGameActive = false;
+    if (mpManager) {
+      mpManager.disconnect();
+    }
+    if (hudOverlay) hudOverlay.style.display = 'none';
+    if (lobbyPanel) lobbyPanel.style.display = 'block';
+    if (sanityHUD) sanityHUD.setVisible(false);
+    if (document.pointerLockElement) {
+      try { document.exitPointerLock(); } catch (err) {}
+    }
+    if (statusEl) statusEl.textContent = 'Disconnected from session.';
+    console.log('[SESSION] Intentionally left multiplayer session; unload guard removed.');
+  }
+
+  // Hook intentional leave buttons and links
+  const btnLeaveRoom = document.getElementById('btn-leave-room');
+  if (btnLeaveRoom) {
+    btnLeaveRoom.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      leaveMultiplayerSession();
+    });
+  }
+
+  document.querySelectorAll('.back-link').forEach(link => {
+    link.addEventListener('click', () => {
+      leaveMultiplayerSession();
+    });
   });
+
+  // Expose helpers for verification and external integration
+  window.leaveMultiplayerSession = leaveMultiplayerSession;
+  window.enableUnloadGuard = enableUnloadGuard;
+  window.disableUnloadGuard = disableUnloadGuard;
+  window.handleCtrlWCapture = handleCtrlWCapture;
+  window.beforeUnloadHandler = beforeUnloadHandler;
+  window.isUnloadGuardActive = () => isUnloadGuardActive;
 
   // 6. Load Level 0 Environment
   statusEl.textContent = 'Loading Level 0 PBR Environment...';
@@ -435,6 +518,7 @@ async function init() {
   window.inventory = mpManager.inventory;
 
   isEnvReady = true;
+  window.isEnvReady = true;
   if (mpManager?.network?.isConnected) {
     statusEl.textContent = `Connected (${mpManager.network.serverUrl})`;
   } else if (!mpManager?.network?.ws) {
