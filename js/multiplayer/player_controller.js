@@ -41,23 +41,30 @@ export class LocalPlayerController {
     this._staminaExhausted = false;
 
     // Weapon Inventory & Ammo (matches WEAPONS standard)
-    this.mag = { bullets: 12, shells: 6 };
-    this.bullets = 36;
-    this.shells = 2;
+    // Starting run with tactical flashlight only: 0 starting firearm ammunition
+    this.mag = { bullets: 0, shells: 0 };
+    this.bullets = 0;
+    this.shells = 0;
     this.reloadT = 0;
     this.reloadWeapon = -1;
     this.cool = 0;
     this.recoilKick = 0.0;
     this.isDead = false;
     this.isDowned = false;
+    this.weapon = 2; // 0=pistol, 1=shotgun, 2=torch (Starts with tactical flashlight)
+    this._discoveredWeapons = new Set();
+    this.state = 'ACTIVE'; // 'ACTIVE', 'DOWNED', 'ELIMINATED'
+    this.revivalsUsed = 0;
+    this.cameraTargetY = 1.62;
+    this.currentCameraY = 1.62;
 
     // Developer firing diagnostics (inspected under --dev-rendering)
     this.firingDiagnostics = {
-      selectedWeapon: 'PISTOL (0)',
+      selectedWeapon: 'TORCH (2)',
       lastFiringInput: 'NONE',
       cooldown: '0.00s',
-      magAmmo: 12,
-      reserveAmmo: 36,
+      magAmmo: 0,
+      reserveAmmo: 0,
       reloadState: 'IDLE',
       lastRejectionReason: 'NONE'
     };
@@ -316,6 +323,7 @@ export class LocalPlayerController {
 
   selectHotbarSlot(idx) {
     if (idx < 0 || idx > 9) return;
+    this._checkWeaponDiscovery();
     this.selectedHotbarSlot = idx;
 
     const slotItem = this.inventory ? this.inventory.getItem(idx) : null;
@@ -500,15 +508,38 @@ export class LocalPlayerController {
   }
 
   refreshHeldItem() {
+    this._checkWeaponDiscovery();
     if (this.selectedHotbarSlot >= 0 && this.selectedHotbarSlot <= 9) {
-      const slotItem = this.inventory ? this.inventory.getItem(this.selectedHotbarSlot) : null;
-      if (!slotItem) {
-        if (this.heldItemMesh || this.heldItemTypeId) {
-          this._clearHeldItem();
-        }
-      } else if (slotItem.typeId !== this.heldItemTypeId && !['weapon_pistol', 'weapon_shotgun', 'equipment_torch'].includes(slotItem.typeId)) {
-        this._setHeldItem(slotItem.typeId);
+      this.selectHotbarSlot(this.selectedHotbarSlot);
+    }
+  }
+
+  _checkWeaponDiscovery() {
+    if (!this.inventory) return;
+    const slots = this.inventory.getSlots();
+    let hasPistol = false;
+    let hasShotgun = false;
+    for (const s of slots) {
+      if (s) {
+        if (s.typeId === 'weapon_pistol') hasPistol = true;
+        else if (s.typeId === 'weapon_shotgun') hasShotgun = true;
       }
+    }
+    let stateChanged = false;
+    if (hasPistol && !this._discoveredWeapons.has('weapon_pistol')) {
+      this._discoveredWeapons.add('weapon_pistol');
+      this.mag.bullets = 12;
+      this.bullets = Math.max(this.bullets, 36);
+      stateChanged = true;
+    }
+    if (hasShotgun && !this._discoveredWeapons.has('weapon_shotgun')) {
+      this._discoveredWeapons.add('weapon_shotgun');
+      this.mag.shells = 6;
+      this.shells = Math.max(this.shells, 6);
+      stateChanged = true;
+    }
+    if (stateChanged) {
+      this._notifyStateChange();
     }
   }
 
@@ -744,16 +775,40 @@ export class LocalPlayerController {
     this._notifyStateChange();
   }
 
+  setState(state, revivalsUsed = null) {
+    this.state = state;
+    if (state === 'DOWNED') {
+      this.isDowned = true;
+      this.isDead = false;
+      this.cameraTargetY = 0.42;
+    } else if (state === 'ELIMINATED') {
+      this.isDead = true;
+      this.isDowned = false;
+      this.cameraTargetY = 0.25;
+    } else if (state === 'ACTIVE') {
+      this.isDowned = false;
+      this.isDead = false;
+      this.cameraTargetY = 1.62;
+    }
+    if (typeof revivalsUsed === 'number') {
+      this.revivalsUsed = revivalsUsed;
+    }
+  }
+
   setHp(hp) {
     this.hp = Math.max(0, Math.min(this.maxHp, hp));
   }
 
-  damage(amount) {
-    this.hp = Math.max(0, this.hp - amount);
+  damage(amount, reason = 'DEV_TEST') {
+    if (this.networkClient && this.networkClient.isConnected) {
+      this.networkClient.requestDamage(amount, reason);
+    } else {
+      this.setHp(this.hp - amount);
+    }
   }
 
   heal(amount) {
-    this.hp = Math.min(this.maxHp, this.hp + amount);
+    this.setHp(this.hp + amount);
   }
 
   setStamina(val) {
@@ -767,7 +822,7 @@ export class LocalPlayerController {
 
   _bindEvents() {
     this._onKeyDown = (e) => {
-      if (this.isEditorActive || this.isInventoryOpen) {
+      if (this.isEditorActive || this.isInventoryOpen || (window.mpManager && window.mpManager.isInStagingLobby)) {
         return;
       }
       // Allow regular typing in visible input/textarea elements when not in active pointer lock
@@ -834,6 +889,9 @@ export class LocalPlayerController {
     };
 
     this._onMouseDown = (e) => {
+      if (window.mpManager && window.mpManager.isInStagingLobby) {
+        return;
+      }
       if (this.isEditorActive) {
         this.firingDiagnostics.lastRejectionReason = 'EDITOR_ACTIVE';
         return;
@@ -912,10 +970,20 @@ export class LocalPlayerController {
   }
 
   update(dt) {
+    if (window.mpManager && window.mpManager.isInStagingLobby) {
+      if (this.gunGroup) this.gunGroup.visible = false;
+      return;
+    }
+
     this._updateThrowAnimations(dt);
 
-    if (this.isEditorActive || this.isInventoryOpen) {
+    if (this.isEditorActive || this.isInventoryOpen || this.isDowned || this.isDead || this.state !== 'ACTIVE') {
       // Suspend movement and firing, but maintain 20Hz network sync
+      // If downed or dead, smoothly transition camera height to prone
+      if (this.isDowned || this.isDead) {
+        this.currentCameraY += (this.cameraTargetY - this.currentCameraY) * Math.min(1.0, dt * 6.0);
+        this.camera.position.set(this.pos.x, this.currentCameraY, this.pos.z);
+      }
       this.updateTimer += dt;
       if (this.updateTimer >= this.updateInterval) {
         this.updateTimer = 0;
@@ -1014,8 +1082,9 @@ export class LocalPlayerController {
     }
 
     // 2. Camera positioning & bobbing
+    this.currentCameraY += (1.62 - this.currentCameraY) * Math.min(1.0, dt * 6.0);
     const bobY = len > 0 ? Math.sin(this.bob) * 0.04 : 0;
-    this.camera.position.set(this.pos.x, 1.62 + bobY, this.pos.z);
+    this.camera.position.set(this.pos.x, this.currentCameraY + bobY, this.pos.z);
     this.camera.rotation.order = 'YXZ';
     this.camera.rotation.y = this.yaw;
     this.camera.rotation.x = this.pitch;

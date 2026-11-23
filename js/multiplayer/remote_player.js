@@ -108,6 +108,7 @@ export class RemotePlayer {
   constructor(id, scene, initialSpawn = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }) {
     this.id = id;
     this.scene = scene;
+    this.state = 'ACTIVE';
     this.interpolator = new TransformInterpolator({ interpolationDelay: 80 });
     this.isDisposed = false;
     this.characterModel = null;
@@ -191,6 +192,26 @@ export class RemotePlayer {
 
     // Tilt weapon anchor with player look pitch
     this.weaponAnchor.rotation.x = state.pitch;
+  }
+
+  setState(newState) {
+    this.state = newState;
+    if (newState === 'DOWNED') {
+      // Prone posture on floor
+      this.visualPivot.rotation.x = -Math.PI / 2;
+      this.visualPivot.position.set(0, 0.22, -0.4);
+      if (this.weaponAnchor) this.weaponAnchor.visible = false;
+      this.group.visible = true;
+    } else if (newState === 'ACTIVE') {
+      // Upright active posture
+      this.visualPivot.rotation.x = 0;
+      this.visualPivot.position.set(0, 0, 0);
+      if (this.weaponAnchor) this.weaponAnchor.visible = true;
+      this.group.visible = true;
+    } else if (newState === 'ELIMINATED') {
+      // Disappear / hide eliminated player
+      this.group.visible = false;
+    }
   }
 
   destroy() {

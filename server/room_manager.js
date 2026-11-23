@@ -3,6 +3,33 @@ import { MAX_PLAYERS_PER_ROOM, isValidNumber } from './protocol.js';
 import { InventoryController } from '../js/multiplayer/inventory_controller.js';
 import { isPickupItem, getItemDefinition, ITEM_EFFECTS_CONFIG } from '../js/multiplayer/item_catalog.js';
 
+// Configurable Survival Mode Health, Damage & Revival Parameters
+export const SURVIVAL_CONFIG = {
+  maxHp: 100,
+  startingHp: 100,
+  revivedHp: 50,
+  maxRevivalsPerRun: 1,
+  maxReviveDistance: 2.8,
+  damageValues: {
+    ZOMBIE_HIT: 25,
+    HAZARD: 20,
+    DEV_TEST: 25,
+    DEFAULT: 25
+  }
+};
+
+export function configureSurvivalRules(opts = {}) {
+  if (typeof opts.maxHp === 'number') SURVIVAL_CONFIG.maxHp = Math.max(1, opts.maxHp);
+  if (typeof opts.startingHp === 'number') SURVIVAL_CONFIG.startingHp = Math.max(1, opts.startingHp);
+  if (typeof opts.revivedHp === 'number') SURVIVAL_CONFIG.revivedHp = Math.max(1, opts.revivedHp);
+  if (typeof opts.maxRevivalsPerRun === 'number') SURVIVAL_CONFIG.maxRevivalsPerRun = Math.max(0, opts.maxRevivalsPerRun);
+  if (typeof opts.maxReviveDistance === 'number') SURVIVAL_CONFIG.maxReviveDistance = Math.max(0, opts.maxReviveDistance);
+  if (opts.damageValues && typeof opts.damageValues === 'object') {
+    SURVIVAL_CONFIG.damageValues = { ...SURVIVAL_CONFIG.damageValues, ...opts.damageValues };
+  }
+  return { ...SURVIVAL_CONFIG };
+}
+
 // Configurable Vending Machine Parameters
 export const VENDING_CONFIG = {
   defaultMaxStock: 5,
@@ -49,7 +76,7 @@ export class RoomManager {
     return 'ROOM' + Math.floor(Math.random() * 1000);
   }
 
-  createRoom(ws, customCode = null, layoutRevision = null, layoutData = null) {
+  createRoom(ws, customCode = null, layoutRevision = null, layoutData = null, options = {}) {
     const roomCode = (customCode && typeof customCode === 'string' && customCode.trim().length > 0)
       ? customCode.trim().toUpperCase()
       : this.generateRoomCode();
@@ -65,9 +92,17 @@ export class RoomManager {
       id: playerId,
       ws,
       slot: 0,
+      name: (options && options.playerName) ? options.playerName : 'Player 1',
+      isReady: true,
       spawn,
       position: { ...spawn },
       inventory: new InventoryController(30),
+      hp: SURVIVAL_CONFIG.startingHp,
+      maxHp: SURVIVAL_CONFIG.maxHp,
+      state: 'ACTIVE', // 'ACTIVE', 'DOWNED', 'ELIMINATED'
+      revivalsUsed: 0,
+      isDead: false,
+      isDowned: false,
       lastUpdate: 0,
       seq: 0
     };
@@ -76,10 +111,15 @@ export class RoomManager {
     const room = {
       code: roomCode,
       createdAt: Date.now(),
+      leaderId: playerId,
       layoutRevision: (typeof layoutRevision === 'string' && layoutRevision.trim()) ? layoutRevision.trim() : 'default',
       players: new Map([[playerId, player]]),
       worldItems: new Map(),
-      pickupRequests: new Map()
+      pickupRequests: new Map(),
+      runState: (options && (options.directStart || typeof options.startingPlayers === 'number')) ? 'IN_PROGRESS' : 'LOBBY', // 'LOBBY', 'IN_PROGRESS', 'GAME_OVER'
+      healthPacksFrozen: false,
+      startingPlayerCount: 0,
+      availableHealthPackCount: 0
     };
 
     // Initialize room world pickup state from frozen layout
@@ -107,22 +147,75 @@ export class RoomManager {
       }
     }
 
+    // Health Pack Economy: Total Health Packs available on map must equal starting player count at run start
+    // If startingPlayers is explicitly provided (e.g. survival test setup), freeze immediately;
+    // Otherwise, freeze authoritatively at actual match start when leader starts the run.
+    if (options && typeof options.startingPlayers === 'number' && options.startingPlayers > 0) {
+      this._freezeRoomHealthPacks(room, options.startingPlayers);
+    }
+
     this.rooms.set(roomCode, room);
     this.clientToRoom.set(ws, { roomCode, playerId });
+
+    // Collect any world items that are unavailable from the start (e.g. capped health packs)
+    const collectedItems = [];
+    for (const [id, item] of room.worldItems) {
+      if (item.isPickup && !item.available) {
+        collectedItems.push(id);
+      }
+    }
 
     return {
       roomCode,
       player,
+      leaderId: room.leaderId,
+      runState: room.runState,
       spawn,
       totalPlayers: 1,
       layoutRevision: room.layoutRevision,
-      collectedItems: [],
+      collectedItems,
       spawnedItems: [],
       inventory: player.inventory.serialize()
     };
   }
 
-  joinRoom(ws, roomCode) {
+  _freezeRoomHealthPacks(room, startingPlayerCount = 1) {
+    if (room.healthPacksFrozen) return room.availableHealthPackCount;
+    room.healthPacksFrozen = true;
+    room.startingPlayerCount = Math.max(1, Math.floor(startingPlayerCount));
+
+    const firstAidItems = [];
+    for (const [id, item] of room.worldItems) {
+      if (item.type === 'first_aid') {
+        firstAidItems.push(item);
+      }
+    }
+
+    const allowed = room.startingPlayerCount;
+    let active = 0;
+    for (let i = 0; i < firstAidItems.length; i++) {
+      const item = firstAidItems[i];
+      if (i < allowed) {
+        item.available = true;
+        item.cappedUnavailable = false;
+        active++;
+      } else {
+        item.available = false;
+        item.cappedUnavailable = true;
+        item.collectedReason = 'SUPPLY_CAPPED';
+      }
+    }
+    room.availableHealthPackCount = active;
+    return active;
+  }
+
+  freezeHealthPackSupply(roomCode, startingCount = 1) {
+    const room = this.rooms.get(roomCode);
+    if (!room) return null;
+    return this._freezeRoomHealthPacks(room, startingCount);
+  }
+
+  joinRoom(ws, roomCode, options = {}) {
     const code = (roomCode || '').trim().toUpperCase();
     const room = this.rooms.get(code);
 
@@ -144,9 +237,17 @@ export class RoomManager {
       id: playerId,
       ws,
       slot,
+      name: (options && options.playerName) ? options.playerName : ('Player ' + (slot + 1)),
+      isReady: false,
       spawn,
       position: { ...spawn },
       inventory: new InventoryController(30),
+      hp: SURVIVAL_CONFIG.startingHp,
+      maxHp: SURVIVAL_CONFIG.maxHp,
+      state: 'ACTIVE',
+      revivalsUsed: 0,
+      isDead: false,
+      isDowned: false,
       lastUpdate: 0,
       seq: 0
     };
@@ -157,12 +258,20 @@ export class RoomManager {
     for (const [id, p] of room.players) {
       existingPlayers.push({
         id: p.id,
+        name: p.name || `Player_${p.id}`,
         slot: p.slot,
-        spawn: p.spawn
+        spawn: p.spawn,
+        hp: p.hp,
+        maxHp: p.maxHp,
+        state: p.state,
+        revivalsUsed: p.revivalsUsed,
+        isLeader: (p.id === room.leaderId),
+        isReady: (p.id === room.leaderId ? true : Boolean(p.isReady))
       });
     }
 
     // Collect already picked up items and dynamically spawned items in this room
+    // Note: Health pack supply was frozen when run began; capped items remain unavailable.
     const collectedItems = [];
     const spawnedItems = [];
     for (const [id, item] of room.worldItems) {
@@ -179,6 +288,8 @@ export class RoomManager {
     return {
       roomCode: code,
       player,
+      leaderId: room.leaderId,
+      runState: room.runState,
       spawn,
       existingPlayers,
       totalPlayers: room.players.size,
@@ -202,6 +313,10 @@ export class RoomManager {
     const player = room.players.get(meta.playerId);
     if (!player) return { error: `Player ${meta.playerId} not found in room` };
 
+    if (player.state === 'DOWNED' || player.state === 'ELIMINATED') {
+      return { error: `Player is ${player.state.toLowerCase()} and cannot interact`, room, player };
+    }
+
     if (!itemId || typeof itemId !== 'string') {
       return { error: 'Invalid or missing item ID', room, player };
     }
@@ -220,6 +335,9 @@ export class RoomManager {
     }
 
     if (!item.available) {
+      if (item.cappedUnavailable) {
+        return { error: `Item '${itemId}' is unavailable (Health Pack supply capped by starting player count)`, room, player };
+      }
       return { error: `Item '${itemId}' has already been collected by player ${item.collectedBy}`, room, player };
     }
 
@@ -290,6 +408,10 @@ export class RoomManager {
     const player = room.players.get(meta.playerId);
     if (!player) return { error: `Player ${meta.playerId} not found in room` };
 
+    if (player.state === 'DOWNED' || player.state === 'ELIMINATED') {
+      return { error: `Player is ${player.state.toLowerCase()} and cannot use items`, room, player };
+    }
+
     let item = null;
     let targetSlot = slotIndex;
     if (typeof targetSlot === 'number' && targetSlot >= 0 && targetSlot < player.inventory.capacity) {
@@ -348,6 +470,10 @@ export class RoomManager {
 
     const player = room.players.get(meta.playerId);
     if (!player) return { error: `Player ${meta.playerId} not found in room` };
+
+    if (player.state === 'DOWNED' || player.state === 'ELIMINATED') {
+      return { error: `Player is ${player.state.toLowerCase()} and cannot drop items`, room, player };
+    }
 
     let item = null;
     let targetSlot = slotIndex;
@@ -436,6 +562,10 @@ export class RoomManager {
 
     const player = room.players.get(meta.playerId);
     if (!player) return { error: `Player ${meta.playerId} not found in room` };
+
+    if (player.state === 'DOWNED' || player.state === 'ELIMINATED') {
+      return { error: `Player is ${player.state.toLowerCase()} and cannot interact`, room, player };
+    }
 
     const machine = room.worldItems.get(machineId);
     if (!machine) {
@@ -568,7 +698,133 @@ export class RoomManager {
       return { roomCode, playerId, roomDeleted: true, remainingPlayers: 0 };
     }
 
-    return { roomCode, playerId, roomDeleted: false, remainingPlayers: room.players.size, room };
+    // If disconnected player was room leader, elect first remaining player as new leader
+    let leaderChanged = false;
+    if (room.leaderId === playerId && room.players.size > 0) {
+      room.leaderId = room.players.keys().next().value;
+      const newLeader = room.players.get(room.leaderId);
+      if (newLeader) newLeader.isReady = true;
+      leaderChanged = true;
+    }
+
+    return {
+      roomCode,
+      playerId,
+      roomDeleted: false,
+      remainingPlayers: room.players.size,
+      room,
+      leaderChanged,
+      lobbyState: this.getLobbyState(roomCode)
+    };
+  }
+
+  getLobbyState(roomCode) {
+    const room = this.rooms.get(roomCode);
+    if (!room) return null;
+    return {
+      roomCode: room.code,
+      leaderId: room.leaderId,
+      runState: room.runState,
+      totalPlayers: room.players.size,
+      players: [...room.players.values()].map(p => ({
+        id: p.id,
+        name: p.name || `Player_${p.id}`,
+        slot: p.slot,
+        isLeader: (p.id === room.leaderId),
+        isReady: (p.id === room.leaderId ? true : Boolean(p.isReady))
+      }))
+    };
+  }
+
+  setPlayerReady(ws, isReady = null) {
+    const session = this.getPlayer(ws);
+    if (!session) return { error: 'Client not associated with any active room session' };
+
+    const { room, player } = session;
+    if (room.runState !== 'LOBBY') {
+      return { error: 'Room is not in lobby state', room, player };
+    }
+
+    if (player.id === room.leaderId) {
+      player.isReady = true;
+    } else if (typeof isReady === 'boolean') {
+      player.isReady = isReady;
+    } else {
+      player.isReady = !player.isReady;
+    }
+
+    return {
+      success: true,
+      room,
+      player,
+      isReady: player.isReady,
+      lobbyState: this.getLobbyState(room.code)
+    };
+  }
+
+  startMatch(ws) {
+    const session = this.getPlayer(ws);
+    if (!session) return { error: 'Client not associated with any active room session' };
+
+    const { room, player } = session;
+    if (player.id !== room.leaderId) {
+      return { error: 'Only the room leader can start the match.', room, player };
+    }
+
+    if (room.runState !== 'LOBBY') {
+      return { error: 'Match has already started.', room, player };
+    }
+
+    // Check that every connected non-leader player is ready
+    const unready = [...room.players.values()].filter(p => p.id !== room.leaderId && !p.isReady);
+    if (unready.length > 0) {
+      return {
+        error: 'Waiting for all players to ready up.',
+        room,
+        player,
+        unreadyCount: unready.length,
+        unreadyPlayers: unready.map(p => p.id)
+      };
+    }
+
+    // All players ready! Transition to IN_PROGRESS
+    room.runState = 'IN_PROGRESS';
+
+    // Freeze Health Pack economy using current starting player count at actual match start
+    if (!room.healthPacksFrozen) {
+      this._freezeRoomHealthPacks(room, room.players.size);
+    }
+
+    const collectedItems = [];
+    for (const [id, item] of room.worldItems) {
+      if (item.isPickup && !item.available) {
+        collectedItems.push(id);
+      }
+    }
+
+    // Build complete player list with their initial spawns and statuses
+    const players = [];
+    for (const [id, p] of room.players) {
+      players.push({
+        id: p.id,
+        name: p.name || `Player_${p.id}`,
+        slot: p.slot,
+        spawn: p.spawn,
+        hp: p.hp,
+        maxHp: p.maxHp,
+        state: p.state,
+        revivalsUsed: p.revivalsUsed,
+        isLeader: (p.id === room.leaderId)
+      });
+    }
+
+    return {
+      success: true,
+      room,
+      startingPlayers: room.players.size,
+      collectedItems,
+      players
+    };
   }
 
   getRoom(roomCode) {
@@ -602,6 +858,302 @@ export class RoomManager {
       fromSlot,
       toSlot,
       inventory: player.inventory.serialize()
+    };
+  }
+
+  /**
+   * Authoritative Survival Mode Damage Processing
+   * Enforces:
+   * - Configurable damage values
+   * - Minimum health clamped at 0
+   * - Solo mode: 0 HP triggers immediate game over, no revival
+   * - Co-op mode: First 0 HP death enters DOWNED state
+   * - Co-op mode: Second 0 HP death causes PERMANENT ELIMINATION
+   * - Team wipe check: If all players are downed or eliminated, triggers GAME_OVER
+   */
+  applyDamage(wsOrPlayerId, amount = null, reason = 'DEFAULT') {
+    let session = null;
+    if (typeof wsOrPlayerId === 'object' && wsOrPlayerId !== null) {
+      session = this.getPlayer(wsOrPlayerId);
+    } else if (typeof wsOrPlayerId === 'string') {
+      for (const room of this.rooms.values()) {
+        if (room.players.has(wsOrPlayerId)) {
+          session = { room, player: room.players.get(wsOrPlayerId) };
+          break;
+        }
+      }
+    }
+
+    if (!session) return { error: 'Player or room session not found' };
+    const { room, player } = session;
+
+    if (room.runState === 'GAME_OVER') {
+      return { error: 'Game is already over', room, player };
+    }
+
+    if (player.state === 'ELIMINATED') {
+      return { error: 'Player is already eliminated', room, player };
+    }
+
+    if (player.state === 'DOWNED') {
+      return { error: 'Player is already downed', room, player };
+    }
+
+    // Resolve damage amount (configurable)
+    let dmg = (typeof amount === 'number' && !isNaN(amount) && amount > 0)
+      ? amount
+      : (SURVIVAL_CONFIG.damageValues[reason] || SURVIVAL_CONFIG.damageValues.DEFAULT);
+
+    // Prevent health from dropping below zero
+    player.hp = Math.max(0, player.hp - dmg);
+
+    const result = {
+      room,
+      player,
+      damageApplied: dmg,
+      currentHp: player.hp,
+      maxHp: player.maxHp,
+      reason,
+      events: []
+    };
+
+    // Immediate authoritative health update
+    result.events.push({
+      type: 'PLAYER_HEALTH_UPDATE',
+      payload: {
+        playerId: player.id,
+        hp: player.hp,
+        maxHp: player.maxHp,
+        reason
+      }
+    });
+
+    if (player.hp === 0) {
+      // Check solo vs co-op
+      const isSolo = (room.players.size <= 1);
+
+      if (isSolo) {
+        // Solo player health reaches zero: trigger game over, no revival
+        player.state = 'ELIMINATED';
+        player.isDead = true;
+        player.isDowned = false;
+        room.runState = 'GAME_OVER';
+
+        result.events.push({
+          type: 'PLAYER_ELIMINATED',
+          payload: {
+            playerId: player.id,
+            reason: 'SOLO_DEATH',
+            revivalsUsed: player.revivalsUsed
+          }
+        });
+        result.events.push({
+          type: 'GAME_OVER',
+          payload: {
+            reason: 'SOLO_DEATH',
+            message: 'Run failed: Solo player perished.'
+          }
+        });
+      } else {
+        // Co-op mode
+        if (player.revivalsUsed >= SURVIVAL_CONFIG.maxRevivalsPerRun) {
+          // Exactly one revival per player per run. Reaching 0 health again -> permanent elimination.
+          player.state = 'ELIMINATED';
+          player.isDead = true;
+          player.isDowned = false;
+
+          result.events.push({
+            type: 'PLAYER_ELIMINATED',
+            payload: {
+              playerId: player.id,
+              reason: 'PERMANENT_ELIMINATION',
+              revivalsUsed: player.revivalsUsed
+            }
+          });
+
+          // Check if all players in room are now downed or eliminated
+          const anyActive = [...room.players.values()].some(p => p.state === 'ACTIVE');
+          if (!anyActive) {
+            room.runState = 'GAME_OVER';
+            result.events.push({
+              type: 'GAME_OVER',
+              payload: {
+                reason: 'TEAM_WIPED',
+                message: 'Run failed: All players are eliminated or downed.'
+              }
+            });
+          }
+        } else {
+          // First time reaching 0 health: enter DOWNED state
+          player.state = 'DOWNED';
+          player.isDowned = true;
+          player.isDead = false;
+
+          result.events.push({
+            type: 'PLAYER_DOWNED',
+            payload: {
+              playerId: player.id,
+              revivalsRemaining: SURVIVAL_CONFIG.maxRevivalsPerRun - player.revivalsUsed
+            }
+          });
+
+          // Check if all players in room are now downed or eliminated
+          const anyActive = [...room.players.values()].some(p => p.state === 'ACTIVE');
+          if (!anyActive) {
+            room.runState = 'GAME_OVER';
+            result.events.push({
+              type: 'GAME_OVER',
+              payload: {
+                reason: 'TEAM_WIPED',
+                message: 'Run failed: All players are downed.'
+              }
+            });
+          }
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Authoritative Teammate Revival Processing
+   * Enforces:
+   * - Reviver must be ACTIVE and alive
+   * - Target must be DOWNED
+   * - Target must not exceed 1 revival per run
+   * - Reviver must be within 2.8m proximity
+   * - Reviver must possess at least 1 Health Pack (first_aid)
+   * - Consumes exactly 1 Health Pack on success; 0 on failure
+   * - Restores target to ACTIVE state and 50 HP
+   */
+  handleReviveRequest(ws, targetPlayerId, clientPosition = null) {
+    const session = this.getPlayer(ws);
+    if (!session) return { error: 'Client not associated with any active room session' };
+
+    const { room, player: reviver } = session;
+    if (room.runState === 'GAME_OVER') {
+      return { error: 'Game is already over', room, reviver };
+    }
+
+    if (reviver.state !== 'ACTIVE' || reviver.hp <= 0) {
+      return { error: 'Reviver must be active and conscious', room, reviver };
+    }
+
+    if (!targetPlayerId || typeof targetPlayerId !== 'string') {
+      return { error: 'Missing target player ID', room, reviver };
+    }
+
+    const target = room.players.get(targetPlayerId);
+    if (!target) {
+      return { error: `Target player '${targetPlayerId}' not found in room`, room, reviver };
+    }
+
+    if (target.id === reviver.id) {
+      return { error: 'Cannot revive yourself', room, reviver };
+    }
+
+    if (target.state === 'ACTIVE') {
+      return { error: `Player '${target.id}' is already active and not downed`, room, reviver, target };
+    }
+
+    if (target.state === 'ELIMINATED') {
+      return { error: `Player '${target.id}' is permanently eliminated and cannot be revived`, room, reviver, target };
+    }
+
+    if (target.state !== 'DOWNED') {
+      return { error: `Player '${target.id}' is not in a downed state`, room, reviver, target };
+    }
+
+    if (target.revivalsUsed >= SURVIVAL_CONFIG.maxRevivalsPerRun) {
+      return { error: `Player '${target.id}' has already reached the maximum revival limit (1)`, room, reviver, target };
+    }
+
+    // Distance check between reviver and target (with client position verification)
+    let rPos = reviver.position || reviver.spawn;
+    if (clientPosition && isValidNumber(clientPosition.x) && isValidNumber(clientPosition.z)) {
+      const sDx = clientPosition.x - rPos.x;
+      const sDz = clientPosition.z - rPos.z;
+      if (Math.hypot(sDx, sDz) < 2.5) {
+        rPos = {
+          x: clientPosition.x,
+          y: (typeof clientPosition.y === 'number') ? clientPosition.y : rPos.y,
+          z: clientPosition.z
+        };
+        reviver.position = rPos;
+      }
+    }
+    const tPos = target.position || target.spawn;
+    const dx = rPos.x - tPos.x;
+    const dy = (rPos.y || 0) - (tPos.y || 0);
+    const dz = rPos.z - tPos.z;
+    const dist = Math.hypot(dx, dy, dz);
+
+    if (dist > SURVIVAL_CONFIG.maxReviveDistance) {
+      return {
+        error: `Reviver too far from downed teammate (${dist.toFixed(2)}m > ${SURVIVAL_CONFIG.maxReviveDistance}m limit)`,
+        room,
+        reviver,
+        target
+      };
+    }
+
+    // Health pack check in reviver's authoritative inventory
+    const slots = reviver.inventory.getSlots();
+    const firstAidSlotIdx = slots.findIndex(s => s && s.typeId === 'first_aid');
+    if (firstAidSlotIdx === -1) {
+      return {
+        error: 'Reviver does not possess a Health Pack (first_aid) in inventory',
+        room,
+        reviver,
+        target
+      };
+    }
+
+    // Authoritative consumption: Remove exactly 1 Health Pack from reviver's inventory
+    const removeRes = reviver.inventory.removeItem(firstAidSlotIdx, 1);
+    if (!removeRes.success) {
+      return {
+        error: 'Failed to consume Health Pack from reviver inventory',
+        room,
+        reviver,
+        target
+      };
+    }
+
+    // Update target state to ACTIVE and restore HP
+    target.state = 'ACTIVE';
+    target.isDowned = false;
+    target.isDead = false;
+    target.hp = SURVIVAL_CONFIG.revivedHp;
+    target.revivalsUsed += 1;
+
+    return {
+      success: true,
+      room,
+      reviver,
+      target,
+      reviverInventory: reviver.inventory.serialize(),
+      events: [
+        {
+          type: 'PLAYER_REVIVED',
+          payload: {
+            targetId: target.id,
+            reviverId: reviver.id,
+            hp: target.hp,
+            revivalsUsed: target.revivalsUsed
+          }
+        },
+        {
+          type: 'PLAYER_HEALTH_UPDATE',
+          payload: {
+            playerId: target.id,
+            hp: target.hp,
+            maxHp: target.maxHp,
+            reason: 'REVIVED'
+          }
+        }
+      ]
     };
   }
 }
