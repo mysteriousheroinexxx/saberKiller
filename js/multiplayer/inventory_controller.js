@@ -24,45 +24,15 @@ export class InventoryController {
 
   /**
    * Initializes default Level 0 survivor starting loadout
-   * Slot 1 (idx 0): Beretta Px4 pistol
-   * Slot 2 (idx 1): Stagecoach shotgun
-   * Slot 3 (idx 2): Tactical flashlight
+   * Tactical flashlight only in slot 0.
+   * No pistol, no shotgun, no starting firearm ammunition.
    */
   initDefaultLoadout() {
-    const pistolDef = getItemDefinition('weapon_pistol');
-    if (pistolDef) {
-      this.slots[0] = {
-        slotIndex: 0,
-        typeId: 'weapon_pistol',
-        instanceId: 'inst_weapon_pistol_default',
-        quantity: 1,
-        name: pistolDef.name,
-        category: pistolDef.category,
-        iconUrl: pistolDef.iconUrl,
-        stackable: false,
-        maxStack: 1,
-        metadata: { ...pistolDef.metadata }
-      };
-    }
-    const shotgunDef = getItemDefinition('weapon_shotgun');
-    if (shotgunDef) {
-      this.slots[1] = {
-        slotIndex: 1,
-        typeId: 'weapon_shotgun',
-        instanceId: 'inst_weapon_shotgun_default',
-        quantity: 1,
-        name: shotgunDef.name,
-        category: shotgunDef.category,
-        iconUrl: shotgunDef.iconUrl,
-        stackable: false,
-        maxStack: 1,
-        metadata: { ...shotgunDef.metadata }
-      };
-    }
+    this.slots.fill(null);
     const torchDef = getItemDefinition('equipment_torch');
     if (torchDef) {
-      this.slots[2] = {
-        slotIndex: 2,
+      this.slots[0] = {
+        slotIndex: 0,
         typeId: 'equipment_torch',
         instanceId: 'inst_equipment_torch_default',
         quantity: 1,

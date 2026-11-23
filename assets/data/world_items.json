@@ -68,6 +68,18 @@
       "category": "key",
       "modelUrl": "assets/items/doorKey.glb",
       "scale": [1.0, 1.0, 1.0]
+    },
+    "weapon_pistol": {
+      "name": "Beretta Px4 Storm",
+      "category": "weapon",
+      "modelUrl": "assets/beretta_px4_storm_compact.glb",
+      "scale": [0.028, 0.028, 0.028]
+    },
+    "weapon_shotgun": {
+      "name": "Stagecoach Shotgun",
+      "category": "weapon",
+      "modelUrl": "assets/stagecoach_shotgun.glb",
+      "scale": [1.0, 1.0, 1.0]
     }
   },
   "placements": [
@@ -374,6 +386,28 @@
         "surface": "shelf_tier",
         "supportProp": "prop_shelf_01",
         "tier": 4
+      }
+    },
+    {
+      "id": "floor_weapon_pistol_01",
+      "type": "weapon_pistol",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [44.2, 0.0, -187.5],
+      "rotation": [0.0, 0.4, 0.0],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
+      "id": "floor_weapon_shotgun_01",
+      "type": "weapon_shotgun",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [40.5, 0.0, -179.8],
+      "rotation": [0.0, 1.5708, 0.0],
+      "anchor": {
+        "surface": "floor"
       }
     }
   ]

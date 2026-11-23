@@ -41,23 +41,26 @@ export class LocalPlayerController {
     this._staminaExhausted = false;
 
     // Weapon Inventory & Ammo (matches WEAPONS standard)
-    this.mag = { bullets: 12, shells: 6 };
-    this.bullets = 36;
-    this.shells = 2;
+    // Starting run with tactical flashlight only: 0 starting firearm ammunition
+    this.mag = { bullets: 0, shells: 0 };
+    this.bullets = 0;
+    this.shells = 0;
     this.reloadT = 0;
     this.reloadWeapon = -1;
     this.cool = 0;
     this.recoilKick = 0.0;
     this.isDead = false;
     this.isDowned = false;
+    this.weapon = 2; // 0=pistol, 1=shotgun, 2=torch (Starts with tactical flashlight)
+    this._discoveredWeapons = new Set();
 
     // Developer firing diagnostics (inspected under --dev-rendering)
     this.firingDiagnostics = {
-      selectedWeapon: 'PISTOL (0)',
+      selectedWeapon: 'TORCH (2)',
       lastFiringInput: 'NONE',
       cooldown: '0.00s',
-      magAmmo: 12,
-      reserveAmmo: 36,
+      magAmmo: 0,
+      reserveAmmo: 0,
       reloadState: 'IDLE',
       lastRejectionReason: 'NONE'
     };
@@ -316,6 +319,7 @@ export class LocalPlayerController {
 
   selectHotbarSlot(idx) {
     if (idx < 0 || idx > 9) return;
+    this._checkWeaponDiscovery();
     this.selectedHotbarSlot = idx;
 
     const slotItem = this.inventory ? this.inventory.getItem(idx) : null;
@@ -500,15 +504,38 @@ export class LocalPlayerController {
   }
 
   refreshHeldItem() {
+    this._checkWeaponDiscovery();
     if (this.selectedHotbarSlot >= 0 && this.selectedHotbarSlot <= 9) {
-      const slotItem = this.inventory ? this.inventory.getItem(this.selectedHotbarSlot) : null;
-      if (!slotItem) {
-        if (this.heldItemMesh || this.heldItemTypeId) {
-          this._clearHeldItem();
-        }
-      } else if (slotItem.typeId !== this.heldItemTypeId && !['weapon_pistol', 'weapon_shotgun', 'equipment_torch'].includes(slotItem.typeId)) {
-        this._setHeldItem(slotItem.typeId);
+      this.selectHotbarSlot(this.selectedHotbarSlot);
+    }
+  }
+
+  _checkWeaponDiscovery() {
+    if (!this.inventory) return;
+    const slots = this.inventory.getSlots();
+    let hasPistol = false;
+    let hasShotgun = false;
+    for (const s of slots) {
+      if (s) {
+        if (s.typeId === 'weapon_pistol') hasPistol = true;
+        else if (s.typeId === 'weapon_shotgun') hasShotgun = true;
       }
+    }
+    let stateChanged = false;
+    if (hasPistol && !this._discoveredWeapons.has('weapon_pistol')) {
+      this._discoveredWeapons.add('weapon_pistol');
+      this.mag.bullets = 12;
+      this.bullets = Math.max(this.bullets, 36);
+      stateChanged = true;
+    }
+    if (hasShotgun && !this._discoveredWeapons.has('weapon_shotgun')) {
+      this._discoveredWeapons.add('weapon_shotgun');
+      this.mag.shells = 6;
+      this.shells = Math.max(this.shells, 6);
+      stateChanged = true;
+    }
+    if (stateChanged) {
+      this._notifyStateChange();
     }
   }
 

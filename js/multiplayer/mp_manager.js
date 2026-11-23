@@ -18,6 +18,12 @@ export class MPManager {
     this.inventory = new InventoryController(30);
     this.inventory.initDefaultLoadout();
     this.localPlayer.inventory = this.inventory;
+    this.inventory.subscribe(() => {
+      if (this.localPlayer) {
+        this.localPlayer.refreshHeldItem();
+      }
+    });
+    this.localPlayer.selectHotbarSlot(0);
     this.itemManager = null;
 
     this.currentRoomCode = null;
