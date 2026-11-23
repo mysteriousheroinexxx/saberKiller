@@ -1,14 +1,14 @@
 /**
- * Saber Killer — Survival Mode Polished Inventory & Hotbar UI
+ * Saber Killer — Survival Mode Two-Panel Inventory UI
  *
- * Implements:
- * - 10-slot persistent gameplay Hotbar anchored above the stamina bar (keys 1-9, 0)
- * - Full Inventory interface (Tab / Escape) with Hotbar + 20-slot Storage grid
- * - Selected item details inspection panel
- * - Right-click contextual action menu (Use, Drop, Assign to Hotbar, Inspect)
- * - Dynamic drop quantity selector for stacked items (default 1, clamped, immediate single drop)
- * - Click-to-swap / click-to-move slot management
- * - Authentic Budget-Backrooms visual aesthetic (#ffcc00 accent, Rubik typography, monochromatic SVGs)
+ * Rebuilt around the authentic 1920x1080 two-panel SVG artwork skin:
+ * - Left Panel: 30-slot Survival Inventory Grid (10 Hotbar + 20 Backpack Storage)
+ * - Right Panel: Equipment Silhouette & 10 empty gear slots (retained from artwork)
+ * - Dual Yellow X Close Buttons (one in each panel, both calling the same close functionality)
+ * - Subheader Capacity & Status Indicator
+ * - Selected Item Inspection & Contextual Actions Panel
+ * - Full Keyboard & Drag-and-Drop Management (Tab, Escape, 1–9, 0)
+ * - Distressed Dark Gunmetal Palette with Restrained Gold (#f0c64a / #d7a51e) Accents
  */
 
 import { getItemDefinition, ITEM_EFFECTS_CONFIG } from './item_catalog.js';
@@ -38,6 +38,14 @@ export class InventoryUI {
 
     // DOM Elements
     this.inventoryModalEl = null;
+    this.stageEl = null;
+    this.bgArtwork = null;
+    this.closeBtnLeft = null;
+    this.closeBtnRight = null;
+    this.capacityBarEl = null;
+    this.slotElements = [];
+    this.detailsPanelEl = null;
+
     this.contextMenuEl = null;
     this.dropModalEl = null;
 
@@ -84,6 +92,7 @@ export class InventoryUI {
     this.isOpen = true;
     if (this.inventoryModalEl) {
       this.inventoryModalEl.style.display = 'flex';
+      this._updateScale();
     }
     if (this.player) {
       this.player.isInventoryOpen = true;
@@ -111,179 +120,148 @@ export class InventoryUI {
     }
   }
 
+  _updateScale() {
+    if (!this.stageEl) return;
+    const scale = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    this.stageEl.style.transform = `scale(${scale})`;
+  }
+
+  get invHotbarGrid() {
+    return { children: this.slotElements.slice(0, 10) };
+  }
+
+  get invStorageGrid() {
+    return { children: this.slotElements.slice(10, 30) };
+  }
+
   _injectStyles() {
-    if (document.getElementById('bb-inventory-styles')) return;
+    if (document.getElementById('bb-inventory-styles')) {
+      document.getElementById('bb-inventory-styles').remove();
+    }
 
     const style = document.createElement('style');
     style.id = 'bb-inventory-styles';
     style.textContent = `
-      /* --- Badge and Icon Elements --- */
-      .bb-slot-key-badge {
-        position: absolute;
-        top: 2px;
-        left: 4px;
-        font-size: 10px;
-        font-weight: 700;
-        color: #9c9a92;
-        pointer-events: none;
-        line-height: 1;
-      }
-
-      .bb-slot-qty-badge {
-        position: absolute;
-        bottom: 2px;
-        right: 4px;
-        font-size: 11px;
-        font-weight: 700;
-        color: #edece6;
-        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
-        pointer-events: none;
-        line-height: 1;
-      }
-
-      .bb-slot-icon {
-        width: 32px;
-        height: 32px;
-        object-fit: contain;
-        display: block;
-        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.8));
-        pointer-events: none;
-      }
-
-      /* --- Full Inventory Modal (Tab) --- */
+      /* --- Root Fullscreen Modal --- */
       #bb-inventory-modal {
         position: fixed;
         inset: 0;
-        background: rgba(8, 8, 7, 0.72);
+        background: rgba(3, 5, 8, 0.78);
         display: none;
         align-items: center;
         justify-content: center;
         z-index: 950;
         user-select: none;
-        backdrop-filter: blur(5px);
-        font-family: 'Rubik', -apple-system, BlinkMacSystemFont, sans-serif;
-      }
-
-      .bb-inv-window {
-        width: min(840px, 94vw);
-        max-height: 90vh;
-        background: rgba(18, 18, 16, 0.96);
-        border: 1px solid rgba(255, 204, 0, 0.45);
-        border-radius: 8px;
-        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.88);
-        display: flex;
-        flex-direction: column;
+        backdrop-filter: blur(6px);
+        font-family: 'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         overflow: hidden;
       }
 
-      .bb-inv-header {
-        padding: 12px 18px;
-        background: rgba(28, 28, 24, 0.95);
-        border-bottom: 1px solid rgba(255, 204, 0, 0.25);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
+      /* --- 1920x1080 Responsive Stage --- */
+      .bb-inv-stage {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        flex-shrink: 0;
+        transform-origin: center center;
+        user-select: none;
       }
 
-      .bb-inv-title-group {
-        display: flex;
-        align-items: baseline;
-        gap: 12px;
+      /* --- SVG Background Artwork Skin --- */
+      .bb-inv-artwork {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        pointer-events: none;
+        z-index: 1;
       }
 
-      .bb-inv-title {
-        font-size: 16px;
-        font-weight: 700;
-        letter-spacing: 1.5px;
-        color: #ffcc00;
-        text-transform: uppercase;
-      }
-
-      .bb-inv-subtitle {
-        font-size: 11px;
-        font-weight: 500;
-        letter-spacing: 0.8px;
-        color: #9c9a92;
-        text-transform: uppercase;
-      }
-
+      /* --- Yellow X Close Buttons (Overlaid on SVG Artwork) --- */
       .bb-inv-close-btn {
-        background: transparent;
-        border: 1px solid rgba(237, 236, 230, 0.25);
-        color: #edece6;
-        padding: 4px 10px;
-        border-radius: 4px;
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 0.5px;
+        position: absolute;
+        z-index: 25;
         cursor: pointer;
-        transition: all 0.15s ease;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 3px;
+        padding: 0;
+        margin: 0;
+        outline: none;
+        transition: all 0.15s ease-in-out;
+      }
+
+      .bb-inv-close-left {
+        left: 877px;
+        top: 69px;
+        width: 36px;
+        height: 36px;
+      }
+
+      .bb-inv-close-right {
+        left: 1667px;
+        top: 69px;
+        width: 36px;
+        height: 36px;
       }
 
       .bb-inv-close-btn:hover {
-        border-color: #ffcc00;
-        color: #ffcc00;
+        background: rgba(240, 198, 74, 0.18);
+        border-color: rgba(240, 198, 74, 0.6);
+        box-shadow: 0 0 12px rgba(240, 198, 74, 0.45);
       }
 
-      .bb-inv-body {
-        padding: 18px;
-        display: flex;
-        gap: 20px;
-        overflow-y: auto;
+      .bb-inv-close-btn:active {
+        background: rgba(240, 198, 74, 0.35);
+        transform: scale(0.96);
       }
 
-      .bb-inv-left-col {
-        flex: 1.35;
-        display: flex;
-        flex-direction: column;
-        gap: 18px;
-      }
-
-      .bb-inv-section-label {
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 1px;
-        color: #c8c6bc;
-        text-transform: uppercase;
-        margin-bottom: 8px;
+      /* --- Subheader Capacity / Status Bar --- */
+      .bb-inv-capacity-bar {
+        position: absolute;
+        left: 245px;
+        top: 154px;
+        width: 640px;
+        height: 44px;
+        z-index: 15;
+        box-sizing: border-box;
         display: flex;
         align-items: center;
         justify-content: space-between;
+        padding: 0 16px;
+        background: rgba(14, 18, 25, 0.72);
+        border: 1px solid rgba(88, 97, 110, 0.35);
+        border-radius: 2px;
+        color: #c8c6bc;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        font-family: monospace;
       }
 
-      .bb-inv-section-hint {
+      .bb-inv-capacity-bar .gold-accent {
+        color: #f0c64a;
+        font-weight: 700;
+      }
+
+      .bb-inv-capacity-bar .hint-text {
         font-size: 10px;
-        color: #7a7972;
-        text-transform: none;
-        letter-spacing: 0;
+        color: #77818f;
+        letter-spacing: 0.5px;
       }
 
-      .bb-inv-hotbar-grid {
-        display: grid;
-        grid-template-columns: repeat(10, 1fr);
-        gap: 6px;
-        background: rgba(24, 24, 22, 0.6);
-        padding: 8px;
-        border-radius: 6px;
-        border: 1px solid rgba(237, 236, 230, 0.12);
-      }
-
-      .bb-inv-backpack-grid {
-        display: grid;
-        grid-template-columns: repeat(5, 1fr);
-        gap: 8px;
-        background: rgba(24, 24, 22, 0.6);
-        padding: 10px;
-        border-radius: 6px;
-        border: 1px solid rgba(237, 236, 230, 0.12);
-      }
-
+      /* --- Interactive 30-Slot Grid Elements --- */
       .bb-grid-slot {
-        aspect-ratio: 1 / 1;
-        background: rgba(30, 30, 27, 0.85);
-        border: 1px solid rgba(237, 236, 230, 0.16);
-        border-radius: 4px;
-        position: relative;
+        position: absolute;
+        width: 95px;
+        height: 95px;
+        z-index: 15;
+        box-sizing: border-box;
+        background: rgba(16, 22, 30, 0.28);
+        border: 1px solid transparent;
+        border-radius: 2px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -292,284 +270,327 @@ export class InventoryUI {
       }
 
       .bb-grid-slot:hover {
-        border-color: rgba(255, 204, 0, 0.7);
-        background: rgba(42, 42, 38, 0.95);
+        border-color: rgba(240, 198, 74, 0.65);
+        background: rgba(30, 38, 50, 0.4);
+        box-shadow: inset 0 0 14px rgba(240, 198, 74, 0.2);
       }
 
       .bb-grid-slot.selected {
-        border: 2px solid #ffcc00;
-        box-shadow: 0 0 10px rgba(255, 204, 0, 0.4);
-        background: rgba(50, 48, 35, 0.95);
-      }
-
-      .bb-grid-slot.swap-source {
-        border: 2px dashed #00e5ff;
-        box-shadow: 0 0 8px rgba(0, 229, 255, 0.4);
-        background: rgba(20, 45, 50, 0.9);
-      }
-
-      .bb-grid-slot.dragging {
-        opacity: 0.45;
-        border: 2px dashed #ffcc00;
-      }
-
-      .bb-grid-slot.drag-over {
-        border: 2px solid #00e5ff;
-        box-shadow: 0 0 12px rgba(0, 229, 255, 0.6);
-        background: rgba(30, 60, 65, 0.95);
-        transform: scale(1.04);
+        border: 2px solid #edece6;
+        box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.2), 0 0 8px rgba(255, 255, 255, 0.3);
       }
 
       .bb-grid-slot.active-equipped {
-        border-color: #ffcc00;
-        box-shadow: 0 0 8px rgba(255, 204, 0, 0.45);
+        border: 2px solid #f0c64a;
+        box-shadow: inset 0 0 14px rgba(240, 198, 74, 0.35), 0 0 10px rgba(240, 198, 74, 0.5);
       }
 
-      .bb-grid-slot.active-equipped::after {
-        content: 'EQUIPPED';
+      .bb-grid-slot.swap-source {
+        border: 2px dashed #f0c64a;
+        animation: bbPulse 1.2s infinite ease-in-out;
+      }
+
+      .bb-grid-slot.drag-over {
+        border: 2px solid #f0c64a;
+        background: rgba(240, 198, 74, 0.25);
+      }
+
+      .bb-grid-slot.dragging {
+        opacity: 0.35;
+      }
+
+      @keyframes bbPulse {
+        0%, 100% { border-color: #f0c64a; }
+        50% { border-color: rgba(240, 198, 74, 0.3); }
+      }
+
+      .bb-slot-key-badge {
         position: absolute;
-        bottom: 2px;
-        left: 3px;
-        font-size: 7px;
+        top: 4px;
+        left: 6px;
+        font-size: 11px;
         font-weight: 700;
-        letter-spacing: 0.5px;
-        color: #ffcc00;
+        font-family: monospace;
+        color: #9c9a92;
+        pointer-events: none;
+        line-height: 1;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.9);
+      }
+
+      .bb-grid-slot.active-equipped .bb-slot-key-badge {
+        color: #f0c64a;
+      }
+
+      .bb-slot-qty-badge {
+        position: absolute;
+        bottom: 4px;
+        right: 6px;
+        font-size: 13px;
+        font-weight: 700;
+        font-family: monospace;
+        color: #edece6;
+        text-shadow: 0 1px 3px #000, 0 0 5px #000;
+        pointer-events: none;
+        line-height: 1;
+      }
+
+      .bb-slot-icon {
+        max-width: 58px;
+        max-height: 58px;
+        object-fit: contain;
+        display: block;
+        filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.85));
         pointer-events: none;
       }
 
-      .bb-grid-slot .bb-slot-icon {
-        width: 32px;
-        height: 32px;
+      /* --- Selected Item Details & Actions Panel (Lower Left Panel) --- */
+      .bb-inv-details-panel {
+        position: absolute;
+        left: 245px;
+        top: 780px;
+        width: 640px;
+        height: 232px;
+        z-index: 15;
+        box-sizing: border-box;
+        background: rgba(14, 18, 25, 0.88);
+        border: 1px solid rgba(88, 97, 110, 0.38);
+        border-radius: 2px;
+        padding: 14px 18px;
+        display: flex;
+        gap: 18px;
+        color: #edece6;
       }
 
-      .bb-inv-right-col {
-        flex: 0.95;
-        background: rgba(24, 24, 22, 0.85);
-        border: 1px solid rgba(237, 236, 230, 0.15);
-        border-radius: 6px;
-        padding: 16px;
+      .bb-details-left {
+        flex: 1.45;
         display: flex;
         flex-direction: column;
-        justify-content: space-between;
+        gap: 10px;
+        overflow: hidden;
       }
 
-      .bb-item-detail-top {
+      .bb-details-header-row {
         display: flex;
-        flex-direction: column;
+        align-items: center;
         gap: 12px;
       }
 
-      .bb-item-detail-preview {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        padding-bottom: 12px;
-        border-bottom: 1px solid rgba(237, 236, 230, 0.12);
-      }
-
-      .bb-detail-icon-box {
-        width: 60px;
-        height: 60px;
-        background: rgba(35, 35, 30, 0.9);
-        border: 1px solid rgba(255, 204, 0, 0.35);
-        border-radius: 6px;
+      .bb-details-icon-box {
+        width: 52px;
+        height: 52px;
+        flex-shrink: 0;
+        background: rgba(8, 12, 18, 0.85);
+        border: 1px solid rgba(88, 97, 110, 0.45);
+        border-radius: 2px;
         display: flex;
         align-items: center;
         justify-content: center;
       }
 
-      .bb-detail-icon {
-        width: 44px;
-        height: 44px;
+      .bb-details-icon {
+        max-width: 42px;
+        max-height: 42px;
         object-fit: contain;
+        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.8));
       }
 
-      .bb-detail-name {
-        font-size: 16px;
-        font-weight: 700;
-        color: #ffcc00;
-        line-height: 1.2;
-      }
-
-      .bb-detail-cat {
-        font-size: 11px;
-        font-weight: 600;
-        color: #9c9a92;
-        text-transform: uppercase;
-        margin-top: 2px;
-      }
-
-      .bb-detail-desc {
-        font-size: 12px;
-        color: #edece6;
-        line-height: 1.45;
-      }
-
-      .bb-detail-stats {
+      .bb-details-meta {
         display: flex;
         flex-direction: column;
+        gap: 3px;
+        overflow: hidden;
+      }
+
+      .bb-details-name {
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        color: #f0f1f2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-transform: uppercase;
+      }
+
+      .bb-details-cat {
+        font-size: 10px;
+        font-weight: 600;
+        color: #9c9a92;
+        font-family: monospace;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+      }
+
+      .bb-details-desc {
+        font-size: 11px;
+        color: #9c9a92;
+        line-height: 1.45;
+        max-height: 52px;
+        overflow-y: auto;
+      }
+
+      .bb-details-stats {
+        display: flex;
+        flex-wrap: wrap;
         gap: 6px;
-        margin-top: 6px;
+        margin-top: auto;
       }
 
       .bb-stat-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background: rgba(255, 204, 0, 0.12);
-        border: 1px solid rgba(255, 204, 0, 0.28);
-        border-radius: 4px;
-        padding: 4px 8px;
-        font-size: 11px;
+        background: rgba(24, 32, 42, 0.85);
+        border: 1px solid rgba(240, 198, 74, 0.35);
+        color: #f0c64a;
+        font-size: 10px;
         font-weight: 600;
-        color: #ffcc00;
+        font-family: monospace;
+        padding: 3px 8px;
+        border-radius: 2px;
+        letter-spacing: 0.5px;
       }
 
-      .bb-detail-actions {
+      .bb-details-actions {
+        flex: 1;
         display: flex;
         flex-direction: column;
         gap: 8px;
-        margin-top: 16px;
+        justify-content: center;
+        border-left: 1px solid rgba(88, 97, 110, 0.25);
+        padding-left: 18px;
       }
 
       .bb-action-btn {
         width: 100%;
-        padding: 8px 14px;
-        border-radius: 4px;
-        font-size: 12px;
+        padding: 8px 12px;
+        border-radius: 2px;
+        font-size: 11px;
         font-weight: 700;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
+        letter-spacing: 0.8px;
         cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
+        text-transform: uppercase;
         transition: all 0.15s ease;
+        box-sizing: border-box;
       }
 
       .bb-action-btn.primary {
-        background: #ffcc00;
-        border: 1px solid #ffcc00;
-        color: #121210;
+        background: linear-gradient(135deg, #f0c64a 0%, #d7a51e 50%, #986d12 100%);
+        color: #0c1118;
+        border: none;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
       }
 
-      .bb-action-btn.primary:hover:not(:disabled) {
-        background: #ffd633;
-        box-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+      .bb-action-btn.primary:not(:disabled):hover {
+        filter: brightness(1.15);
+        box-shadow: 0 0 10px rgba(240, 198, 74, 0.5);
       }
 
       .bb-action-btn.secondary {
-        background: rgba(45, 45, 40, 0.85);
-        border: 1px solid rgba(237, 236, 230, 0.25);
+        background: rgba(22, 28, 38, 0.85);
+        border: 1px solid rgba(88, 97, 110, 0.45);
         color: #edece6;
       }
 
-      .bb-action-btn.secondary:hover:not(:disabled) {
-        border-color: #ffcc00;
-        color: #ffcc00;
+      .bb-action-btn.secondary:not(:disabled):hover {
+        border-color: #edece6;
+        background: rgba(32, 40, 52, 0.95);
+        color: #ffffff;
       }
 
       .bb-action-btn:disabled {
         opacity: 0.35;
         cursor: not-allowed;
+        filter: grayscale(0.8);
       }
 
-      /* --- Right Click Context Menu --- */
+      .bb-actions-hint {
+        font-size: 9.5px;
+        color: #616b79;
+        font-family: monospace;
+        text-align: center;
+        margin-top: 2px;
+        letter-spacing: 0.3px;
+      }
+
+      /* --- Context Menu & Drop Quantity Modal --- */
       #bb-context-menu {
         position: fixed;
+        background: rgba(18, 24, 33, 0.96);
+        border: 1px solid rgba(240, 198, 74, 0.4);
+        border-radius: 3px;
+        padding: 4px 0;
+        z-index: 1100;
         display: none;
         flex-direction: column;
-        background: rgba(22, 22, 19, 0.98);
-        border: 1px solid rgba(255, 204, 0, 0.5);
-        border-radius: 4px;
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.85);
-        padding: 4px 0;
-        z-index: 1000;
-        min-width: 140px;
-        font-family: 'Rubik', -apple-system, BlinkMacSystemFont, sans-serif;
+        min-width: 150px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.85);
+        font-family: 'Rubik', -apple-system, sans-serif;
       }
 
       .bb-context-item {
         padding: 7px 14px;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 600;
         color: #edece6;
         cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        transition: background 0.1s ease, color 0.1s ease;
+        letter-spacing: 0.5px;
+        transition: all 0.15s ease;
       }
 
       .bb-context-item:hover {
-        background: rgba(255, 204, 0, 0.18);
-        color: #ffcc00;
-      }
-
-      .bb-context-item.disabled {
-        opacity: 0.35;
-        cursor: not-allowed;
+        background: rgba(240, 198, 74, 0.18);
+        color: #f0c64a;
       }
 
       .bb-context-divider {
         height: 1px;
-        background: rgba(237, 236, 230, 0.1);
-        margin: 4px 0;
+        background: rgba(88, 97, 110, 0.25);
+        margin: 3px 0;
       }
 
-      /* --- Drop Quantity Modal --- */
       #bb-drop-modal {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.65);
+        background: rgba(5, 8, 13, 0.85);
+        z-index: 1200;
         display: none;
         align-items: center;
         justify-content: center;
-        z-index: 1050;
-        backdrop-filter: blur(4px);
-        font-family: 'Rubik', -apple-system, BlinkMacSystemFont, sans-serif;
       }
 
       .bb-drop-dialog {
-        width: 320px;
-        background: rgba(20, 20, 18, 0.98);
-        border: 1px solid #ffcc00;
-        border-radius: 6px;
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.9);
-        padding: 16px;
+        background: rgba(18, 24, 33, 0.96);
+        border: 1px solid rgba(240, 198, 74, 0.45);
+        border-radius: 4px;
+        padding: 20px 24px;
+        width: 280px;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.9);
         display: flex;
         flex-direction: column;
         gap: 14px;
+        font-family: 'Rubik', -apple-system, sans-serif;
       }
 
       .bb-drop-title {
-        font-size: 14px;
+        font-size: 12px;
         font-weight: 700;
-        color: #ffcc00;
+        letter-spacing: 1px;
+        color: #f0c64a;
         text-transform: uppercase;
-        letter-spacing: 0.8px;
       }
 
       .bb-drop-counter-row {
         display: flex;
         align-items: center;
-        justify-content: space-between;
         gap: 8px;
-        background: rgba(30, 30, 26, 0.9);
-        padding: 6px 10px;
-        border-radius: 4px;
-        border: 1px solid rgba(237, 236, 230, 0.15);
       }
 
       .bb-drop-counter-btn {
+        background: rgba(30, 38, 50, 0.8);
+        border: 1px solid rgba(88, 97, 110, 0.5);
+        color: #edece6;
         width: 32px;
         height: 32px;
-        background: rgba(45, 45, 40, 0.85);
-        border: 1px solid rgba(237, 236, 230, 0.2);
-        color: #edece6;
-        border-radius: 4px;
-        font-size: 16px;
+        border-radius: 2px;
+        font-size: 14px;
         font-weight: 700;
         cursor: pointer;
         display: flex;
@@ -578,20 +599,26 @@ export class InventoryUI {
       }
 
       .bb-drop-counter-btn:hover {
-        border-color: #ffcc00;
-        color: #ffcc00;
+        border-color: #f0c64a;
+        color: #f0c64a;
       }
 
       .bb-drop-input {
         flex: 1;
+        background: rgba(10, 14, 20, 0.8);
+        border: 1px solid rgba(88, 97, 110, 0.5);
+        color: #edece6;
+        height: 32px;
         text-align: center;
-        background: transparent;
-        border: none;
-        color: #ffcc00;
-        font-size: 18px;
+        font-size: 14px;
         font-weight: 700;
-        font-family: inherit;
+        font-family: monospace;
+        border-radius: 2px;
         outline: none;
+      }
+
+      .bb-drop-input:focus {
+        border-color: #f0c64a;
       }
 
       .bb-drop-btn-row {
@@ -607,155 +634,181 @@ export class InventoryUI {
     this.inventoryModalEl.id = 'bb-inventory-modal';
     this.inventoryModalEl.style.display = 'none';
 
-    const win = document.createElement('div');
-    win.className = 'bb-inv-window';
+    // Clicking backdrop outside stage closes inventory
+    this.inventoryModalEl.addEventListener('click', (e) => {
+      if (e.target === this.inventoryModalEl) {
+        this.close();
+      }
+    });
 
-    // Header
-    const header = document.createElement('div');
-    header.className = 'bb-inv-header';
+    // 1920x1080 Stage
+    this.stageEl = document.createElement('div');
+    this.stageEl.className = 'bb-inv-stage';
+    this.stageEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
 
-    const titleGroup = document.createElement('div');
-    titleGroup.className = 'bb-inv-title-group';
-    const title = document.createElement('div');
-    title.className = 'bb-inv-title';
-    title.textContent = 'SURVIVOR INVENTORY';
-    const subtitle = document.createElement('div');
-    subtitle.className = 'bb-inv-subtitle';
-    subtitle.id = 'bb-inv-capacity-status';
-    subtitle.textContent = 'CAPACITY: 10 HOTBAR + 20 STORAGE';
-    titleGroup.appendChild(title);
-    titleGroup.appendChild(subtitle);
+    // SVG Background Artwork Skin
+    this.bgArtwork = document.createElement('img');
+    this.bgArtwork.className = 'bb-inv-artwork';
+    this.bgArtwork.src = 'assets/ui/inventory_equipment_hud.svg';
+    this.bgArtwork.alt = 'Survival Inventory & Equipment HUD';
+    this.bgArtwork.draggable = false;
+    this.stageEl.appendChild(this.bgArtwork);
 
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'bb-inv-close-btn';
-    closeBtn.textContent = 'CLOSE [ESC / TAB]';
-    closeBtn.addEventListener('click', () => this.close());
+    // Left Panel Yellow X Close Button (Centered on SVG path M885 77l20 20m0-20l-20 20)
+    this.closeBtnLeft = document.createElement('button');
+    this.closeBtnLeft.className = 'bb-inv-close-btn bb-inv-close-left';
+    this.closeBtnLeft.id = 'bb-inv-close-left';
+    this.closeBtnLeft.style.left = '877px';
+    this.closeBtnLeft.style.top = '69px';
+    this.closeBtnLeft.title = 'Close Inventory [Esc / Tab]';
+    this.closeBtnLeft.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.close();
+    });
+    this.stageEl.appendChild(this.closeBtnLeft);
 
-    header.appendChild(titleGroup);
-    header.appendChild(closeBtn);
-    win.appendChild(header);
+    // Right Panel Yellow X Close Button (Centered on SVG path M1675 77l20 20m0-20l-20 20)
+    this.closeBtnRight = document.createElement('button');
+    this.closeBtnRight.className = 'bb-inv-close-btn bb-inv-close-right';
+    this.closeBtnRight.id = 'bb-inv-close-right';
+    this.closeBtnRight.style.left = '1667px';
+    this.closeBtnRight.style.top = '69px';
+    this.closeBtnRight.title = 'Close Inventory [Esc / Tab]';
+    this.closeBtnRight.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.close();
+    });
+    this.stageEl.appendChild(this.closeBtnRight);
 
-    // Body
-    const body = document.createElement('div');
-    body.className = 'bb-inv-body';
+    // Subheader Capacity Bar (Above 30-slot grid on Left Panel)
+    this.capacityBarEl = document.createElement('div');
+    this.capacityBarEl.className = 'bb-inv-capacity-bar';
+    this.capacityBarEl.id = 'bb-inv-capacity-status';
+    this.capacityBarEl.innerHTML = `
+      <div>SLOTS: <span id="bb-inv-occupied" class="gold-accent">0</span> / 30 &middot; <span class="gold-accent">HOTBAR: 10</span> &middot; STORAGE: 20</div>
+      <div class="hint-text">[ESC / TAB] CLOSE &middot; [1–0] ASSIGN</div>
+    `;
+    this.stageEl.appendChild(this.capacityBarEl);
 
-    // Left Col: Hotbar Row + Storage Grid
-    const leftCol = document.createElement('div');
-    leftCol.className = 'bb-inv-left-col';
+    // 30 Inventory Grid Slots (6 columns x 5 rows, matching exact SVG slot coordinates)
+    this.slotElements = [];
+    for (let i = 0; i < 30; i++) {
+      const col = i % 6;
+      const row = Math.floor(i / 6);
+      const x = 245 + col * 109;
+      const y = 228 + row * 109;
 
-    // Hotbar section
-    const hotbarSection = document.createElement('div');
-    const hotbarLabel = document.createElement('div');
-    hotbarLabel.className = 'bb-inv-section-label';
-    hotbarLabel.innerHTML = '<span>Quick-Access Hotbar</span><span class="bb-inv-section-hint">Keys 1–9, 0</span>';
-    hotbarSection.appendChild(hotbarLabel);
+      const slot = this._createGridSlot(i, i < 10);
+      slot.style.left = `${x}px`;
+      slot.style.top = `${y}px`;
 
-    this.invHotbarGrid = document.createElement('div');
-    this.invHotbarGrid.className = 'bb-inv-hotbar-grid';
-    for (let i = 0; i < 10; i++) {
-      const slot = this._createGridSlot(i, true);
-      this.invHotbarGrid.appendChild(slot);
+      this.slotElements.push(slot);
+      this.stageEl.appendChild(slot);
     }
-    hotbarSection.appendChild(this.invHotbarGrid);
-    leftCol.appendChild(hotbarSection);
 
-    // Storage section (20 slots: 10..29)
-    const storageSection = document.createElement('div');
-    const storageLabel = document.createElement('div');
-    storageLabel.className = 'bb-inv-section-label';
-    storageLabel.innerHTML = '<span>Backpack Storage</span><span class="bb-inv-section-hint">Click to move / Right-click for options</span>';
-    storageSection.appendChild(storageLabel);
+    // Selected Item Details & Actions Panel (Lower Left Panel, y: 780..1012)
+    this.detailsPanelEl = document.createElement('div');
+    this.detailsPanelEl.className = 'bb-inv-details-panel';
+    this.detailsPanelEl.id = 'bb-inv-details-panel';
 
-    this.invStorageGrid = document.createElement('div');
-    this.invStorageGrid.className = 'bb-inv-backpack-grid';
-    for (let i = 10; i < 30; i++) {
-      const slot = this._createGridSlot(i, false);
-      this.invStorageGrid.appendChild(slot);
-    }
-    storageSection.appendChild(this.invStorageGrid);
-    leftCol.appendChild(storageSection);
-
-    body.appendChild(leftCol);
-
-    // Right Col: Item Details & Actions
-    this.rightCol = document.createElement('div');
-    this.rightCol.className = 'bb-inv-right-col';
-
-    const detailTop = document.createElement('div');
-    detailTop.className = 'bb-item-detail-top';
+    const detailsLeft = document.createElement('div');
+    detailsLeft.className = 'bb-details-left';
 
     const previewRow = document.createElement('div');
-    previewRow.className = 'bb-item-detail-preview';
+    previewRow.className = 'bb-details-header-row';
 
     const iconBox = document.createElement('div');
-    iconBox.className = 'bb-detail-icon-box';
+    iconBox.className = 'bb-details-icon-box';
     this.detailIcon = document.createElement('img');
-    this.detailIcon.className = 'bb-detail-icon';
+    this.detailIcon.className = 'bb-details-icon';
+    this.detailIcon.id = 'bb-details-icon';
     this.detailIcon.draggable = false;
+    this.detailIcon.style.display = 'none';
     iconBox.appendChild(this.detailIcon);
 
-    const nameCol = document.createElement('div');
+    const metaCol = document.createElement('div');
+    metaCol.className = 'bb-details-meta';
     this.detailName = document.createElement('div');
-    this.detailName.className = 'bb-detail-name';
-    this.detailName.textContent = 'Select an Item';
+    this.detailName.className = 'bb-details-name';
+    this.detailName.id = 'bb-details-name';
+    this.detailName.textContent = 'SELECT AN ITEM';
     this.detailCat = document.createElement('div');
-    this.detailCat.className = 'bb-detail-cat';
-    this.detailCat.textContent = 'NO ITEM SELECTED';
-    nameCol.appendChild(this.detailName);
-    nameCol.appendChild(this.detailCat);
+    this.detailCat.className = 'bb-details-cat';
+    this.detailCat.id = 'bb-details-cat';
+    this.detailCat.textContent = 'CLICK ANY SLOT TO INSPECT';
+    metaCol.appendChild(this.detailName);
+    metaCol.appendChild(this.detailCat);
 
     previewRow.appendChild(iconBox);
-    previewRow.appendChild(nameCol);
-    detailTop.appendChild(previewRow);
+    previewRow.appendChild(metaCol);
+    detailsLeft.appendChild(previewRow);
 
     this.detailDesc = document.createElement('div');
-    this.detailDesc.className = 'bb-detail-desc';
-    this.detailDesc.textContent = 'Click on an inventory or hotbar item to inspect its specifications, consumable attributes, and actions.';
-    detailTop.appendChild(this.detailDesc);
+    this.detailDesc.className = 'bb-details-desc';
+    this.detailDesc.id = 'bb-details-desc';
+    this.detailDesc.textContent = 'Inspect item specifications, consumable attributes, and contextual actions.';
+    detailsLeft.appendChild(this.detailDesc);
 
     this.detailStats = document.createElement('div');
-    this.detailStats.className = 'bb-detail-stats';
-    detailTop.appendChild(this.detailStats);
+    this.detailStats.className = 'bb-details-stats';
+    this.detailStats.id = 'bb-details-stats';
+    detailsLeft.appendChild(this.detailStats);
 
-    this.rightCol.appendChild(detailTop);
+    this.detailsPanelEl.appendChild(detailsLeft);
 
-    // Actions Row
-    const actionRow = document.createElement('div');
-    actionRow.className = 'bb-detail-actions';
+    // Actions Column
+    const actionsCol = document.createElement('div');
+    actionsCol.className = 'bb-details-actions';
 
     this.btnUse = document.createElement('button');
     this.btnUse.className = 'bb-action-btn primary';
+    this.btnUse.id = 'bb-action-use';
     this.btnUse.textContent = 'Use / Consume';
     this.btnUse.disabled = true;
     this.btnUse.addEventListener('click', () => this._handleUseSelected());
 
     this.btnDrop = document.createElement('button');
     this.btnDrop.className = 'bb-action-btn secondary';
+    this.btnDrop.id = 'bb-action-drop';
     this.btnDrop.textContent = 'Drop Item';
     this.btnDrop.disabled = true;
     this.btnDrop.addEventListener('click', () => this._handleDropSelected());
 
     this.btnAssignHotbar = document.createElement('button');
     this.btnAssignHotbar.className = 'bb-action-btn secondary';
+    this.btnAssignHotbar.id = 'bb-action-assign';
     this.btnAssignHotbar.textContent = 'Assign to Hotbar';
     this.btnAssignHotbar.disabled = true;
     this.btnAssignHotbar.addEventListener('click', () => this._handleAssignHotbar());
 
-    actionRow.appendChild(this.btnUse);
-    actionRow.appendChild(this.btnDrop);
-    actionRow.appendChild(this.btnAssignHotbar);
-    this.rightCol.appendChild(actionRow);
+    const hintEl = document.createElement('div');
+    hintEl.className = 'bb-actions-hint';
+    hintEl.textContent = 'HINT: Press 1–9, 0 to assign';
 
-    body.appendChild(this.rightCol);
-    win.appendChild(body);
-    this.inventoryModalEl.appendChild(win);
+    actionsCol.appendChild(this.btnUse);
+    actionsCol.appendChild(this.btnDrop);
+    actionsCol.appendChild(this.btnAssignHotbar);
+    actionsCol.appendChild(hintEl);
+
+    this.detailsPanelEl.appendChild(actionsCol);
+    this.stageEl.appendChild(this.detailsPanelEl);
+
+    // Append stage to modal root and parent
+    this.inventoryModalEl.appendChild(this.stageEl);
     this.parent.appendChild(this.inventoryModalEl);
+
+    // Responsive window auto-scaling
+    window.addEventListener('resize', () => this._updateScale());
+    this._updateScale();
   }
 
   _createGridSlot(slotIdx, isHotbar) {
     const slot = document.createElement('div');
     slot.className = 'bb-grid-slot';
     slot.dataset.slotIndex = String(slotIdx);
+    slot.id = `bb-slot-${slotIdx}`;
 
     if (isHotbar) {
       const keyBadge = document.createElement('div');
@@ -773,6 +826,7 @@ export class InventoryUI {
     iconImg.className = 'bb-slot-icon';
     iconImg.id = `bb-grid-icon-${slotIdx}`;
     iconImg.draggable = false;
+    iconImg.style.display = 'none';
     slot.appendChild(iconImg);
 
     // Left click: select or click-to-swap
@@ -1202,23 +1256,19 @@ export class InventoryUI {
     const slots = this.inventory.getSlots();
     const occupied = slots.filter(s => s !== null).length;
 
+    const occEl = document.getElementById('bb-inv-occupied');
+    if (occEl) {
+      occEl.textContent = String(occupied);
+    }
     const capEl = document.getElementById('bb-inv-capacity-status');
-    if (capEl) {
+    if (capEl && !occEl) {
       capEl.textContent = `SLOTS: ${occupied} / ${this.inventory.capacity} (HOTBAR: 10, BACKPACK: ${this.inventory.capacity - 10})`;
     }
 
-    // Render Hotbar Grid Slots (0..9)
-    if (this.invHotbarGrid) {
-      for (let i = 0; i < 10; i++) {
-        this._renderGridSlotElement(i, slots[i], this.invHotbarGrid.children[i]);
-      }
-    }
-
-    // Render Storage Grid Slots (10..29)
-    if (this.invStorageGrid) {
-      for (let i = 10; i < Math.min(30, this.inventory.capacity); i++) {
-        const childIdx = i - 10;
-        this._renderGridSlotElement(i, slots[i], this.invStorageGrid.children[childIdx]);
+    // Render all 30 slots
+    for (let i = 0; i < 30; i++) {
+      if (this.slotElements && this.slotElements[i]) {
+        this._renderGridSlotElement(i, slots[i], this.slotElements[i]);
       }
     }
 
@@ -1261,9 +1311,9 @@ export class InventoryUI {
   _renderItemDetails() {
     if (this.selectedInventorySlot === null) {
       this.detailIcon.style.display = 'none';
-      this.detailName.textContent = 'Select an Item';
-      this.detailCat.textContent = 'NO ITEM SELECTED';
-      this.detailDesc.textContent = 'Click on any inventory slot to inspect details or right-click to execute contextual actions.';
+      this.detailName.textContent = 'SELECT AN ITEM';
+      this.detailCat.textContent = 'CLICK ANY SLOT TO INSPECT';
+      this.detailDesc.textContent = 'Inspect item specifications, consumable attributes, and contextual actions.';
       this.detailStats.innerHTML = '';
       this.btnUse.disabled = true;
       this.btnDrop.disabled = true;
@@ -1274,9 +1324,9 @@ export class InventoryUI {
     const slot = this.inventory.getItem(this.selectedInventorySlot);
     if (!slot) {
       this.detailIcon.style.display = 'none';
-      this.detailName.textContent = `Slot #${this.selectedInventorySlot + 1} (Empty)`;
-      this.detailCat.textContent = this.selectedInventorySlot < 10 ? 'HOTBAR SLOT' : 'STORAGE SLOT';
-      this.detailDesc.textContent = 'This slot is currently empty. Collected items will automatically occupy this slot.';
+      this.detailName.textContent = `SLOT #${this.selectedInventorySlot + 1} (EMPTY)`;
+      this.detailCat.textContent = this.selectedInventorySlot < 10 ? 'HOTBAR SLOT (KEYS 1-9, 0)' : 'STORAGE SLOT';
+      this.detailDesc.textContent = 'This slot is currently empty. Collected world items will automatically occupy this slot.';
       this.detailStats.innerHTML = '';
       this.btnUse.disabled = true;
       this.btnDrop.disabled = true;
@@ -1290,7 +1340,7 @@ export class InventoryUI {
     this.detailIcon.src = slot.iconUrl || def.iconUrl || 'assets/ui/icons/hud_ammo.svg';
     this.detailIcon.style.display = 'block';
     this.detailName.textContent = slot.name || def.name;
-    this.detailCat.textContent = `${(slot.category || def.category || 'ITEM').toUpperCase()} // STACK: ${slot.quantity}/${slot.maxStack || 1}`;
+    this.detailCat.textContent = `${(slot.category || def.category || 'ITEM').toUpperCase()} // STACK: ${slot.quantity}/${slot.maxStack || 1} ${this.selectedInventorySlot < 10 ? '(HOTBAR)' : '(BACKPACK)'}`;
     this.detailDesc.textContent = def.metadata?.description || slot.metadata?.description || 'Standard Level 0 survival item.';
 
     let statsHtml = '';
