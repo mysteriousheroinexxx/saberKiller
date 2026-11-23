@@ -3,6 +3,26 @@ import { MAX_PLAYERS_PER_ROOM, isValidNumber } from './protocol.js';
 import { InventoryController } from '../js/multiplayer/inventory_controller.js';
 import { isPickupItem, getItemDefinition, ITEM_EFFECTS_CONFIG } from '../js/multiplayer/item_catalog.js';
 
+// Configurable Vending Machine Parameters
+export const VENDING_CONFIG = {
+  defaultMaxStock: 5,
+  cooldownMs: 1000,
+  maxInteractionDistance: 2.8
+};
+
+export function configureVendingMachine(opts = {}) {
+  if (typeof opts.defaultMaxStock === 'number') {
+    VENDING_CONFIG.defaultMaxStock = Math.max(0, opts.defaultMaxStock);
+  }
+  if (typeof opts.cooldownMs === 'number') {
+    VENDING_CONFIG.cooldownMs = Math.max(0, opts.cooldownMs);
+  }
+  if (typeof opts.maxInteractionDistance === 'number') {
+    VENDING_CONFIG.maxInteractionDistance = Math.max(0, opts.maxInteractionDistance);
+  }
+  return { ...VENDING_CONFIG };
+}
+
 // Predefined verified Level 0 spawn slots (safe from walls, 2.8m apart)
 const SPAWN_SLOTS = [
   { x: 48.69, y: 0.0, z: -187.65, yaw: 0.0, pitch: 0.0 },
@@ -66,6 +86,11 @@ export class RoomManager {
     if (layoutData && Array.isArray(layoutData.placements)) {
       for (const p of layoutData.placements) {
         const isPickup = isPickupItem(p.type);
+        const isVending = (p.type === 'vending_almond');
+        const maxStock = isVending
+          ? ((p.metadata && typeof p.metadata.maxStock === 'number') ? p.metadata.maxStock : VENDING_CONFIG.defaultMaxStock)
+          : undefined;
+
         room.worldItems.set(p.id, {
           id: p.id,
           type: p.type,
@@ -75,7 +100,9 @@ export class RoomManager {
           isPickup,
           available: isPickup,
           collectedBy: null,
-          collectedAt: null
+          collectedAt: null,
+          stock: maxStock,
+          maxStock: maxStock
         });
       }
     }
@@ -419,13 +446,38 @@ export class RoomManager {
       return { error: `Object '${machineId}' (${machine.type}) is not a vending machine`, room, player };
     }
 
-    // Cooldown check on vending machine (1.0s debounced)
-    const now = Date.now();
-    if (machine.lastDispenseTime && (now - machine.lastDispenseTime < 1000)) {
-      return { error: 'Vending machine is dispensing, please wait...', room, player };
+    // Ensure stock is initialized if missing
+    if (machine.stock === undefined) {
+      machine.stock = VENDING_CONFIG.defaultMaxStock;
+      machine.maxStock = VENDING_CONFIG.defaultMaxStock;
     }
 
-    // Proximity check (2.8m limit with network latency tolerance)
+    // 1. Authoritative stock check: Reject if out of stock
+    if (machine.stock <= 0) {
+      return {
+        error: 'Vending machine is out of stock',
+        room,
+        player,
+        machineId,
+        remainingStock: 0,
+        maxStock: machine.maxStock
+      };
+    }
+
+    // 2. Cooldown check on vending machine (debounced per VENDING_CONFIG)
+    const now = Date.now();
+    if (machine.lastDispenseTime && (now - machine.lastDispenseTime < VENDING_CONFIG.cooldownMs)) {
+      return {
+        error: 'Vending machine is dispensing, please wait...',
+        room,
+        player,
+        machineId,
+        remainingStock: machine.stock,
+        maxStock: machine.maxStock
+      };
+    }
+
+    // 3. Proximity check (with network latency tolerance)
     let pPos = player.position || player.spawn;
     if (clientPosition && isValidNumber(clientPosition.x) && isValidNumber(clientPosition.z)) {
       const sDx = clientPosition.x - pPos.x;
@@ -446,11 +498,20 @@ export class RoomManager {
     const eyeDy = ((pPos.y || 0) + 1.62) - mPos[1];
     const dist = Math.min(Math.hypot(dx, dy, dz), Math.hypot(dx, eyeDy, dz));
 
-    if (dist > 2.8) {
-      return { error: `Player too far from vending machine (${dist.toFixed(2)}m > 2.1m limit)`, room, player };
+    if (dist > VENDING_CONFIG.maxInteractionDistance) {
+      return {
+        error: `Player too far from vending machine (${dist.toFixed(2)}m > 2.1m limit)`,
+        room,
+        player,
+        machineId,
+        remainingStock: machine.stock,
+        maxStock: machine.maxStock
+      };
     }
 
+    // All validations passed! Authorize dispense and consume exactly ONE use
     machine.lastDispenseTime = now;
+    machine.stock = Math.max(0, machine.stock - 1);
 
     // Calculate dispense position: in front of machine
     // Machine is facing southward in Level 0 (Z decreasing towards -186)
@@ -484,7 +545,9 @@ export class RoomManager {
       room,
       player,
       machineId,
-      dispensedItem: worldItem
+      dispensedItem: worldItem,
+      remainingStock: machine.stock,
+      maxStock: machine.maxStock
     };
   }
 

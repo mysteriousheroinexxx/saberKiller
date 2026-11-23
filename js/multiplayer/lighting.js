@@ -126,9 +126,17 @@ export function initMultiplayerLighting(scene, renderer, playerLight = null) {
   scene.add(ambientLight);
 
   // 4. Gather existing PointLights from scene (added by level0_env.js)
+  // Strictly filter to scene-rooted environment lights; exclude camera/player/weapon lights
   const existingLights = [];
   scene.traverse(o => {
-    if (o.isPointLight && o.name !== 'PlayerLight' && o.name !== 'MP_LocalPlayerLight') {
+    if (
+      o.isPointLight &&
+      o.parent === scene &&
+      o.name !== 'PlayerLight' &&
+      o.name !== 'MP_LocalPlayerLight' &&
+      !o.name.includes('Player') &&
+      !o.name.includes('Muzzle')
+    ) {
       existingLights.push(o);
     }
   });
@@ -140,6 +148,7 @@ export function initMultiplayerLighting(scene, renderer, playerLight = null) {
   // Configure existing lights
   for (let i = 0; i < dynamicPointLights.length; i++) {
     const pl = dynamicPointLights[i];
+    pl.name = pl.name || `MP_DynamicRoomLight_${i}`;
     pl.color.copy(lightColorObj);
     pl.intensity = currentConfig.pointIntensity;
     pl.distance = LIGHT_DISTANCE;
@@ -159,6 +168,7 @@ export function initMultiplayerLighting(scene, renderer, playerLight = null) {
   // 5. Add extra fill lights to reach TOTAL_LIGHTS (38)
   while (dynamicPointLights.length < TOTAL_LIGHTS) {
     const pl = new THREE.PointLight(lightColorObj, currentConfig.pointIntensity, LIGHT_DISTANCE, LIGHT_DECAY);
+    pl.name = `MP_DynamicRoomLight_${dynamicPointLights.length}`;
     pl.castShadow = false;
     scene.add(pl);
     dynamicPointLights.push(pl);

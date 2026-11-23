@@ -327,14 +327,15 @@ export class InteractionManager {
    */
   handleVendingDispenseResponse(payload) {
     if (!payload) return;
-    const { requestId, success, machineId, reason } = payload;
-    console.log(`[InteractionManager] Vending dispense response: reqId=${requestId}, success=${success}, machine=${machineId}`);
+    const { requestId, success, machineId, reason, remainingStock } = payload;
+    console.log(`[InteractionManager] Vending dispense response: reqId=${requestId}, success=${success}, machine=${machineId}, remainingStock=${remainingStock}`);
 
     if (this.pendingRequestId && (this.pendingRequestId === requestId || this.pendingTargetId === machineId)) {
       this._finishPickupRequest(requestId);
       const timeStr = new Date().toLocaleTimeString();
       if (success) {
-        this.diagnostics.serverResult = `ACCEPTED — Dispensed from ${machineId} at ${timeStr}`;
+        const stockStr = (typeof remainingStock === 'number') ? ` (${remainingStock} left)` : '';
+        this.diagnostics.serverResult = `ACCEPTED — Dispensed from ${machineId}${stockStr} at ${timeStr}`;
         this.diagnostics.lastRejection = 'NONE';
       } else {
         this.diagnostics.serverResult = `REJECTED — ${reason || 'Dispense failed'} at ${timeStr}`;

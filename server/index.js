@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { MSG_TYPES, MAX_PAYLOAD_SIZE, validatePlayerUpdate } from './protocol.js';
-import { RoomManager } from './room_manager.js';
+import { RoomManager, VENDING_CONFIG, configureVendingMachine } from './room_manager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +22,22 @@ const HOST = process.env.HOST || '::';
 const DEV_RENDERING = process.argv.includes('--dev-rendering');
 if (DEV_RENDERING) {
   console.log('[SERVER CONFIG] Developer rendering tools enabled (--dev-rendering)');
+}
+
+// Configurable vending machine maximum dispense count
+const stockArg = process.argv.find(a => a.startsWith('--vending-stock='));
+if (stockArg) {
+  const stockVal = parseInt(stockArg.split('=')[1], 10);
+  if (!isNaN(stockVal)) {
+    configureVendingMachine({ defaultMaxStock: stockVal });
+    console.log(`[SERVER CONFIG] Vending machine max stock set to: ${stockVal} (--vending-stock)`);
+  }
+} else if (process.env.VENDING_MAX_STOCK) {
+  const stockVal = parseInt(process.env.VENDING_MAX_STOCK, 10);
+  if (!isNaN(stockVal)) {
+    configureVendingMachine({ defaultMaxStock: stockVal });
+    console.log(`[SERVER CONFIG] Vending machine max stock set to: ${stockVal} (VENDING_MAX_STOCK)`);
+  }
 }
 
 const MIME_TYPES = {
@@ -901,41 +917,47 @@ wss.on('connection', (ws, req) => {
         console.log(`[VENDING ${requestId}] Dispense requested: player=${playerId}, room=${roomCode}, machine=${machineId}`);
         const res = roomManager.handleVendingDispense(ws, machineId, clientPos);
         if (res.error) {
-          console.log(`[VENDING ${requestId}] Rejected: ${res.error}`);
+          console.log(`[VENDING ${requestId}] Rejected: ${res.error} (remainingStock=${res.remainingStock !== undefined ? res.remainingStock : 'n/a'})`);
           const rejectPayload = {
             requestId,
             success: false,
             machineId,
-            reason: res.error
+            reason: res.error,
+            remainingStock: res.remainingStock !== undefined ? res.remainingStock : undefined
           };
           send(ws, MSG_TYPES.VENDING_DISPENSE_RESPONSE, rejectPayload);
           send(ws, MSG_TYPES.ITEM_PICKUP_RESPONSE, {
             requestId,
             success: false,
             itemId: machineId,
-            reason: res.error
+            reason: res.error,
+            remainingStock: res.remainingStock !== undefined ? res.remainingStock : undefined
           });
         } else {
-          console.log(`[VENDING ${requestId}] Accepted: spawned ${res.dispensedItem.id} at [${res.dispensedItem.position.join(', ')}]`);
+          console.log(`[VENDING ${requestId}] Accepted: spawned ${res.dispensedItem.id} at [${res.dispensedItem.position.join(', ')}] (remainingStock=${res.remainingStock})`);
           const acceptPayload = {
             requestId,
             success: true,
             machineId: res.machineId,
-            dispensedItem: res.dispensedItem
+            dispensedItem: res.dispensedItem,
+            remainingStock: res.remainingStock,
+            maxStock: res.maxStock
           };
           send(ws, MSG_TYPES.VENDING_DISPENSE_RESPONSE, acceptPayload);
           send(ws, MSG_TYPES.ITEM_PICKUP_RESPONSE, {
             requestId,
             success: true,
             itemId: res.machineId,
-            dispensedItem: res.dispensedItem
+            dispensedItem: res.dispensedItem,
+            remainingStock: res.remainingStock
           });
 
-          // Broadcast newly spawned world item to all players in the room
+          // Broadcast newly spawned world item and updated machine stock to all players in the room
           for (const [_, p] of res.room.players) {
             send(p.ws, MSG_TYPES.ITEM_SPAWNED, {
               item: res.dispensedItem,
-              dispensedFrom: res.machineId
+              dispensedFrom: res.machineId,
+              remainingStock: res.remainingStock
             });
           }
         }
