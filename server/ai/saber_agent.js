@@ -794,30 +794,39 @@ export class SaberAgent extends YUKA.Vehicle {
   }
 
   /**
-   * Receives a high-level sector guidance hint from the Encounter Director.
-   * Macro hints only influence macro pathing when in ambient states (PATROL, SEARCH).
-   * Director hints NEVER override active visual contact, melee combat, or gunshot responses.
-   * @param {YUKA.Vector3} sectorTarget - Broad gateway or sector center
-   * @param {string} sectorName - Human-readable sector identifier
+   * Receives an independent approximate intuition hint from the Encounter Director.
+   * Macro hints only influence ambient states (PATROL, SEARCH).
+   * Intuition hints NEVER override active visual contact, melee combat, or gunshot responses.
+   * @param {YUKA.Vector3} hintTarget - Approximate location with randomized 5-10m offset
+   * @param {number} [offsetDistance=7.5] - Positional offset radius
    */
-  onReceiveDirectorHint(sectorTarget, sectorName) {
+  onReceiveIntuitionHint(hintTarget, offsetDistance = 7.5) {
     const curr = this.stateMachine.currentState;
     if (curr === this.states.PATROL) {
-      this.directorHintTarget.copy(sectorTarget);
-      this.directorHintSectorName = sectorName;
+      this.directorHintTarget.copy(hintTarget);
+      this.directorHintDistance = offsetDistance;
       this.hasDirectorHint = true;
       this.followPathBehavior.active = false;
       this.seekBehavior.active = true;
-      this.seekBehavior.target.copy(sectorTarget);
-      this.logState('Encounter Director nudged patrol route toward ' + sectorName);
+      this.seekBehavior.target.copy(hintTarget);
+      this.navigateTo(hintTarget, this.delta);
+      this.logState(`Received Encounter Director intuition hint (approximate offset ${offsetDistance.toFixed(1)}m)`);
     } else if (curr === this.states.SEARCH) {
-      this.directorHintTarget.copy(sectorTarget);
-      this.directorHintSectorName = sectorName;
+      this.directorHintTarget.copy(hintTarget);
+      this.directorHintDistance = offsetDistance;
       this.hasDirectorHint = true;
-      this.searchCenter.copy(sectorTarget);
-      this.generateSearchSubPoints(sectorTarget);
-      this.logState('Encounter Director redirected search area toward ' + sectorName);
+      this.searchCenter.copy(hintTarget);
+      this.generateSearchSubPoints(hintTarget);
+      this.logState(`Redirected search from Encounter Director intuition hint (approximate offset ${offsetDistance.toFixed(1)}m)`);
     }
+  }
+
+  /**
+   * Backwards-compatible sector guidance hint wrapper.
+   */
+  onReceiveDirectorHint(sectorTarget, sectorName = 'Sector') {
+    this.directorHintSectorName = sectorName;
+    return this.onReceiveIntuitionHint(sectorTarget, 7.5);
   }
 
   takeDamage(amount) {

@@ -210,8 +210,11 @@ export class RoomSimulation {
 
   /**
    * Handles player attack / hitscan against a Saber.
+   * Weapon balance:
+   * - Beretta Px4 pistol: 50 damage (2 shots to stagger 100 HP)
+   * - Stagecoach Coach Gun: 100 damage (1 shot to stagger 100 HP)
    */
-  handleAttackMonster(playerId, targetSaberId = 'saber_alpha', damage = 25) {
+  handleAttackMonster(playerId, targetSaberId = 'saber_alpha', damage = 50, weaponType = 'PISTOL') {
     const target = (targetSaberId === 'saber_beta' || targetSaberId === 'Saber Beta')
       ? this.sim.saberBeta
       : this.sim.saberAlpha;
@@ -219,19 +222,24 @@ export class RoomSimulation {
     const entity = this.playerEntities.get(playerId);
     if (entity) {
       const dist = entity.position.distanceTo(target.position);
-      // Validate weapon distance (up to 25m)
-      if (dist > 30.0) {
+      // Validate weapon distance (up to 45m for pistol, 30m for shotgun)
+      const maxRange = (weaponType === 'SHOTGUN' || damage >= 100) ? 30.0 : 45.0;
+      if (dist > maxRange) {
         return { success: false, reason: 'Out of weapon range' };
       }
     }
 
-    const res = target.takeDamage(damage);
+    // Authoritative damage resolution based on weapon balance
+    const effectiveDamage = (weaponType === 'SHOTGUN' || damage >= 100) ? 100 : 50;
+
+    const res = target.takeDamage(effectiveDamage);
     return {
       success: true,
       monsterId: targetSaberId,
       damageDealt: res.damageDealt,
       staggered: res.staggered,
       health: target.health,
+      shotsToStagger: Math.ceil(target.health / 50),
       state: target.getCurrentStateName()
     };
   }
@@ -371,6 +379,7 @@ export class RoomSimulation {
         name: alpha.name,
         state: alpha.getCurrentStateName(),
         health: alpha.health,
+        shotsToStagger: Math.ceil(alpha.health / 50),
         speed: alpha.getSpeed(),
         position: { x: alpha.position.x, y: alpha.position.y, z: alpha.position.z },
         rotation: { x: alpha.rotation.x, y: alpha.rotation.y, z: alpha.rotation.z, w: alpha.rotation.w },
@@ -382,6 +391,9 @@ export class RoomSimulation {
         targetName: alpha.targetEntity ? (alpha.targetEntity.name || alpha.targetEntity.id) : 'None',
         targetDistance: alpha.targetDistance,
         hasDirectorHint: alpha.hasDirectorHint,
+        intuitionTarget: alpha.hasDirectorHint ? { x: +alpha.directorHintTarget.x.toFixed(2), z: +alpha.directorHintTarget.z.toFixed(2) } : null,
+        intuitionOffset: alpha.directorHintDistance || 0,
+        currentNavPath: (alpha.currentNavPath && alpha.currentNavPath.length > 0) ? alpha.currentNavPath.map(p => ({ x: +p.x.toFixed(2), z: +p.z.toFixed(2) })) : [],
         visionCheck: alpha.lastVisionCheck || null,
         lastLog: alpha.logHistory[0]?.entry || ''
       },
@@ -390,6 +402,7 @@ export class RoomSimulation {
         name: beta.name,
         state: beta.getCurrentStateName(),
         health: beta.health,
+        shotsToStagger: Math.ceil(beta.health / 50),
         speed: beta.getSpeed(),
         position: { x: beta.position.x, y: beta.position.y, z: beta.position.z },
         rotation: { x: beta.rotation.x, y: beta.rotation.y, z: beta.rotation.z, w: beta.rotation.w },
@@ -401,6 +414,9 @@ export class RoomSimulation {
         targetName: beta.targetEntity ? (beta.targetEntity.name || beta.targetEntity.id) : 'None',
         targetDistance: beta.targetDistance,
         hasDirectorHint: beta.hasDirectorHint,
+        intuitionTarget: beta.hasDirectorHint ? { x: +beta.directorHintTarget.x.toFixed(2), z: +beta.directorHintTarget.z.toFixed(2) } : null,
+        intuitionOffset: beta.directorHintDistance || 0,
+        currentNavPath: (beta.currentNavPath && beta.currentNavPath.length > 0) ? beta.currentNavPath.map(p => ({ x: +p.x.toFixed(2), z: +p.z.toFixed(2) })) : [],
         visionCheck: beta.lastVisionCheck || null,
         lastLog: beta.logHistory[0]?.entry || ''
       },

@@ -398,3 +398,78 @@ test('15. Authoritative wall collision sliding with radius 0.32m prevents geomet
 
   roomSim.destroy();
 });
+
+test('16. Combat balance: 2 pistol shots and 1 shotgun blast cause Saber stagger', () => {
+  const roomSim = new RoomSimulation({ code: 'COMBAT_ROOM', players: new Map() }, { autoStart: false, usePrototypeMap: true });
+  roomSim.addPlayer({ id: 'shooter', position: { x: -16, y: 0, z: -16 } });
+
+  const alpha = roomSim.sim.saberAlpha;
+  const beta = roomSim.sim.saberBeta;
+  alpha.position.set(-16, 0, -18);
+  beta.position.set(16, 0, -18);
+
+  // 1. Pistol attack against Saber Alpha: 50 damage per shot
+  assert.equal(alpha.health, 100);
+  const shot1 = roomSim.handleAttackMonster('shooter', 'saber_alpha', 50, 'PISTOL');
+  assert.equal(shot1.success, true);
+  assert.equal(shot1.damageDealt, 50);
+  assert.equal(shot1.health, 50);
+  assert.equal(shot1.staggered, false, 'First pistol shot does not stagger');
+  assert.equal(shot1.shotsToStagger, 1, '1 shot remaining to stagger');
+
+  // Second pistol shot: drops to 0 HP and triggers STAGGERED
+  const shot2 = roomSim.handleAttackMonster('shooter', 'saber_alpha', 50, 'PISTOL');
+  assert.equal(shot2.success, true);
+  assert.equal(shot2.damageDealt, 50);
+  assert.equal(shot2.health, 0);
+  assert.equal(shot2.staggered, true, 'Second pistol shot triggers STAGGERED');
+  assert.equal(alpha.getCurrentStateName(), 'STAGGERED');
+
+  // 2. Shotgun attack against Saber Beta: 100 damage per blast (single successful shot)
+  assert.equal(beta.health, 100);
+  roomSim.playerEntities.get('shooter').position.set(16, 0, -16);
+  const blast1 = roomSim.handleAttackMonster('shooter', 'saber_beta', 100, 'SHOTGUN');
+  assert.equal(blast1.success, true);
+  assert.equal(blast1.damageDealt, 100);
+  assert.equal(blast1.health, 0);
+  assert.equal(blast1.staggered, true, 'One shotgun blast immediately triggers STAGGERED');
+  assert.equal(beta.getCurrentStateName(), 'STAGGERED');
+
+  roomSim.destroy();
+});
+
+test('17. Independent approximate player intuition: 5-10m randomized offset per Saber without exact leaks', () => {
+  const roomSim = new RoomSimulation({ code: 'INTUITION_ROOM', players: new Map() }, { autoStart: false, usePrototypeMap: true });
+  roomSim.addPlayer({ id: 'p1', position: { x: 50, y: 0, z: 50 } });
+  roomSim.addPlayer({ id: 'p2', position: { x: -20, y: 0, z: -10 } });
+
+  const alpha = roomSim.sim.saberAlpha;
+  const beta = roomSim.sim.saberBeta;
+  alpha.position.set(-22, 0, -10); // close to p2
+  beta.position.set(45, 0, 50);     // close to p1
+
+  const dir = roomSim.sim.director;
+  dir.lastHintTime = -999;
+  dir.considerMacroHint(roomSim.sim);
+
+  // Both Sabers received intuition hints independently
+  assert.equal(alpha.hasDirectorHint, true, 'Alpha received intuition hint');
+  assert.equal(beta.hasDirectorHint, true, 'Beta received intuition hint');
+
+  // Verify Alpha's hint targets closest player p2 (-20, 0, -10) with 5-10m offset
+  const distAlphaHintToP2 = Math.hypot(alpha.directorHintTarget.x - (-20), alpha.directorHintTarget.z - (-10));
+  assert.ok(distAlphaHintToP2 >= 4.9 && distAlphaHintToP2 <= 10.1, `Alpha offset is 5-10m (got ${distAlphaHintToP2.toFixed(2)}m)`);
+  assert.notEqual(alpha.directorHintTarget.x, -20, 'Exact player X coordinate is not leaked');
+
+  // Verify Beta's hint targets closest player p1 (50, 0, 50) with 5-10m offset
+  const distBetaHintToP1 = Math.hypot(beta.directorHintTarget.x - 50, beta.directorHintTarget.z - 50);
+  assert.ok(distBetaHintToP1 >= 4.9 && distBetaHintToP1 <= 10.1, `Beta offset is 5-10m (got ${distBetaHintToP1.toFixed(2)}m)`);
+  assert.notEqual(beta.directorHintTarget.x, 50, 'Exact player X coordinate is not leaked');
+
+  // Telemetry contains approximate intuition coordinates without leaking exact player position
+  const telem = roomSim.buildDevTelemetry();
+  assert.ok(telem.saberAlpha.intuitionTarget);
+  assert.ok(telem.saberAlpha.intuitionOffset >= 5.0 && telem.saberAlpha.intuitionOffset <= 10.0);
+
+  roomSim.destroy();
+});

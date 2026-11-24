@@ -181,8 +181,9 @@ export class LocalPlayerController {
       const hit = intersects[0];
       const targetMonsterId = hit.object.userData?.monsterId;
       if (targetMonsterId) {
-        const dmg = (weaponType === 'SHOTGUN') ? 35 : 25;
-        this.networkClient.attackMonster(targetMonsterId, dmg);
+        // Combat balance: Beretta Px4 pistol = 50 damage (2 shots to stagger), Coach Gun = 100 damage (1 blast to stagger)
+        const dmg = (weaponType === 'SHOTGUN') ? 100 : 50;
+        this.networkClient.attackMonster(targetMonsterId, dmg, weaponType);
         if (typeof this.saberManager.triggerHitEffect === 'function') {
           this.saberManager.triggerHitEffect(targetMonsterId, hit.point);
         }

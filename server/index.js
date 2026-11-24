@@ -858,8 +858,9 @@ wss.on('connection', (ws, req) => {
 
       case MSG_TYPES.ATTACK_MONSTER: {
         const targetSaberId = payload?.monsterId || payload?.targetSaberId || payload?.targetSaberName || 'saber_alpha';
-        const damage = (typeof payload?.damage === 'number') ? payload.damage : 25;
-        const res = roomManager.handleAttackMonster(ws, targetSaberId, damage);
+        const weaponType = payload?.weaponType || (payload?.damage >= 100 ? 'SHOTGUN' : 'PISTOL');
+        const damage = (typeof payload?.damage === 'number') ? payload.damage : (weaponType === 'SHOTGUN' ? 100 : 50);
+        const res = roomManager.handleAttackMonster(ws, targetSaberId, damage, weaponType);
         if (res && res.error) {
           send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error });
         }

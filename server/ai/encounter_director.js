@@ -257,30 +257,66 @@ export class EncounterDirector {
   }
 
   /**
-   * Assigns macro sector hints to the designated Menace Saber.
-   * Never transmits exact player coordinates — only broad sector gateways/centers.
+   * Generates independent approximate intuition hints for each Saber.
+   * For each Saber:
+   * 1. Identify closest eligible player.
+   * 2. Generate randomized 5-10m positional offset.
+   * 3. Provide approximate location as an investigative hint.
+   * Never transmits exact player coordinates to agents or client telemetry.
    */
   considerMacroHint(sim) {
+    if (!sim) return;
     if ((sim.elapsedTime - this.lastHintTime) < this.hintInterval) {
       return;
     }
-
-    // Select the closer or idle Saber as the active menace
-    const distAlpha = sim.saberAlpha.position.distanceTo(sim.player.position);
-    const distBeta = sim.saberBeta.position.distanceTo(sim.player.position);
-    this.activeMenace = distAlpha <= distBeta ? sim.saberAlpha : sim.saberBeta;
-
-    this.hintTargetSector = this.currentSector;
     this.lastHintTime = sim.elapsedTime;
 
-    // Dispatch broad sector hint to the agent
-    if (this.activeMenace && typeof this.activeMenace.onReceiveDirectorHint === 'function') {
-      const hintCoord = this.hintTargetSector.gateway.clone();
-      this.activeMenace.onReceiveDirectorHint(hintCoord, this.hintTargetSector.name);
-      this.logDecision(
-        `MACRO_HINT -> ${this.activeMenace.name}`,
-        `Nudged toward gateway of ${this.hintTargetSector.name} (Broad sector guidance, no exact coords)`
+    const sabers = [sim.saberAlpha, sim.saberBeta].filter(Boolean);
+    const activeSurvivors = (sim.players || [sim.player]).filter(p => p && !p.isDead);
+    if (activeSurvivors.length === 0) return;
+
+    for (const saber of sabers) {
+      // 1. Identify closest eligible player for this specific Saber
+      let closestPlayer = null;
+      let minDistance = Infinity;
+      for (const player of activeSurvivors) {
+        const dist = saber.position.distanceTo(player.position);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestPlayer = player;
+        }
+      }
+
+      if (!closestPlayer) continue;
+
+      // 2. Generate randomized 5-10m positional offset
+      const offsetRadius = 5.0 + Math.random() * 5.0; // 5.0 to 10.0m
+      const offsetAngle = Math.random() * Math.PI * 2;
+      const offsetX = Math.cos(offsetAngle) * offsetRadius;
+      const offsetZ = Math.sin(offsetAngle) * offsetRadius;
+
+      // 3. Approximate location
+      const approximatePos = new YUKA.Vector3(
+        closestPlayer.position.x + offsetX,
+        0,
+        closestPlayer.position.z + offsetZ
       );
+
+      // 4. Dispatch approximate intuition hint to Saber
+      if (typeof saber.onReceiveIntuitionHint === 'function') {
+        saber.onReceiveIntuitionHint(approximatePos, offsetRadius);
+      } else if (typeof saber.onReceiveDirectorHint === 'function') {
+        saber.onReceiveDirectorHint(approximatePos, `Intuition (${offsetRadius.toFixed(1)}m offset)`);
+      }
+
+      this.logDecision(
+        `INTUITION_HINT -> ${saber.name}`,
+        `Provided approximate player location with ${offsetRadius.toFixed(1)}m offset (no exact coords)`
+      );
+    }
+
+    if (sabers.length > 0) {
+      this.activeMenace = sabers[0];
     }
   }
 

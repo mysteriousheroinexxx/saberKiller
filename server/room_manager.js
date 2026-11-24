@@ -1955,11 +1955,11 @@ export class RoomManager {
   /**
    * Handles player weapon hit against Saber
    */
-  handleAttackMonster(ws, monsterId = 'saber_alpha', damage = 25) {
+  handleAttackMonster(ws, monsterId = 'saber_alpha', damage = 50, weaponType = 'PISTOL') {
     const session = this.getPlayer(ws);
     if (!session) return { error: 'Client not associated with any active room session' };
     const { room, player } = session;
     if (!room.simulation) return { error: 'Room simulation not active' };
-    return room.simulation.handleAttackMonster(player.id, monsterId, damage);
+    return room.simulation.handleAttackMonster(player.id, monsterId, damage, weaponType);
   }
 }

@@ -499,8 +499,8 @@ export class NetworkClient {
     return this.send(MSG_TYPES.FIRE_WEAPON, { weaponType, origin, direction });
   }
 
-  attackMonster(monsterId = 'saber_alpha', damage = 25) {
-    return this.send(MSG_TYPES.ATTACK_MONSTER, { monsterId, damage });
+  attackMonster(monsterId = 'saber_alpha', damage = 50, weaponType = 'PISTOL') {
+    return this.send(MSG_TYPES.ATTACK_MONSTER, { monsterId, damage, weaponType });
   }
 
   disconnect() {
