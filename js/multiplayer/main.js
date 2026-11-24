@@ -139,6 +139,10 @@ function initPostProcessing(w, h) {
 }
 
 async function checkDevToolsConfig() {
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('dev') === '1' || urlParams.get('devtools') === '1' || urlParams.get('dev-rendering') === '1') {
+    return true;
+  }
   try {
     const res = await fetch('/__config', { cache: 'no-store' });
     if (res.ok) {
@@ -235,6 +239,7 @@ async function init() {
     document.getElementById('world-editor-overlay')?.remove();
     document.getElementById('dev-pickup-hud-diag')?.remove();
     document.getElementById('dev-weapon-hud-diag')?.remove();
+    document.getElementById('dev-coord-hud-diag')?.remove();
   }
 
   mpManager = new MPManager(scene, camera, {
@@ -690,10 +695,14 @@ async function init() {
     window.worldEditor = worldEditor;
     initDevComparisonUI();
 
-    // Developer weapon firing diagnostic HUD element
+    // Developer weapon firing and coordinates diagnostic HUD elements
     const devWeaponHud = document.getElementById('dev-weapon-hud-diag');
     if (devWeaponHud) {
       devWeaponHud.style.display = 'block';
+    }
+    const devCoordHud = document.getElementById('dev-coord-hud-diag');
+    if (devCoordHud) {
+      devCoordHud.style.display = 'block';
     }
   } else {
     // If not enabled by server flag, completely remove dev panel elements and do not bind dev keys
@@ -703,6 +712,7 @@ async function init() {
     document.getElementById('world-editor-overlay')?.remove();
     document.getElementById('dev-pickup-hud-diag')?.remove();
     document.getElementById('dev-weapon-hud-diag')?.remove();
+    document.getElementById('dev-coord-hud-diag')?.remove();
   }
 
   // Check URL query parameters for verification suite
@@ -714,6 +724,8 @@ async function init() {
   // Expose additional multiplayer state to window
   window.mpManager = mpManager;
   window.localPlayer = mpManager.localPlayer;
+  window.teleportLocalPlayer = (x, y, z, yaw, pitch) => mpManager?.localPlayer?.teleport(x, y, z, yaw, pitch);
+  Object.defineProperty(window, 'isGameActive', { get: () => isGameActive });
   window.multiplayerLighting = {
     setExposure,
     setAmbientIntensity,
@@ -1161,6 +1173,93 @@ function initDevComparisonUI() {
       }
     });
   }
+
+  // Map Coordinates & Teleportation Developer Controls
+  const teleXInput = document.getElementById('dev-tele-x');
+  const teleYInput = document.getElementById('dev-tele-y');
+  const teleZInput = document.getElementById('dev-tele-z');
+  const btnJump = document.getElementById('dev-btn-jump');
+  const btnUseCurr = document.getElementById('dev-btn-use-curr');
+  const teleFeedback = document.getElementById('dev-tele-feedback');
+
+  function showTeleFeedback(msg, isError = false) {
+    if (!teleFeedback) return;
+    teleFeedback.textContent = msg;
+    teleFeedback.style.color = isError ? '#ff6666' : '#00ff88';
+    setTimeout(() => {
+      if (teleFeedback.textContent === msg) {
+        teleFeedback.textContent = '';
+      }
+    }, 4000);
+  }
+
+  function executeJump(x, y, z, label = null) {
+    if (!mpManager || !mpManager.localPlayer) {
+      showTeleFeedback('Player not active', true);
+      return false;
+    }
+    if (isNaN(x) || isNaN(z)) {
+      showTeleFeedback('Invalid X or Z coordinate', true);
+      return false;
+    }
+    const finalY = !isNaN(y) ? y : 0.0;
+    mpManager.localPlayer.teleport(x, finalY, z);
+    if (teleXInput) teleXInput.value = x.toFixed(2);
+    if (teleYInput) teleYInput.value = finalY.toFixed(2);
+    if (teleZInput) teleZInput.value = z.toFixed(2);
+    showTeleFeedback(`Jumped to ${label ? label + ' ' : ''}[${x.toFixed(2)}, ${finalY.toFixed(2)}, ${z.toFixed(2)}]`);
+    return true;
+  }
+
+  if (btnJump) {
+    btnJump.addEventListener('click', () => {
+      const x = parseFloat(teleXInput?.value);
+      const y = parseFloat(teleYInput?.value);
+      const z = parseFloat(teleZInput?.value);
+      executeJump(x, y, z);
+    });
+  }
+
+  // Allow pressing Enter in coordinate inputs to jump
+  [teleXInput, teleYInput, teleZInput].forEach(input => {
+    if (input) {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          btnJump?.click();
+        }
+      });
+    }
+  });
+
+  if (btnUseCurr) {
+    btnUseCurr.addEventListener('click', () => {
+      if (mpManager?.localPlayer?.pos) {
+        if (teleXInput) teleXInput.value = mpManager.localPlayer.pos.x.toFixed(2);
+        if (teleYInput) teleYInput.value = mpManager.localPlayer.pos.y.toFixed(2);
+        if (teleZInput) teleZInput.value = mpManager.localPlayer.pos.z.toFixed(2);
+        showTeleFeedback('Filled inputs from current position');
+      }
+    });
+  }
+
+  // Quick Preset Teleport Buttons
+  const presets = {
+    'dev-preset-spawn': { x: 48.69, y: 0.0, z: -187.65, label: 'Spawn' },
+    'dev-preset-key': { x: 44.50, y: 0.0, z: -188.70, label: 'Key Shelf' },
+    'dev-preset-exit': { x: 79.55, y: 0.0, z: 205.20, label: 'Exit Door' },
+    'dev-preset-pistol': { x: 44.20, y: 0.0, z: -187.50, label: 'Pistol' },
+    'dev-preset-shotgun': { x: 40.50, y: 0.0, z: -179.80, label: 'Shotgun' }
+  };
+
+  Object.entries(presets).forEach(([btnId, target]) => {
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      btn.addEventListener('click', () => {
+        executeJump(target.x, target.y, target.z, target.label);
+      });
+    }
+  });
 
   // Sanity simulation test buttons
   document.getElementById('dev-sanity-100')?.addEventListener('click', () => sanityController?.setSanity(100));
@@ -2010,6 +2109,32 @@ function loop(timestamp) {
     if (elRej) {
       elRej.textContent = diag.lastRejectionReason;
       elRej.style.color = (diag.lastRejectionReason !== 'NONE') ? '#ff6666' : '#9c9a92';
+    }
+
+    // Live coordinates telemetry update
+    if (mpManager.localPlayer.pos) {
+      const lp = mpManager.localPlayer;
+      const xStr = lp.pos.x.toFixed(2);
+      const yStr = lp.pos.y.toFixed(2);
+      const zStr = lp.pos.z.toFixed(2);
+      const yawDeg = (((lp.yaw * 180 / Math.PI) % 360 + 360) % 360).toFixed(1);
+      const pitchDeg = ((lp.pitch * 180 / Math.PI)).toFixed(1);
+
+      const elCurX = document.getElementById('dev-cur-x');
+      if (elCurX) elCurX.textContent = xStr;
+      const elCurY = document.getElementById('dev-cur-y');
+      if (elCurY) elCurY.textContent = yStr;
+      const elCurZ = document.getElementById('dev-cur-z');
+      if (elCurZ) elCurZ.textContent = zStr;
+      const elCurYaw = document.getElementById('dev-cur-yaw');
+      if (elCurYaw) elCurYaw.textContent = `${yawDeg}°`;
+      const elCurRot = document.getElementById('dev-cur-rot');
+      if (elCurRot) elCurRot.textContent = `Yaw: ${yawDeg}° | Pitch: ${pitchDeg}°`;
+
+      const hudPos = document.getElementById('hud-diag-pos');
+      if (hudPos) hudPos.textContent = `X: ${xStr} | Y: ${yStr} | Z: ${zStr}`;
+      const hudRot = document.getElementById('hud-diag-rot');
+      if (hudRot) hudRot.textContent = `Yaw: ${yawDeg}° | Pitch: ${pitchDeg}°`;
     }
   }
 

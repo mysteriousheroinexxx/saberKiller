@@ -107,10 +107,44 @@ export class LocalPlayerController {
     this.pos.set(spawn.x, spawn.y || 0.0, spawn.z);
     this.yaw = spawn.yaw || 0.0;
     this.pitch = spawn.pitch || 0.0;
-    this.camera.position.set(this.pos.x, 1.62, this.pos.z);
+    this.currentCameraY = (spawn.y || 0.0) + 1.62;
+    this.camera.position.set(this.pos.x, this.currentCameraY, this.pos.z);
     this.camera.rotation.order = 'YXZ';
     this.camera.rotation.y = this.yaw;
     this.camera.rotation.x = this.pitch;
+  }
+
+  /**
+   * Authoritative player teleportation for developer debugging and map exploration.
+   * Immediately relocates player position, updates camera, and synchronizes authoritative
+   * position state to server and remote peers.
+   */
+  teleport(x, y, z, yaw = null, pitch = null) {
+    if (typeof x === 'number' && !isNaN(x)) this.pos.x = x;
+    if (typeof y === 'number' && !isNaN(y)) this.pos.y = y;
+    if (typeof z === 'number' && !isNaN(z)) this.pos.z = z;
+    if (typeof yaw === 'number' && !isNaN(yaw)) this.yaw = yaw;
+    if (typeof pitch === 'number' && !isNaN(pitch)) this.pitch = pitch;
+
+    this.bob = 0;
+    this.currentCameraY = (typeof y === 'number' && !isNaN(y)) ? y + 1.62 : ((this.pos.y || 0.0) + 1.62);
+    if (this.camera) {
+      this.camera.position.set(this.pos.x, this.currentCameraY, this.pos.z);
+      this.camera.rotation.order = 'YXZ';
+      this.camera.rotation.y = this.yaw;
+      this.camera.rotation.x = this.pitch;
+    }
+
+    if (this.networkClient && this.networkClient.isConnected) {
+      this.networkClient.sendUpdate(
+        +this.pos.x.toFixed(3),
+        +this.pos.y.toFixed(3),
+        +this.pos.z.toFixed(3),
+        +this.yaw.toFixed(4),
+        +this.pitch.toFixed(4),
+        this.weapon ?? 2
+      );
+    }
   }
 
   setEditorActive(active) {
@@ -1100,7 +1134,8 @@ export class LocalPlayerController {
     }
 
     // 2. Camera positioning & bobbing
-    this.currentCameraY += (1.62 - this.currentCameraY) * Math.min(1.0, dt * 6.0);
+    const targetEyeY = (this.pos.y || 0.0) + 1.62;
+    this.currentCameraY += (targetEyeY - this.currentCameraY) * Math.min(1.0, dt * 6.0);
     const bobY = len > 0 ? Math.sin(this.bob) * 0.04 : 0;
     this.camera.position.set(this.pos.x, this.currentCameraY + bobY, this.pos.z);
     this.camera.rotation.order = 'YXZ';
