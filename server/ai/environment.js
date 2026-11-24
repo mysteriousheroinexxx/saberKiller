@@ -72,6 +72,7 @@ export class Level0PrototypeMap {
     this.obstacles = [];
     this.buildMapGeometry();
     this.buildPatrolRoutes();
+    this.buildNavGraph();
   }
 
   buildMapGeometry() {
@@ -201,6 +202,71 @@ export class Level0PrototypeMap {
     }
     return true;
   }
+
+  circleHitsWall(px, pz, radius = 0.32) {
+    return !this.isWalkable(px, pz, radius);
+  }
+
+  buildNavGraph() {
+    this.navGraph = new YUKA.Graph();
+    this.navNodes = [];
+    let idx = 0;
+    const step = 2.0;
+
+    for (let x = this.bounds.minX + 1; x <= this.bounds.maxX - 1; x += step) {
+      for (let z = this.bounds.minZ + 1; z <= this.bounds.maxZ - 1; z += step) {
+        if (this.isWalkable(x, z, 0.35)) {
+          const v = new YUKA.Vector3(x, 0, z);
+          this.navGraph.addNode(new YUKA.NavNode(idx, v));
+          this.navNodes.push({ idx, v });
+          idx++;
+        }
+      }
+    }
+
+    for (let i = 0; i < this.navNodes.length; i++) {
+      for (let j = i + 1; j < this.navNodes.length; j++) {
+        const d = this.navNodes[i].v.distanceTo(this.navNodes[j].v);
+        if (d <= 2.9 && this.hasLineOfSight(this.navNodes[i].v, this.navNodes[j].v)) {
+          this.navGraph.addEdge(new YUKA.NavEdge(this.navNodes[i].idx, this.navNodes[j].idx, d));
+          this.navGraph.addEdge(new YUKA.NavEdge(this.navNodes[j].idx, this.navNodes[i].idx, d));
+        }
+      }
+    }
+  }
+
+  findPath(from, to) {
+    if (this.hasLineOfSight(from, to)) {
+      return [new YUKA.Vector3().copy(to)];
+    }
+    if (!this.navGraph || !this.navNodes || this.navNodes.length === 0) {
+      return [new YUKA.Vector3().copy(to)];
+    }
+
+    let startIdx = -1, minD1 = Infinity;
+    let targetIdx = -1, minD2 = Infinity;
+    for (const n of this.navNodes) {
+      const d1 = n.v.distanceTo(from);
+      if (d1 < minD1) { minD1 = d1; startIdx = n.idx; }
+      const d2 = n.v.distanceTo(to);
+      if (d2 < minD2) { minD2 = d2; targetIdx = n.idx; }
+    }
+
+    if (startIdx === -1 || targetIdx === -1 || startIdx === targetIdx) {
+      return [new YUKA.Vector3().copy(to)];
+    }
+
+    const dijkstra = new YUKA.Dijkstra(this.navGraph, startIdx, targetIdx);
+    dijkstra.search();
+    if (!dijkstra.found) {
+      return [new YUKA.Vector3().copy(to)];
+    }
+
+    const pathIndices = dijkstra.getPath();
+    const result = pathIndices.map(idx => this.navGraph.getNode(idx).position.clone());
+    result.push(new YUKA.Vector3().copy(to));
+    return result;
+  }
 }
 
 /**
@@ -216,7 +282,7 @@ export class GridObstacle extends YUKA.GameEntity {
 
   lineOfSightTest(ray, intersectionPoint) {
     if (!this.active || !this.env) return null;
-    return this.env.raycastGrid(ray, intersectionPoint);
+    return this.env.raycastGrid(ray, intersectionPoint, 500.0);
   }
 }
 
@@ -284,6 +350,7 @@ export class Level0Environment {
       this.obstacles = [this.gridObstacle];
 
       this.buildProductionPatrolRoutes();
+      this.buildNavGraph();
       this.isLoaded = true;
     } catch (err) {
       console.warn('[Level0Environment] Could not load level0_map.json, falling back to prototype geometry:', err.message);
@@ -292,6 +359,7 @@ export class Level0Environment {
       this.bounds = this.protoMap.bounds;
       this.saberAlphaWaypoints = this.protoMap.saberAlphaWaypoints;
       this.saberBetaWaypoints = this.protoMap.saberBetaWaypoints;
+      this.navGraph = this.protoMap.navGraph;
       this.isLoaded = true;
     }
   }
@@ -356,13 +424,118 @@ export class Level0Environment {
     return !this.circleHitsWall(x, z, radius);
   }
 
-  raycastGrid(ray, intersectionPoint) {
+  buildNavGraph() {
+    this.navGraph = new YUKA.Graph();
+    this.nodeMap = new Map();
+    this.navNodes = [];
+    let idx = 0;
+
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        if (!this.isWall(c, r)) {
+          const isGridSample = (c % 2 === 0 && r % 2 === 0);
+          const isDoorwayX = this.isWall(c - 1, r) && this.isWall(c + 1, r);
+          const isDoorwayZ = this.isWall(c, r - 1) && this.isWall(c, r + 1);
+          if (isGridSample || isDoorwayX || isDoorwayZ) {
+            const x = this.originX + (c + 0.5) * this.cellSize;
+            const z = this.originZ + (r + 0.5) * this.cellSize;
+            if (this.isWalkable(x, z, 0.32)) {
+              const v = new YUKA.Vector3(x, 0, z);
+              this.navGraph.addNode(new YUKA.NavNode(idx, v));
+              this.nodeMap.set(c + ',' + r, idx);
+              this.navNodes.push({ idx, c, r, v });
+              idx++;
+            }
+          }
+        }
+      }
+    }
+
+    // Connect adjacent nodes within distance <= 2.9m
+    for (const [key, i1] of this.nodeMap.entries()) {
+      const comma = key.indexOf(',');
+      const c = parseInt(key.substring(0, comma), 10);
+      const r = parseInt(key.substring(comma + 1), 10);
+      const n1 = this.navGraph.getNode(i1);
+
+      for (let dr = -2; dr <= 2; dr++) {
+        for (let dc = -2; dc <= 2; dc++) {
+          if (dc === 0 && dr === 0) continue;
+          const i2 = this.nodeMap.get((c + dc) + ',' + (r + dr));
+          if (i2 !== undefined && i2 > i1) {
+            const n2 = this.navGraph.getNode(i2);
+            const dist = n1.position.distanceTo(n2.position);
+            if (dist <= 2.9 && this.hasLineOfSight(n1.position, n2.position)) {
+              this.navGraph.addEdge(new YUKA.NavEdge(i1, i2, dist));
+              this.navGraph.addEdge(new YUKA.NavEdge(i2, i1, dist));
+            }
+          }
+        }
+      }
+    }
+  }
+
+  findNearestNavNode(pos, maxRadius = 30) {
+    if (!this.nodeMap) return -1;
+    const c0 = this.cellOfX(pos.x);
+    const r0 = this.cellOfZ(pos.z);
+    const directKey = c0 + ',' + r0;
+    if (this.nodeMap.has(directKey)) return this.nodeMap.get(directKey);
+
+    for (let rad = 1; rad <= maxRadius; rad++) {
+      for (let dc = -rad; dc <= rad; dc++) {
+        for (const dr of [-rad, rad]) {
+          const k = (c0 + dc) + ',' + (r0 + dr);
+          if (this.nodeMap.has(k)) return this.nodeMap.get(k);
+        }
+      }
+      for (let dr = -rad + 1; dr < rad; dr++) {
+        for (const dc of [-rad, rad]) {
+          const k = (c0 + dc) + ',' + (r0 + dr);
+          if (this.nodeMap.has(k)) return this.nodeMap.get(k);
+        }
+      }
+    }
+    return -1;
+  }
+
+  findPath(from, to) {
+    if (this.hasLineOfSight(from, to)) {
+      return [new YUKA.Vector3().copy(to)];
+    }
+    if (!this.navGraph) {
+      if (this.protoMap && typeof this.protoMap.findPath === 'function') {
+        return this.protoMap.findPath(from, to);
+      }
+      return [new YUKA.Vector3().copy(to)];
+    }
+
+    const startIdx = this.findNearestNavNode(from);
+    const targetIdx = this.findNearestNavNode(to);
+
+    if (startIdx === -1 || targetIdx === -1 || startIdx === targetIdx) {
+      return [new YUKA.Vector3().copy(to)];
+    }
+
+    const dijkstra = new YUKA.Dijkstra(this.navGraph, startIdx, targetIdx);
+    dijkstra.search();
+    if (!dijkstra.found) {
+      return [new YUKA.Vector3().copy(to)];
+    }
+
+    const pathIndices = dijkstra.getPath();
+    const result = pathIndices.map(idx => this.navGraph.getNode(idx).position.clone());
+    result.push(new YUKA.Vector3().copy(to));
+    return result;
+  }
+
+  raycastGrid(ray, intersectionPoint, customMaxDist = 500.0) {
     if (!this.cells) return null;
     const x0 = ray.origin.x;
     const z0 = ray.origin.z;
     const dx = ray.direction.x;
     const dz = ray.direction.z;
-    const maxDist = 30.0;
+    const maxDist = customMaxDist;
     const stepSize = 0.4;
     const steps = Math.floor(maxDist / stepSize);
 

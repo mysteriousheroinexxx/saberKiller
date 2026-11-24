@@ -21,8 +21,8 @@ export class SaberVision extends YUKA.Vision {
    */
   constructor(owner, options = {}) {
     super(owner);
-    this.fieldOfView = options.fieldOfView ?? (Math.PI * 0.61); // ~110 degrees
-    this.range = options.range ?? 22.0;
+    this.fieldOfView = options.fieldOfView ?? Math.PI; // ~180 degrees horizontal FOV
+    this.range = options.range ?? 500.0; // Unlimited range across Level 0, bounded only by walls
 
     // Realistic character heights (meters)
     this.eyeHeight = options.eyeHeight ?? 1.8;
@@ -243,11 +243,13 @@ export class PatrolState extends YUKA.State {
 // -----------------------------------------------------------------------------
 export class InvestigateSoundState extends YUKA.State {
   enter(saber) {
-    saber.maxSpeed = saber.stalkSpeed;
+    saber.maxSpeed = saber.investigateSpeed;
     saber.seekBehavior.active = true;
     saber.seekBehavior.target.copy(saber.soundTarget);
     saber.followPathBehavior.active = false;
     saber.separationBehavior.active = true;
+    saber.currentNavPath = [];
+    saber.navPathIndex = 0;
     saber.logState('Entered INVESTIGATE_SOUND at (' +
       saber.soundTarget.x.toFixed(1) + ', ' + saber.soundTarget.z.toFixed(1) + ')');
   }
@@ -264,11 +266,16 @@ export class InvestigateSoundState extends YUKA.State {
     if (saber.hasNewSoundAlert) {
       saber.hasNewSoundAlert = false;
       saber.seekBehavior.target.copy(saber.soundTarget);
+      saber.currentNavPath = [];
+      saber.navPathIndex = 0;
       saber.logState('Updated sound target to (' +
         saber.soundTarget.x.toFixed(1) + ', ' + saber.soundTarget.z.toFixed(1) + ')');
     }
 
-    // 3. Check arrival at sound coordinates
+    // 3. Navigate toward sound coordinates around walls
+    saber.navigateTo(saber.soundTarget, saber.delta);
+
+    // 4. Check arrival at sound coordinates
     const distToSound = saber.position.distanceTo(saber.soundTarget);
     if (distToSound <= 1.8) {
       // Reached sound origin without spotting player -> start area search
@@ -280,6 +287,7 @@ export class InvestigateSoundState extends YUKA.State {
 
   exit(saber) {
     saber.seekBehavior.active = false;
+    saber.currentNavPath = [];
   }
 }
 
@@ -350,6 +358,8 @@ export class StalkState extends YUKA.State {
     saber.seekBehavior.target.copy(saber.targetEntity.position);
     saber.separationBehavior.active = true;
     saber.stalkLostSightTimer = 0;
+    saber.currentNavPath = [];
+    saber.navPathIndex = 0;
     saber.logState('Entered STALK (approaching stealthily at ' + saber.stalkSpeed + ' m/s)');
   }
 
@@ -367,7 +377,7 @@ export class StalkState extends YUKA.State {
 
     if (saber.canSeeTarget) {
       saber.stalkLostSightTimer = 0;
-      saber.seekBehavior.target.copy(player.position);
+      saber.navigateTo(player.position, saber.delta);
       if (saber.targetDistance <= 10.0) {
         saber.stateMachine.changeTo(SABER_STATES.CHASE);
         return;
@@ -391,6 +401,7 @@ export class StalkState extends YUKA.State {
   exit(saber) {
     saber.seekBehavior.active = false;
     saber.stalkLostSightTimer = 0;
+    saber.currentNavPath = [];
   }
 }
 
@@ -407,6 +418,8 @@ export class ChaseState extends YUKA.State {
     saber.followPathBehavior.active = false;
     saber.separationBehavior.active = true;
     saber.lostSightTimer = 0;
+    saber.currentNavPath = [];
+    saber.navPathIndex = 0;
     saber.logState('Entered CHASE (RUNNING at ' + saber.chaseSpeed + ' m/s)');
   }
 
@@ -424,7 +437,7 @@ export class ChaseState extends YUKA.State {
 
     if (saber.canSeeTarget) {
       saber.lostSightTimer = 0;
-      saber.seekBehavior.target.copy(player.position);
+      saber.navigateTo(player.position, saber.delta);
 
       // Melee attack range
       if (saber.targetDistance <= saber.attackRange) {
@@ -437,13 +450,13 @@ export class ChaseState extends YUKA.State {
       const record = saber.memorySystem.getRecord(player);
 
       if (record && record.timeLastSensed > 0) {
-        saber.seekBehavior.target.copy(record.lastSensedPosition);
+        saber.navigateTo(record.lastSensedPosition, saber.delta);
         const distToLastSeen = saber.position.distanceTo(record.lastSensedPosition);
 
         // Require reaching last seen position AND spending a minimum lost-sight timer
         // before giving up chase. This prevents circling behind or doorway cuts from
         // causing instant drops to SEARCH.
-        if ((distToLastSeen <= 1.2 && saber.lostSightTimer >= 2.0) || saber.lostSightTimer >= 5.0) {
+        if ((distToLastSeen <= 1.2 && saber.lostSightTimer >= 2.0) || saber.lostSightTimer >= 6.0) {
           saber.searchCenter.copy(record.lastSensedPosition);
           saber.logState('Lost sight of player. Transitioning to SEARCH at last seen position.');
           saber.stateMachine.changeTo(SABER_STATES.SEARCH);
@@ -462,6 +475,7 @@ export class ChaseState extends YUKA.State {
   exit(saber) {
     saber.seekBehavior.active = false;
     saber.lostSightTimer = 0;
+    saber.currentNavPath = [];
   }
 }
 
@@ -610,15 +624,26 @@ export class SaberAgent extends YUKA.Vehicle {
     this.attackCooldown = options.attackCooldown ?? 2.0; // 2.0s attack cooldown + escape opportunity
     this.attackTimer = 0;
 
-    // Movement Speeds
-    this.patrolSpeed = options.patrolSpeed ?? 1.8;
-    this.searchSpeed = options.searchSpeed ?? 1.5;
-    this.stalkSpeed = options.stalkSpeed ?? 2.2;
-    this.chaseSpeed = options.chaseSpeed ?? 4.2; // RUNNING speed during pursuit
+    // Movement Speeds (Overhauled relative to player walk 5.2 and sprint 7.6)
+    this.patrolSpeed = options.patrolSpeed ?? 2.5;
+    this.searchSpeed = options.searchSpeed ?? 2.5;
+    this.investigateSpeed = options.investigateSpeed ?? 5.72; // ~1.1x player walk speed
+    this.stalkSpeed = options.stalkSpeed ?? 7.6; // Equal to player sprint speed
+    this.chaseSpeed = options.chaseSpeed ?? 9.5; // 1.25x player max sprint speed (7.6 * 1.25)
     this.maxSpeed = this.patrolSpeed;
     this.maxForce = options.maxForce ?? 150;
     this.mass = options.mass ?? 1.5;
     this.maxTurnRate = options.maxTurnRate ?? (Math.PI * 1.5); // Fast, responsive turning
+
+    // Collision & Environmental Navigation (0.32m radius matching player)
+    this.collisionRadius = options.collisionRadius ?? 0.32;
+    this.env = options.env || null;
+
+    // Dijkstra Navigation Path state
+    this.currentNavPath = [];
+    this.navPathIndex = 0;
+    this.navTargetPos = new YUKA.Vector3();
+    this.lastNavCalcTime = -999;
 
     // Timers & Windows
     this.staggerDuration = options.staggerDuration ?? 10.0;
@@ -638,8 +663,8 @@ export class SaberAgent extends YUKA.Vehicle {
 
     // Perception & Memory
     this.vision = new SaberVision(this, {
-      fieldOfView: options.visionFOV ?? (Math.PI * 0.61), // ~110 degrees
-      range: options.visionRange ?? 22.0,
+      fieldOfView: options.visionFOV ?? Math.PI, // 180 degrees horizontal FOV
+      range: options.visionRange ?? 500.0, // Unlimited range across Level 0, bounded only by walls
       eyeHeight: options.eyeHeight ?? 1.8,
       targetHeight: options.targetHeight ?? 1.4
     });
@@ -948,6 +973,63 @@ export class SaberAgent extends YUKA.Vehicle {
     }
   }
 
+  /**
+   * Intelligently steers toward targetPos, using direct line-of-sight when unobstructed,
+   * or Dijkstra pathfinding around walls/pillars when line of sight is broken.
+   */
+  navigateTo(targetPos, delta) {
+    if (!this.env) {
+      this.seekBehavior.active = true;
+      this.seekBehavior.target.copy(targetPos);
+      return;
+    }
+
+    // Direct line-of-sight optimization: skip Dijkstra (0ms overhead)
+    if (this.env.hasLineOfSight(this.position, targetPos)) {
+      this.seekBehavior.active = true;
+      this.seekBehavior.target.copy(targetPos);
+      this.currentNavPath = [];
+      this.navPathIndex = 0;
+      return;
+    }
+
+    // Line of sight obstructed: check if cached Dijkstra path is still valid
+    const targetMoved = this.navTargetPos.distanceTo(targetPos) > 3.0;
+    const timeToRecalc = (this.currentTime - this.lastNavCalcTime) > 0.5;
+    const needNewPath = !this.currentNavPath || this.currentNavPath.length === 0 || targetMoved || timeToRecalc;
+
+    if (needNewPath) {
+      if (typeof this.env.findPath === 'function') {
+        const path = this.env.findPath(this.position, targetPos);
+        if (path && path.length > 0) {
+          this.currentNavPath = path;
+          this.navPathIndex = 0;
+          this.navTargetPos.copy(targetPos);
+          this.lastNavCalcTime = this.currentTime;
+        }
+      }
+    }
+
+    if (this.currentNavPath && this.currentNavPath.length > 0) {
+      // Advance along waypoints
+      while (this.navPathIndex < this.currentNavPath.length - 1) {
+        const wp = this.currentNavPath[this.navPathIndex];
+        const distToWp = Math.hypot(this.position.x - wp.x, this.position.z - wp.z);
+        if (distToWp <= 1.2) {
+          this.navPathIndex++;
+        } else {
+          break;
+        }
+      }
+      const targetWp = this.currentNavPath[this.navPathIndex];
+      this.seekBehavior.active = true;
+      this.seekBehavior.target.copy(targetWp);
+    } else {
+      this.seekBehavior.active = true;
+      this.seekBehavior.target.copy(targetPos);
+    }
+  }
+
   update(delta) {
     this.delta = delta;
     this.currentTime += delta;
@@ -965,11 +1047,38 @@ export class SaberAgent extends YUKA.Vehicle {
       this.stateMachine.currentState === this.states.ATTACK
     );
 
+    const prevX = this.position.x;
+    const prevZ = this.position.z;
+
     if (!isStationaryState) {
       super.update(delta);
     } else {
       // In stationary states, stop all linear momentum
       this.velocity.set(0, 0, 0);
+    }
+
+    // 4. Enforce authoritative wall sliding collision (player dimensions: radius 0.32m)
+    if (this.env && typeof this.env.circleHitsWall === 'function') {
+      const radius = this.collisionRadius;
+      const newX = this.position.x;
+      const newZ = this.position.z;
+
+      let finalX = prevX;
+      if (!this.env.circleHitsWall(newX, prevZ, radius)) {
+        finalX = newX;
+      } else {
+        this.velocity.x = 0;
+      }
+
+      let finalZ = prevZ;
+      if (!this.env.circleHitsWall(finalX, newZ, radius)) {
+        finalZ = newZ;
+      } else {
+        this.velocity.z = 0;
+      }
+
+      this.position.x = finalX;
+      this.position.z = finalZ;
     }
 
     return this;

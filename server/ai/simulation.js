@@ -47,8 +47,8 @@ export class PlayerEntity extends YUKA.GameEntity {
     this.escapeTicksRemaining = 0;
 
     // Movement Speeds
-    this.moveSpeed = options.moveSpeed ?? 3.5;
-    this.sprintSpeed = options.sprintSpeed ?? 5.5;
+    this.moveSpeed = options.moveSpeed ?? 5.2;
+    this.sprintSpeed = options.sprintSpeed ?? 7.6;
 
     // Fixed Ammunition Economy: Hard room budget of 30 rounds
     this.ammo = options.ammo ?? 30;
@@ -254,12 +254,15 @@ export class SaberSimulation {
 
     // 3. Setup Persistent Monsters: Saber Alpha & Saber Beta
     this.saberAlpha = new SaberAgent('Saber Alpha', {
+      env: this.map,
       health: 100,
       damage: 25,
-      patrolSpeed: 1.8,
-      searchSpeed: 1.5,
-      stalkSpeed: 2.2,
-      chaseSpeed: 4.2,
+      patrolSpeed: options.patrolSpeed ?? 2.5,
+      searchSpeed: options.searchSpeed ?? 2.5,
+      investigateSpeed: options.investigateSpeed ?? 5.72,
+      stalkSpeed: options.stalkSpeed ?? 7.6,
+      chaseSpeed: options.chaseSpeed ?? 9.5,
+      collisionRadius: 0.32,
       staggerDuration: 10.0,
       recoveryWindow: 2.5
     });
@@ -273,12 +276,15 @@ export class SaberSimulation {
     this.saberAlpha.targetEntity = this.playerA;
 
     this.saberBeta = new SaberAgent('Saber Beta', {
+      env: this.map,
       health: 100,
       damage: 25,
-      patrolSpeed: 1.8,
-      searchSpeed: 1.5,
-      stalkSpeed: 2.2,
-      chaseSpeed: 4.2,
+      patrolSpeed: options.patrolSpeed ?? 2.5,
+      searchSpeed: options.searchSpeed ?? 2.5,
+      investigateSpeed: options.investigateSpeed ?? 5.72,
+      stalkSpeed: options.stalkSpeed ?? 7.6,
+      chaseSpeed: options.chaseSpeed ?? 9.5,
+      collisionRadius: 0.32,
       staggerDuration: 10.0,
       recoveryWindow: 2.5
     });

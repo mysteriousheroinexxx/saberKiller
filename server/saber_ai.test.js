@@ -301,3 +301,100 @@ test('11. Production Level 0 environment: loads authentic grid, establishes prod
 
   roomSim.destroy();
 });
+
+test('12. Overhauled movement speeds: relative to player walk 5.2 and sprint 7.6', () => {
+  const roomSim = new RoomSimulation({ code: 'SPEED_ROOM', players: new Map() }, { autoStart: false, usePrototypeMap: true });
+  const saber = roomSim.sim.saberAlpha;
+
+  assert.equal(saber.patrolSpeed, 2.5, 'PATROL speed is 2.5 m/s');
+  assert.equal(saber.investigateSpeed, 5.72, 'INVESTIGATE_SOUND speed is 5.72 m/s (~1.1x player walk 5.2)');
+  assert.equal(saber.stalkSpeed, 7.6, 'STALK speed is 7.6 m/s (equal to player sprint 7.6)');
+  assert.equal(saber.chaseSpeed, 9.5, 'CHASE speed is 9.5 m/s (1.25x player max sprint 7.6)');
+
+  // Verify FSM states apply the overhauled speeds
+  saber.stateMachine.changeTo('PATROL');
+  assert.equal(saber.maxSpeed, 2.5);
+
+  saber.stateMachine.changeTo('INVESTIGATE_SOUND');
+  assert.equal(saber.maxSpeed, 5.72);
+
+  saber.stateMachine.changeTo('STALK');
+  assert.equal(saber.maxSpeed, 7.6);
+
+  saber.stateMachine.changeTo('CHASE');
+  assert.equal(saber.maxSpeed, 9.5);
+
+  roomSim.destroy();
+});
+
+test('13. 180-degree wide FOV and long-distance vision bounded by geometry without arbitrary cutoffs', () => {
+  const roomSim = new RoomSimulation({ code: 'FOV_ROOM', players: new Map() }, { autoStart: false, usePrototypeMap: true });
+  const saber = roomSim.sim.saberAlpha;
+  const player = roomSim.sim.player;
+
+  // Orient saber pointing along +Z: (0, 0, 1)
+  saber.position.set(0, 0, 0);
+  saber.rotation.set(0, 0, 0, 1); // Facing +Z
+
+  // Target at 80 degrees angle to the side at 20m:
+  // Math.cos(80 deg) = 0.1736, Math.sin(80 deg) = 0.9848
+  // Pos: x = 19.7, z = 3.5 -> angle ~ 79.9 degrees (within 90 deg half-angle of 180 deg FOV)
+  const wideAnglePoint = new YUKA.Vector3(19.7, 0, 3.5);
+  const wideCheck = saber.vision.checkVisibilityDetailed(wideAnglePoint);
+  assert.equal(wideCheck.inFOV, true, 'Target at ~80 deg is within 180-deg FOV');
+  assert.equal(wideCheck.inRange, true, 'Target is within unobstructed vision range');
+
+  // Target at 35m straight ahead along South Hall z = 21 (exceeding previous 22m arbitrary cutoff)
+  saber.position.set(-20, 0, 21);
+  saber.lookAt(new YUKA.Vector3(15, 0, 21));
+  const longDistPoint = new YUKA.Vector3(15, 0, 21);
+  const longDistCheck = saber.vision.checkVisibilityDetailed(longDistPoint);
+  assert.equal(longDistCheck.inRange, true, 'Long distance target (35m) is in range (no 22m cutoff)');
+  assert.equal(longDistCheck.visible, true, 'Unoccluded long-distance target is visible');
+
+  roomSim.destroy();
+});
+
+test('14. Dijkstra navigation around walls and pillars when direct LoS is obstructed', () => {
+  const roomSim = new RoomSimulation({ code: 'NAV_ROOM', players: new Map() }, { autoStart: false, usePrototypeMap: true });
+  const map = roomSim.env;
+
+  // Around West Gallery occlusion pillar at (-16, -14):
+  const start = new YUKA.Vector3(-16, 0, -18);
+  const target = new YUKA.Vector3(-16, 0, -10);
+
+  assert.equal(map.hasLineOfSight(start, target), false, 'Direct line of sight obstructed by pillar');
+
+  const path = map.findPath(start, target);
+  assert.ok(path.length >= 2, 'Dijkstra generated multi-waypoint path around obstacle');
+  assert.ok(path[path.length - 1].distanceTo(target) < 0.1, 'Path terminates at destination');
+
+  // Verify navigation does not cut through the pillar
+  for (let i = 0; i < path.length - 1; i++) {
+    assert.equal(map.hasLineOfSight(path[i], path[i + 1]), true, 'Segment between consecutive path nodes is clear');
+  }
+
+  roomSim.destroy();
+});
+
+test('15. Authoritative wall collision sliding with radius 0.32m prevents geometry penetration', () => {
+  const roomSim = new RoomSimulation({ code: 'COLLIDE_ROOM', players: new Map() }, { autoStart: false, usePrototypeMap: true });
+  const saber = roomSim.sim.saberAlpha;
+
+  // Place Saber at (-6, 0, -17) adjacent to interior dividing wall at x = -6, z = [-22, -12]
+  // Put Saber at x = -7.5, z = -17 (in West room), and push it eastward (+X) directly into wall
+  saber.position.set(-7.0, 0, -17.0);
+  saber.velocity.set(10.0, 0, 0); // Fast velocity directly toward wall at x = -6.0
+
+  // Tick simulation with wall collision enabled
+  for (let i = 0; i < 20; i++) {
+    saber.update(0.05);
+  }
+
+  // Wall is at x = -6 with halfWidth 0.5 (AABB min.x = -6.5). Radius = 0.32.
+  // Maximum allowed X without penetration is -6.5 - 0.32 = -6.82
+  assert.ok(saber.position.x <= -6.80, `Saber stopped before penetrating wall: x = ${saber.position.x}`);
+  assert.equal(roomSim.env.circleHitsWall(saber.position.x, saber.position.z, saber.collisionRadius), false, 'Saber position remains collision-free');
+
+  roomSim.destroy();
+});
