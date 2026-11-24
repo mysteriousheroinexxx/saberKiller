@@ -23,6 +23,11 @@ export class TransformInterpolator {
     this.initialized = false;
   }
 
+  clear() {
+    this.buffer = [];
+    this.initialized = false;
+  }
+
   pushSnapshot(snapshot) {
     const time = snapshot.timestamp || Date.now();
     this.buffer.push({

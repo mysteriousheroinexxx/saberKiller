@@ -326,6 +326,7 @@ export class RoomSimulation {
     return {
       sequence: this.sequence,
       timestamp: this.sim.elapsedTime,
+      matchGeneration: this.room?.matchGeneration || 1,
       monsters: [
         {
           id: 'saber_alpha',

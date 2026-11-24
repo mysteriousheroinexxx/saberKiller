@@ -902,9 +902,25 @@ export class LocalPlayerController {
     this.activeEffects = [];
     this.isCrawling = false;
     this.isSprinting = false;
-    this.weapon = 0; // Flashlight only
+    this.weapon = 2; // Torch / Tactical Flashlight in slot 0 (0 is pistol, 1 is shotgun, 2 is torch)
+    this._discoveredWeapons.clear();
+    this.mag = { bullets: 0, shells: 0 };
+    this.bullets = 0;
+    this.shells = 0;
     this.ammo = 0;
     this.reserveAmmo = 0;
+    this.reloadT = 0;
+    this.reloadWeapon = -1;
+    this._clearHeldItem();
+    this._updateViewmodelVisibility();
+  }
+
+  get discoveredWeapons() {
+    return this._discoveredWeapons;
+  }
+
+  get health() {
+    return this.hp;
   }
 
   setHp(hp) {

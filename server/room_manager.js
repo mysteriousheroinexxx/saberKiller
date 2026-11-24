@@ -1,8 +1,26 @@
 // Saber Killer Room & Player Session Manager
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { MAX_PLAYERS_PER_ROOM, isValidNumber } from './protocol.js';
 import { InventoryController } from '../js/multiplayer/inventory_controller.js';
 import { isPickupItem, getItemDefinition, ITEM_EFFECTS_CONFIG } from '../js/multiplayer/item_catalog.js';
 import { RoomSimulation } from './ai/room_simulation.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DEFAULT_LAYOUT_PATH = path.join(__dirname, '../assets/data/world_items.json');
+
+function loadDefaultLayout() {
+  try {
+    if (fs.existsSync(DEFAULT_LAYOUT_PATH)) {
+      return JSON.parse(fs.readFileSync(DEFAULT_LAYOUT_PATH, 'utf8'));
+    }
+  } catch (e) {
+    console.warn('[RoomManager] Failed to read fallback layout:', e.message);
+  }
+  return null;
+}
 
 // Configurable Survival Mode Health, Damage & Revival Parameters
 export const SURVIVAL_CONFIG = {
@@ -137,11 +155,14 @@ export class RoomManager {
     };
     player.inventory.initDefaultLoadout();
 
+    const activeLayout = layoutData || loadDefaultLayout();
+
     const room = {
       code: roomCode,
       createdAt: Date.now(),
       leaderId: playerId,
       layoutRevision: (typeof layoutRevision === 'string' && layoutRevision.trim()) ? layoutRevision.trim() : 'default',
+      rawLayoutData: activeLayout,
       players: new Map([[playerId, player]]),
       worldItems: new Map(),
       doors: new Map(),
@@ -168,8 +189,8 @@ export class RoomManager {
     });
 
     // Initialize room world pickup state from frozen layout
-    if (layoutData && Array.isArray(layoutData.placements)) {
-      for (const p of layoutData.placements) {
+    if (activeLayout && Array.isArray(activeLayout.placements)) {
+      for (const p of activeLayout.placements) {
         const isPickup = isPickupItem(p.type);
         const isVending = (p.type === 'vending_almond');
         const maxStock = isVending
@@ -179,7 +200,7 @@ export class RoomManager {
         room.worldItems.set(p.id, {
           id: p.id,
           type: p.type,
-          category: p.category || (layoutData.catalog?.[p.type]?.category) || 'prop',
+          category: p.category || (activeLayout.catalog?.[p.type]?.category) || 'prop',
           position: Array.isArray(p.position) ? [p.position[0], p.position[1], p.position[2]] : [0, 0, 0],
           rotation: Array.isArray(p.rotation) ? [p.rotation[0], p.rotation[1], p.rotation[2]] : [0, 0, 0],
           isPickup,
@@ -1101,6 +1122,9 @@ export class RoomManager {
     room.healthPacksFrozen = false;
     room.availableHealthPackCount = 0;
 
+    if (!room.rawLayoutData) {
+      room.rawLayoutData = loadDefaultLayout();
+    }
     const layoutData = room.rawLayoutData;
     if (layoutData && Array.isArray(layoutData.placements)) {
       for (const p of layoutData.placements) {
@@ -1153,7 +1177,10 @@ export class RoomManager {
       player.revivalsUsed = 0;
       player.downedAt = null;
       player.eliminatedAt = null;
+      player.isDead = false;
+      player.isDowned = false;
       player.inventory = new InventoryController(30);
+      player.inventory.initDefaultLoadout();
       player.equipment = {
         flashlight: true,
         primary: null,
@@ -1163,6 +1190,10 @@ export class RoomManager {
         pistol: 0,
         shotgun: 0
       };
+      player.bullets = 0;
+      player.shells = 0;
+      player.mag = { bullets: 0, shells: 0 };
+      player.discoveredWeapons = new Set();
       player.weapons = [];
       player.isReady = (player.id === room.leaderId);
     }

@@ -54,7 +54,8 @@ export class SoundStimulus {
     // The closer the listener, the more accurate the perceived origin.
     const fuzzRadius = Math.min(2.5, Math.max(0.4, (distance / effectiveRadius) * 2.5));
     const angle = Math.random() * Math.PI * 2;
-    const offsetMag = Math.random() * fuzzRadius;
+    const minFuzz = 0.15;
+    const offsetMag = minFuzz + Math.random() * Math.max(0.1, fuzzRadius - minFuzz);
     const perceivedPosition = new YUKA.Vector3(
       this.worldPosition.x + Math.cos(angle) * offsetMag,
       this.worldPosition.y,

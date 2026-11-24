@@ -692,3 +692,94 @@ test('22. Navigation string pulling, stuck detection, and recovery diagnostics',
 
   roomSim.destroy();
 });
+
+test('23. Robust Room & Match Lifecycle Reset: world weapons/pickups restored, player loadout clean, Sabers and AI reset across rounds', () => {
+  const rm = new RoomManager();
+  const ws1 = { send: () => {} };
+  const ws2 = { send: () => {} };
+
+  // Mock layout with an authored pistol placement and an ammo box
+  const mockLayout = {
+    revision: 'lifecycle_v1',
+    catalog: {
+      weapon_pistol: { name: 'Beretta Px4 Pistol', category: 'weapon' },
+      ammo_pistol: { name: 'Pistol Ammo Box', category: 'ammo' }
+    },
+    placements: [
+      { id: 'floor_weapon_pistol_01', type: 'weapon_pistol', category: 'weapon', position: [1.0, 0, 1.0], rotation: [0, 0, 0] },
+      { id: 'box_ammo_pistol_01', type: 'ammo_pistol', category: 'ammo', position: [2.0, 0, 2.0], rotation: [0, 0, 0] }
+    ]
+  };
+
+  // 1. Create Room & Join
+  const createRes = rm.createRoom(ws1, 'RESET01', 'lifecycle_v1', mockLayout);
+  assert.ok(createRes.roomCode, 'Room created');
+  const joinRes = rm.joinRoom(ws2, 'RESET01', 'Bob');
+  assert.ok(joinRes.player, 'Player 2 joined');
+
+  const room = rm.rooms.get('RESET01');
+  assert.ok(room.rawLayoutData, 'rawLayoutData persisted on room');
+
+  // Ready up player 2 and start Match 1 (Gen #1)
+  rm.setPlayerReady(ws2, true);
+  const match1 = rm.startMatch(ws1);
+  assert.equal(match1.success, true);
+  assert.equal(match1.matchGeneration, 1);
+  assert.equal(room.runState, 'IN_PROGRESS');
+
+  const p1 = room.players.get(createRes.player.id);
+  const p2 = room.players.get(joinRes.player.id);
+
+  // Verify pistol exists in worldItems and is available
+  const pistolBefore = room.worldItems.get('floor_weapon_pistol_01');
+  assert.ok(pistolBefore, 'Authored pistol exists in worldItems');
+  assert.equal(pistolBefore.available, true, 'Pistol initially available');
+
+  // 2. Player 1 picks up pistol
+  p1.position = { x: 1.0, y: 0, z: 1.0 };
+  const pickupRes = rm.handlePickupRequest(ws1, 'floor_weapon_pistol_01', { x: 1.0, y: 0, z: 1.0 });
+  assert.equal(pickupRes.success, true, 'Pistol successfully picked up');
+  assert.equal(pistolBefore.available, false, 'Pistol marked unavailable');
+  assert.equal(p1.discoveredWeapons.has('weapon_pistol'), true, 'Pistol added to discovered weapons');
+  assert.equal(p1.mag.bullets, 12, 'Pistol loaded magazine granted');
+  assert.equal(p1.inventory.hasItem('weapon_pistol'), true, 'Pistol in player inventory');
+
+  // 3. Stagger Saber Alpha (100 dmg)
+  room.simulation.sim.saberAlpha.takeDamage(100);
+  assert.equal(room.simulation.sim.saberAlpha.getCurrentStateName(), 'STAGGERED');
+  assert.equal(room.simulation.sim.saberAlpha.health, 0);
+
+  // 4. End match through player death (team wipe)
+  rm.applyDamage(p1.id, 100);
+  rm.applyDamage(p2.id, 100);
+  assert.equal(room.runState, 'GAME_OVER', 'Match ended in GAME_OVER');
+
+  // 5. Start new run (Gen #2)
+  const match2 = rm.startMatch(ws1);
+  assert.equal(match2.success, true, 'Match 2 started successfully');
+  assert.equal(match2.matchGeneration, 2, 'Generation incremented to 2');
+  assert.equal(room.runState, 'IN_PROGRESS');
+
+  // 6. Verify pistol returned to original world pickup
+  const pistolAfter = room.worldItems.get('floor_weapon_pistol_01');
+  assert.ok(pistolAfter, 'Pistol restored in worldItems');
+  assert.equal(pistolAfter.available, true, 'Pistol is restored to available in world');
+  assert.equal(pistolAfter.collectedBy, null, 'Pistol collectedBy reset to null');
+  assert.equal(match2.collectedItems.includes('floor_weapon_pistol_01'), false, 'Pistol not in collectedItems list');
+
+  // 7. Verify Sabers reset to original positions, full health, and PATROL
+  assert.equal(room.simulation.sim.saberAlpha.health, 100, 'Saber Alpha HP restored to 100');
+  assert.equal(room.simulation.sim.saberAlpha.getCurrentStateName(), 'PATROL', 'Saber Alpha reset from STAGGERED to PATROL');
+  assert.equal(room.simulation.sim.saberBeta.health, 100, 'Saber Beta HP restored to 100');
+  assert.equal(room.simulation.sim.saberBeta.getCurrentStateName(), 'PATROL', 'Saber Beta in PATROL');
+
+  // 8. Verify players have clean starting loadout (flashlight only, 0 discovered weapons, 0 ammo)
+  assert.equal(p1.discoveredWeapons.size, 0, 'Discovered weapons cleared');
+  assert.equal(p1.mag.bullets, 0, 'Magazine bullets reset to 0');
+  assert.equal(p1.inventory.hasItem('weapon_pistol'), false, 'Pistol removed from player inventory');
+  assert.equal(p1.inventory.getItem(0).typeId, 'equipment_torch', 'Slot 0 is starting flashlight');
+  assert.equal(p1.hp, 100, 'Player HP reset to 100');
+  assert.equal(p1.state, 'ACTIVE', 'Player state reset to ACTIVE');
+
+  room.simulation.destroy();
+});

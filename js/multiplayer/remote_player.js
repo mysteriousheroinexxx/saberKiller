@@ -214,6 +214,25 @@ export class RemotePlayer {
     }
   }
 
+  reset(spawn = null) {
+    this.interpolator.clear();
+    this.setState('ACTIVE');
+    if (spawn) {
+      this.group.position.set(spawn.x, spawn.y, spawn.z);
+      this.bodyGroup.rotation.y = spawn.yaw || 0;
+      this.weaponAnchor.rotation.x = spawn.pitch || 0;
+      this.interpolator.pushSnapshot({
+        x: spawn.x,
+        y: spawn.y,
+        z: spawn.z,
+        yaw: spawn.yaw || 0,
+        pitch: spawn.pitch || 0,
+        timestamp: Date.now()
+      });
+    }
+    this.group.visible = true;
+  }
+
   destroy() {
     this.isDisposed = true;
     if (this.group && this.group.parent) {

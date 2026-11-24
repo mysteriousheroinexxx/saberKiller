@@ -1286,7 +1286,9 @@ wss.on('connection', (ws, req) => {
               collectedItems: res.collectedItems || [],
               spawnedItems: res.spawnedItems || [],
               doors: res.doors || [],
-              players: res.players || []
+              players: res.players || [],
+              inventory: p.inventory ? p.inventory.serialize() : null,
+              matchGeneration: res.matchGeneration
             });
           }
         }

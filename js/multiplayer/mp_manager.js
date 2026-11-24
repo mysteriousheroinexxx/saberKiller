@@ -392,7 +392,35 @@ export class MPManager {
       const goOverlay = document.getElementById('bb-gameover-overlay');
       if (goOverlay) goOverlay.style.display = 'none';
 
-      // Reset local player to clean run state (100 HP, ACTIVE, 1.62m eye height)
+      // 1. Authoritatively restore client world pickups (unhide authored items, remove dynamic drops)
+      if (this.itemManager) {
+        if (typeof this.itemManager.resetRunItems === 'function') {
+          this.itemManager.resetRunItems();
+        } else if (typeof this.itemManager.resetCollectedItems === 'function') {
+          this.itemManager.resetCollectedItems();
+        }
+      }
+
+      // 2. Authoritatively reset Sabers (stop stagger animations, reset mixers, home transforms)
+      if (this.saberManager && typeof this.saberManager.reset === 'function') {
+        this.saberManager.reset(payload?.matchGeneration);
+      }
+
+      // 3. Reset interaction manager hover/prompt state
+      if (window.interactionManager && typeof window.interactionManager.reset === 'function') {
+        window.interactionManager.reset();
+      }
+
+      // 4. Reset local inventory to clean starting loadout (slot 0: flashlight only)
+      if (this.inventory) {
+        if (payload?.inventory) {
+          this.inventory.deserialize(payload.inventory);
+        } else {
+          this.inventory.initDefaultLoadout();
+        }
+      }
+
+      // 5. Reset local player to clean run state (100 HP, ACTIVE, 1.62m eye height, equip flashlight)
       if (this.localPlayer) {
         if (typeof this.localPlayer.resetCombatState === 'function') {
           this.localPlayer.resetCombatState();
@@ -400,12 +428,18 @@ export class MPManager {
           this.localPlayer.setState('ACTIVE');
           this.localPlayer.setHp(100);
         }
+        if (typeof this.localPlayer.selectHotbarSlot === 'function') {
+          this.localPlayer.selectHotbarSlot(0); // Equips starting tactical flashlight
+        }
         if (this.localPlayer.gunGroup) {
           this.localPlayer.gunGroup.visible = true;
         }
       }
 
-      // Reset HUDs
+      // 6. Reset HUDs & Inventory UI
+      if (window.inventoryUI && typeof window.inventoryUI.render === 'function') {
+        window.inventoryUI.render();
+      }
       if (window.sanityHud && typeof window.sanityHud.updateSanity === 'function') {
         window.sanityHud.updateSanity(100);
       }
@@ -427,7 +461,7 @@ export class MPManager {
         }
       }
 
-      // Ensure every connected player from payload.players or cachedExistingPlayers is instantiated
+      // 7. Ensure every connected player from payload.players or cachedExistingPlayers is instantiated & reset
       const playerList = payload?.players || this.cachedExistingPlayers || [];
       for (const p of playerList) {
         if (p.id !== this.myPlayerId) {
@@ -435,6 +469,10 @@ export class MPManager {
           if (!rp) {
             rp = new RemotePlayer(p.id, this.scene, p.spawn);
             this.remotePlayers.set(p.id, rp);
+          } else {
+            if (typeof rp.reset === 'function') {
+              rp.reset(p.spawn);
+            }
           }
           if (p.state) rp.setState(p.state);
           rp.group.visible = (rp.state !== 'ELIMINATED');
@@ -448,16 +486,18 @@ export class MPManager {
         }
       }
 
-      if (Array.isArray(payload.collectedItems) && this.itemManager) {
-        this.itemManager.setCollectedItems(payload.collectedItems);
-      }
-
+      // 8. Re-apply newly spawned items (keys) and collected items for this generation
       if (Array.isArray(payload.spawnedItems) && this.itemManager) {
         for (const it of payload.spawnedItems) {
           this.itemManager.spawnWorldItem(it);
         }
       }
 
+      if (Array.isArray(payload.collectedItems) && this.itemManager) {
+        this.itemManager.setCollectedItems(payload.collectedItems);
+      }
+
+      // 9. Re-initialize doors
       if (Array.isArray(payload.doors)) {
         this.roomDoors = payload.doors;
         if (window.exitDoorManager && typeof window.exitDoorManager.initDoors === 'function') {
@@ -522,6 +562,10 @@ export class MPManager {
     this.currentRoomCode = null;
     this.myPlayerId = null;
     this.inventory.clear();
+    this.itemManager?.resetRunItems();
+    this.saberManager?.reset();
+    this.localPlayer?.resetCombatState();
+    window.interactionManager?.reset();
     this._updatePlayerCount();
   }
 
@@ -538,6 +582,10 @@ export class MPManager {
     this.currentRoomCode = null;
     this.myPlayerId = null;
     this.inventory.clear();
+    this.itemManager?.resetRunItems();
+    this.saberManager?.reset();
+    this.localPlayer?.resetCombatState();
+    window.interactionManager?.reset();
     this._updatePlayerCount();
   }
 

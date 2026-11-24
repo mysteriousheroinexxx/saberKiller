@@ -414,7 +414,14 @@ class SaberEntity {
 
     // Trigger state-specific animation transitions
     if (this.isModelLoaded && this.actions.walk) {
-      if (this.state === 'ATTACK' && prevState !== 'ATTACK') {
+      if (prevState === 'STAGGERED' && this.state !== 'STAGGERED') {
+        // Stand back up immediately or reset from stagger
+        if (this.actions.falling) this.actions.falling.stop();
+        this.actions.walk.reset();
+        this.actions.walk.setEffectiveWeight(1.0);
+        this.actions.walk.play();
+        this.currentClipName = (this.state === 'RECOVER') ? 'recover' : (this.currentSpeed > 0.3 ? 'walk' : 'idle');
+      } else if (this.state === 'ATTACK' && prevState !== 'ATTACK') {
         // Trigger attack punch or jump punch
         const isJump = (Math.random() > 0.5) || (this.currentSpeed > 3.0);
         const action = isJump ? this.actions.jumpPunch : this.actions.punch;
@@ -435,6 +442,52 @@ class SaberEntity {
     }
 
     this.group.visible = true;
+  }
+
+  reset(spawnPos = null) {
+    this.interpolator.clear();
+    this.state = 'PATROL';
+    this.health = 100;
+    this.isInvulnerable = false;
+    this.targetId = null;
+    this.currentSpeed = 0;
+    this.currentClipName = 'idle';
+
+    if (spawnPos) {
+      this.group.position.set(spawnPos.x, spawnPos.y, spawnPos.z);
+      if (typeof spawnPos.yaw === 'number') {
+        this.group.rotation.y = spawnPos.yaw;
+      }
+      this.interpolator.pushSnapshot({
+        x: spawnPos.x,
+        y: spawnPos.y,
+        z: spawnPos.z,
+        yaw: spawnPos.yaw || 0,
+        pitch: 0,
+        timestamp: Date.now()
+      });
+    }
+
+    if (this.isModelLoaded && this.actions.walk) {
+      if (this.actions.punch) this.actions.punch.stop();
+      if (this.actions.jumpPunch) this.actions.jumpPunch.stop();
+      if (this.actions.falling) this.actions.falling.stop();
+
+      this.actions.walk.reset();
+      this.actions.walk.setEffectiveWeight(1.0);
+      this.actions.walk.setEffectiveTimeScale(0.0);
+      this.actions.walk.play();
+    }
+
+    if (this.visorMat) {
+      this.visorMat.color.setHex(this.colorHex);
+    }
+    if (this.eyeLight) {
+      this.eyeLight.intensity = 1.6;
+    }
+
+    this.setPathVisualization([]);
+    this.setIntuitionVisualization(null);
   }
 
   update(dt, targetPlayerPos = null) {
@@ -555,12 +608,36 @@ export class SaberManager {
     // Saber Beta: Cyan / Blue (Stalker)
     this.saberBeta = new SaberEntity('saber_beta', 'Saber Beta (Stalker)', 0x3b82f6, this.scene);
     this.sabers.set('saber_beta', this.saberBeta);
+    this.currentMatchGeneration = 1;
 
     preloadSaberAssets();
   }
 
+  reset(matchGeneration = null) {
+    if (typeof matchGeneration === 'number') {
+      this.currentMatchGeneration = matchGeneration;
+    }
+    const defaultAlphaSpawn = { x: -16, y: 0, z: -18, yaw: 0 };
+    const defaultBetaSpawn = { x: 16, y: 0, z: -18, yaw: 0 };
+
+    if (this.saberAlpha) this.saberAlpha.reset(defaultAlphaSpawn);
+    if (this.saberBeta) this.saberBeta.reset(defaultBetaSpawn);
+
+    for (const p of this.soundPulses) {
+      this.scene.remove(p.mesh);
+    }
+    this.soundPulses.length = 0;
+  }
+
   handleSnapshot(payload) {
     if (!payload || !Array.isArray(payload.monsters)) return;
+    if (typeof payload.matchGeneration === 'number') {
+      if (this.currentMatchGeneration && payload.matchGeneration < this.currentMatchGeneration) {
+        // Discard stale snapshot packet from an older match generation
+        return;
+      }
+      this.currentMatchGeneration = payload.matchGeneration;
+    }
 
     for (const data of payload.monsters) {
       const saber = this.sabers.get(data.id);

@@ -489,6 +489,25 @@ export class InteractionManager {
   }
 
   /**
+   * Cleans up pending requests, prompts, and hover state on match start/restart
+   */
+  reset() {
+    if (this.pendingTimeout) {
+      clearTimeout(this.pendingTimeout);
+      this.pendingTimeout = null;
+    }
+    this.isPending = false;
+    this.pendingRequestId = null;
+    this.pendingTargetId = null;
+    this._clearHoverTarget();
+    this.hidePrompt();
+  }
+
+  hidePrompt() {
+    this._updatePrompt(null);
+  }
+
+  /**
    * Raycasts from center of camera and updates hovered target
    */
   update() {

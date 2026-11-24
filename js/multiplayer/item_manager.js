@@ -992,16 +992,49 @@ export class WorldItemManager {
   }
 
   /**
+   * Authoritatively restores all world items to clean authored initial state:
+   * - Clears collected IDs
+   * - Removes and disposes all dynamic/dropped items from previous runs
+   * - Restores all authored placements to visible and uncollected
+   */
+  resetRunItems() {
+    this.collectedItemIds.clear();
+    const remainingItems = [];
+    for (const item of this.items) {
+      const isDynamic = Boolean(
+        item.userData?.isDropped || item.isDropped ||
+        item.id.startsWith('drop_') || item.id.startsWith('key_level0_spawn_')
+      );
+      if (isDynamic) {
+        if (item.object && item.object.parent) {
+          item.object.parent.remove(item.object);
+        }
+        if (item.object) {
+          item.object.traverse(o => {
+            if (o.isMesh && o.geometry && !o.geometry.isShared) {
+              o.geometry.dispose();
+            }
+          });
+        }
+      } else {
+        item.isCollected = false;
+        if (item.object) {
+          item.object.visible = true;
+        }
+        remainingItems.push(item);
+      }
+    }
+    this.items = remainingItems;
+    if (this.isDebugVisualsActive) {
+      this.buildDebugVisuals();
+    }
+  }
+
+  /**
    * Restores all world items to visible/uncollected state
    */
   resetCollectedItems() {
-    this.collectedItemIds.clear();
-    for (const item of this.items) {
-      if (item.isCollected) {
-        item.isCollected = false;
-        if (item.object) item.object.visible = true;
-      }
-    }
+    return this.resetRunItems();
   }
 
   /**
