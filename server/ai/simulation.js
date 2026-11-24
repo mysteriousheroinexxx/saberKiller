@@ -23,10 +23,12 @@ export class PlayerEntity extends YUKA.GameEntity {
     this.id = options.id || name.toLowerCase().replace(/\s+/g, '_');
     this.position.copy(startPos);
 
-    // Health System (100 max, 25 Saber damage -> 4 hits eliminate)
+    // Health System (100 max)
     this.health = options.health ?? 100;
     this.maxHealth = options.maxHealth ?? 100;
     this.isDead = false; // Permanent elimination on health 0
+    this.collisionRadius = options.collisionRadius ?? 0.32;
+    this.boundingRadius = this.collisionRadius;
 
     // Sanity System (Separate failure condition: collapses at 0, recoverable by teammate)
     this.sanity = options.sanity ?? 100;
@@ -252,11 +254,16 @@ export class SaberSimulation {
       this.entityManager.add(obstacle);
     }
 
+    // Difficulty Settings ('NORMAL' | 'HARD')
+    this.difficulty = (options.difficulty && options.difficulty.toUpperCase() === 'HARD') ? 'HARD' : 'NORMAL';
+
     // 3. Setup Persistent Monsters: Saber Alpha & Saber Beta
     this.saberAlpha = new SaberAgent('Saber Alpha', {
       env: this.map,
       health: 100,
-      damage: 25,
+      difficulty: this.difficulty,
+      damage: options.damage,
+      attackRange: options.attackRange,
       patrolSpeed: options.patrolSpeed ?? 2.5,
       searchSpeed: options.searchSpeed ?? 2.5,
       investigateSpeed: options.investigateSpeed ?? 5.72,
@@ -278,7 +285,9 @@ export class SaberSimulation {
     this.saberBeta = new SaberAgent('Saber Beta', {
       env: this.map,
       health: 100,
-      damage: 25,
+      difficulty: this.difficulty,
+      damage: options.damage,
+      attackRange: options.attackRange,
       patrolSpeed: options.patrolSpeed ?? 2.5,
       searchSpeed: options.searchSpeed ?? 2.5,
       investigateSpeed: options.investigateSpeed ?? 5.72,
@@ -329,6 +338,12 @@ export class SaberSimulation {
     this.onEventLog = null;
     this.onFootstepEvent = null;
     this.lastFootstepAudit = null;
+  }
+
+  setDifficulty(difficulty) {
+    this.difficulty = (typeof difficulty === 'string' && difficulty.toUpperCase() === 'HARD') ? 'HARD' : 'NORMAL';
+    if (this.saberAlpha) this.saberAlpha.setDifficulty(this.difficulty);
+    if (this.saberBeta) this.saberBeta.setDifficulty(this.difficulty);
   }
 
   /**

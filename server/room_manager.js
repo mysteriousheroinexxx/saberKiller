@@ -30,9 +30,13 @@ export const SURVIVAL_CONFIG = {
   maxRevivalsPerRun: 1,
   maxReviveDistance: 2.8,
   keysPerStartingPlayer: 1,
+  healthPacksPerStartingPlayer: 3,
+  saberDifficulty: 'NORMAL', // 'NORMAL' | 'HARD'
   damageValues: {
     ZOMBIE_HIT: 25,
-    SABER_ATTACK: 25,
+    SABER_ATTACK: 15,
+    SABER_ATTACK_NORMAL: 15,
+    SABER_ATTACK_HARD: 100,
     HAZARD: 20,
     DEV_TEST: 25,
     DEFAULT: 25
@@ -46,10 +50,33 @@ export function configureSurvivalRules(opts = {}) {
   if (typeof opts.maxRevivalsPerRun === 'number') SURVIVAL_CONFIG.maxRevivalsPerRun = Math.max(0, opts.maxRevivalsPerRun);
   if (typeof opts.maxReviveDistance === 'number') SURVIVAL_CONFIG.maxReviveDistance = Math.max(0, opts.maxReviveDistance);
   if (typeof opts.keysPerStartingPlayer === 'number') SURVIVAL_CONFIG.keysPerStartingPlayer = Math.max(1, Math.floor(opts.keysPerStartingPlayer));
+  if (typeof opts.healthPacksPerStartingPlayer === 'number') SURVIVAL_CONFIG.healthPacksPerStartingPlayer = Math.max(1, Math.floor(opts.healthPacksPerStartingPlayer));
+  if (typeof opts.saberDifficulty === 'string') {
+    SURVIVAL_CONFIG.saberDifficulty = (opts.saberDifficulty.toUpperCase() === 'HARD') ? 'HARD' : 'NORMAL';
+    SURVIVAL_CONFIG.damageValues.SABER_ATTACK = (SURVIVAL_CONFIG.saberDifficulty === 'HARD')
+      ? (SURVIVAL_CONFIG.damageValues.SABER_ATTACK_HARD ?? 100)
+      : (SURVIVAL_CONFIG.damageValues.SABER_ATTACK_NORMAL ?? 15);
+  }
   if (opts.damageValues && typeof opts.damageValues === 'object') {
     SURVIVAL_CONFIG.damageValues = { ...SURVIVAL_CONFIG.damageValues, ...opts.damageValues };
   }
   return { ...SURVIVAL_CONFIG };
+}
+
+export function configureSaberDifficulty(difficulty) {
+  const diff = (typeof difficulty === 'string' && difficulty.toUpperCase() === 'HARD') ? 'HARD' : 'NORMAL';
+  SURVIVAL_CONFIG.saberDifficulty = diff;
+  SURVIVAL_CONFIG.damageValues.SABER_ATTACK = (diff === 'HARD')
+    ? (SURVIVAL_CONFIG.damageValues.SABER_ATTACK_HARD ?? 100)
+    : (SURVIVAL_CONFIG.damageValues.SABER_ATTACK_NORMAL ?? 15);
+  return SURVIVAL_CONFIG.saberDifficulty;
+}
+
+export function configureHealthPackMultiplier(multiplier) {
+  if (typeof multiplier === 'number' && !isNaN(multiplier)) {
+    SURVIVAL_CONFIG.healthPacksPerStartingPlayer = Math.max(1, Math.floor(multiplier));
+  }
+  return SURVIVAL_CONFIG.healthPacksPerStartingPlayer;
 }
 
 // Configurable Vending Machine Parameters
@@ -172,6 +199,8 @@ export class RoomManager {
       healthPacksFrozen: false,
       startingPlayerCount: 0,
       availableHealthPackCount: 0,
+      healthPackMultiplier: (options && typeof options.healthPackMultiplier === 'number') ? options.healthPackMultiplier : (SURVIVAL_CONFIG.healthPacksPerStartingPlayer || 3),
+      saberDifficulty: (options && typeof options.difficulty === 'string') ? ((options.difficulty.toUpperCase() === 'HARD') ? 'HARD' : 'NORMAL') : (SURVIVAL_CONFIG.saberDifficulty || 'NORMAL'),
       simulation: null
     };
 
@@ -213,11 +242,13 @@ export class RoomManager {
       }
     }
 
-    // Health Pack Economy: Total Health Packs available on map must equal starting player count at run start
+    // Health Pack Economy: Total Health Packs available on map = multiplier * starting player count
     // If startingPlayers is explicitly provided (e.g. survival test setup), freeze immediately;
     // Otherwise, freeze authoritatively at actual match start when leader starts the run.
     if (options && typeof options.startingPlayers === 'number' && options.startingPlayers > 0) {
       this._freezeRoomHealthPacks(room, options.startingPlayers);
+    } else if (options && options.directStart) {
+      this._freezeRoomHealthPacks(room, room.players.size);
     }
 
     // Fixed Ammunition Economy: Initialize and enforce Level 0 room budget
@@ -264,6 +295,12 @@ export class RoomManager {
     room.healthPacksFrozen = true;
     room.startingPlayerCount = Math.max(1, Math.floor(startingPlayerCount));
 
+    const multiplier = (typeof room.healthPackMultiplier === 'number')
+      ? room.healthPackMultiplier
+      : (SURVIVAL_CONFIG.healthPacksPerStartingPlayer || 3);
+    const requiredCount = room.startingPlayerCount * multiplier;
+
+    // Collect all existing first_aid items registered in room.worldItems
     const firstAidItems = [];
     for (const [id, item] of room.worldItems) {
       if (item.type === 'first_aid') {
@@ -271,13 +308,75 @@ export class RoomManager {
       }
     }
 
-    const allowed = room.startingPlayerCount;
+    // Authored candidate positions across Level 0 to scale first_aid supply
+    const candidateLocations = [
+      { id: 'floor_first_aid_01', position: [43.7, 0.0, -188.90], rotation: [0.0, 0.3, 0.0] },
+      { id: 'table_first_aid_01', position: [44.75, 0.936, -185.45], rotation: [0.0, 0.1, 0.0] },
+      { id: 'shelf_first_aid_tier4', position: [44.5, 1.643, -189.50], rotation: [0.0, 0.0, 0.0] },
+      { id: 'alcove_first_aid_01', position: [41.2, 0.02, -181.5], rotation: [0.0, 0.2, 0.0] },
+      { id: 'corridor_first_aid_01', position: [49.5, 0.02, -185.0], rotation: [0.0, -0.4, 0.0] },
+      { id: 'pillar_first_aid_01', position: [46.8, 0.02, -191.2], rotation: [0.0, 0.8, 0.0] },
+      { id: 'hall_first_aid_01', position: [52.0, 0.02, -182.0], rotation: [0.0, 0.0, 0.0] },
+      { id: 'depot_first_aid_01', position: [39.0, 0.02, -184.5], rotation: [0.0, 0.5, 0.0] },
+      { id: 'storage_first_aid_01', position: [47.5, 0.02, -178.5], rotation: [0.0, -0.2, 0.0] },
+      { id: 'north_first_aid_01', position: [43.0, 0.02, -175.0], rotation: [0.0, 0.1, 0.0] },
+      { id: 'east_first_aid_01', position: [54.5, 0.02, -188.0], rotation: [0.0, -0.6, 0.0] },
+      { id: 'west_first_aid_01', position: [37.5, 0.02, -189.0], rotation: [0.0, 0.4, 0.0] },
+      { id: 'center_first_aid_01', position: [46.0, 0.02, -183.0], rotation: [0.0, 0.0, 0.0] },
+      { id: 'south_first_aid_01', position: [50.0, 0.02, -193.0], rotation: [0.0, 0.3, 0.0] },
+      { id: 'corner_first_aid_01', position: [42.0, 0.02, -193.5], rotation: [0.0, -0.5, 0.0] },
+      { id: 'junction_first_aid_01', position: [55.0, 0.02, -177.0], rotation: [0.0, 0.7, 0.0] }
+    ];
+
+    // Register all candidate locations into room.worldItems if not already present
+    for (const cand of candidateLocations) {
+      if (!room.worldItems.has(cand.id)) {
+        const item = {
+          id: cand.id,
+          type: 'first_aid',
+          category: 'medical',
+          position: cand.position,
+          rotation: cand.rotation,
+          isPickup: true,
+          available: false,
+          isGenerated: true,
+          collectedBy: null,
+          collectedAt: null
+        };
+        room.worldItems.set(cand.id, item);
+        firstAidItems.push(item);
+      }
+    }
+
+    // If still not enough (e.g. high multiplier or many players), dynamically generate
+    while (firstAidItems.length < requiredCount) {
+      const idx = firstAidItems.length + 1;
+      const genId = `gen_first_aid_${idx}`;
+      const angle = (idx / requiredCount) * 2 * Math.PI;
+      const genPos = [+(46.0 + Math.cos(angle) * 3.5).toFixed(3), 0.02, +(-185.0 + Math.sin(angle) * 3.5).toFixed(3)];
+      const item = {
+        id: genId,
+        type: 'first_aid',
+        category: 'medical',
+        position: genPos,
+        rotation: [0, 0, 0],
+        isPickup: true,
+        available: false,
+        isGenerated: true,
+        collectedBy: null,
+        collectedAt: null
+      };
+      room.worldItems.set(genId, item);
+      firstAidItems.push(item);
+    }
+
     let active = 0;
     for (let i = 0; i < firstAidItems.length; i++) {
       const item = firstAidItems[i];
-      if (i < allowed) {
+      if (i < requiredCount) {
         item.available = true;
         item.cappedUnavailable = false;
+        item.collectedReason = null;
         active++;
       } else {
         item.available = false;
@@ -745,6 +844,10 @@ export class RoomManager {
 
     const effectConfig = ITEM_EFFECTS_CONFIG[item.typeId] || def.metadata || {};
 
+    if (item.typeId === 'first_aid' && effectConfig.requiresMissingHp && player.hp >= player.maxHp) {
+      return { success: false, error: 'Health is already full', room, player };
+    }
+
     // Remove exactly 1 unit from inventory
     const removeRes = player.inventory.removeItem(targetSlot, 1);
     if (!removeRes.success) {
@@ -753,6 +856,20 @@ export class RoomManager {
 
     const remainingItem = player.inventory.getItem(targetSlot);
     const remainingQuantity = remainingItem ? remainingItem.quantity : 0;
+
+    // Health Pack consumption: restores HP up to maxHp
+    let hpUpdate = null;
+    if (item.typeId === 'first_aid') {
+      const healAmount = effectConfig.healAmount || 50;
+      const oldHp = player.hp;
+      player.hp = Math.min(player.maxHp || 100, player.hp + healAmount);
+      hpUpdate = {
+        playerId: player.id,
+        hp: player.hp,
+        maxHp: player.maxHp,
+        healed: player.hp - oldHp
+      };
+    }
 
     // Ammunition box consumption: atomically grants exactly 2 rounds to compatible weapon reserve
     let ammoUpdate = null;
@@ -785,6 +902,7 @@ export class RoomManager {
       slotIndex: targetSlot,
       effect: effectConfig,
       ammoUpdate,
+      hpUpdate,
       remainingQuantity,
       inventory: player.inventory.serialize()
     };
@@ -1354,9 +1472,16 @@ export class RoomManager {
     }
 
     // Resolve damage amount (configurable)
+    let defaultReasonDamage = SURVIVAL_CONFIG.damageValues[reason];
+    if (reason === 'SABER_ATTACK') {
+      const diff = room?.saberDifficulty || SURVIVAL_CONFIG.saberDifficulty || 'NORMAL';
+      defaultReasonDamage = (diff === 'HARD')
+        ? (SURVIVAL_CONFIG.damageValues.SABER_ATTACK_HARD ?? 100)
+        : (SURVIVAL_CONFIG.damageValues.SABER_ATTACK_NORMAL ?? 15);
+    }
     let dmg = (typeof amount === 'number' && !isNaN(amount) && amount > 0)
       ? amount
-      : (SURVIVAL_CONFIG.damageValues[reason] || SURVIVAL_CONFIG.damageValues.DEFAULT);
+      : (defaultReasonDamage || SURVIVAL_CONFIG.damageValues.DEFAULT);
 
     // Prevent health from dropping below zero
     player.hp = Math.max(0, player.hp - dmg);
@@ -2045,6 +2170,7 @@ export class RoomManager {
     if (room.simulation) return room.simulation;
 
     room.simulation = new RoomSimulation(room, {
+      difficulty: room.saberDifficulty || SURVIVAL_CONFIG.saberDifficulty || 'NORMAL',
       onPlayerDamaged: (playerId, damage, reason) => {
         const res = this.applyDamage(playerId, damage, reason);
         if (res && res.events && this.onRoomEvents) {
@@ -2071,6 +2197,20 @@ export class RoomManager {
     room.simulation.start();
 
     return room.simulation;
+  }
+
+  /**
+   * Sets room difficulty ('NORMAL' | 'HARD') authoritatively
+   */
+  setRoomDifficulty(roomCode, difficulty) {
+    const room = this.rooms.get(roomCode);
+    if (!room) return null;
+    const diff = (typeof difficulty === 'string' && difficulty.toUpperCase() === 'HARD') ? 'HARD' : 'NORMAL';
+    room.saberDifficulty = diff;
+    if (room.simulation) {
+      room.simulation.setDifficulty(diff);
+    }
+    return diff;
   }
 
   /**

@@ -90,7 +90,7 @@ test('4. Both Sabers can independently pursue different players', () => {
   roomSim.destroy();
 });
 
-test('5. Saber attacks apply damage (25 HP) through authoritative server and down players at 0 HP', () => {
+test('5. Saber attacks apply damage (NORMAL 15 HP on physical contact <= 0.64m) through authoritative server and down players at 0 HP', () => {
   const roomManager = new RoomManager();
   const res = roomManager.createRoom(null, 'TEST_ROOM', 'default', null, { startingPlayers: 2 });
   const room = roomManager.getRoom(res.roomCode);
@@ -104,22 +104,27 @@ test('5. Saber attacks apply damage (25 HP) through authoritative server and dow
   roomManager.startMatch(player1.ws);
   assert.ok(room.simulation, 'Room simulation initialized on match start');
 
-  // Place player 1 right in front of Saber Alpha at attack range (1.0m)
   const saberAlpha = room.simulation.sim.saberAlpha;
+
+  // 1. Target out of physical contact range (1.0m > 0.64m) -> No damage applied
   player1.position = { x: saberAlpha.position.x, y: 0, z: saberAlpha.position.z + 1.0 };
   room.simulation.updatePlayerMovement(player1.id, player1.position.x, 0, player1.position.z);
   saberAlpha.lookAt(room.simulation.playerEntities.get(player1.id).position);
-
-  // Saber strikes player
   saberAlpha.stateMachine.changeTo(SABER_STATES.ATTACK);
 
-  assert.equal(player1.hp, 75, 'Saber attack deducted exactly 25 HP');
+  assert.equal(player1.hp, 100, 'No damage applied when out of physical contact range (> 0.64m)');
+
+  // 2. Target in physical contact range (0.5m <= 0.64m) -> Deals exactly 15 HP in NORMAL difficulty
+  player1.position = { x: saberAlpha.position.x, y: 0, z: saberAlpha.position.z + 0.5 };
+  room.simulation.updatePlayerMovement(player1.id, player1.position.x, 0, player1.position.z);
+  saberAlpha.lookAt(room.simulation.playerEntities.get(player1.id).position);
+  saberAlpha.stateMachine.changeTo(SABER_STATES.ATTACK);
+
+  assert.equal(player1.hp, 85, 'Saber attack in physical contact deducted exactly 15 HP in NORMAL difficulty');
   assert.equal(player1.state, 'ACTIVE');
 
-  // 3 more strikes reduce health to 0
-  roomManager.applyDamage(player1.id, 25, 'SABER_ATTACK');
-  assert.equal(player1.hp, 50);
-  roomManager.applyDamage(player1.id, 25, 'SABER_ATTACK');
+  // Reducing health to 0 triggers DOWNED in co-op
+  roomManager.applyDamage(player1.id, 60, 'SABER_ATTACK');
   assert.equal(player1.hp, 25);
   const lethalRes = roomManager.applyDamage(player1.id, 25, 'SABER_ATTACK');
   assert.equal(player1.hp, 0);

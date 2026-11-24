@@ -43,12 +43,16 @@ export class RoomSimulation {
     const spawnAlpha = useProto ? new YUKA.Vector3(-16, 0, -18) : new YUKA.Vector3(38.0, 0, -180.0);
     const spawnBeta = useProto ? new YUKA.Vector3(16, 0, -18) : new YUKA.Vector3(60.0, 0, -160.0);
 
+    // Difficulty mode
+    this.difficulty = (options.difficulty && options.difficulty.toUpperCase() === 'HARD') ? 'HARD' : (room?.saberDifficulty || 'NORMAL');
+
     this.sim = new SaberSimulation({
       map: this.env,
       spawnAlpha,
       spawnBeta,
       waypointsAlpha: this.env.saberAlphaWaypoints,
-      waypointsBeta: this.env.saberBetaWaypoints
+      waypointsBeta: this.env.saberBetaWaypoints,
+      difficulty: this.difficulty
     });
 
     // Player entities registry: playerId -> PlayerEntity
@@ -80,6 +84,13 @@ export class RoomSimulation {
     // Auto-start 20Hz simulation tick loop
     if (options.autoStart !== false) {
       this.start();
+    }
+  }
+
+  setDifficulty(difficulty) {
+    this.difficulty = (typeof difficulty === 'string' && difficulty.toUpperCase() === 'HARD') ? 'HARD' : 'NORMAL';
+    if (this.sim) {
+      this.sim.setDifficulty(this.difficulty);
     }
   }
 

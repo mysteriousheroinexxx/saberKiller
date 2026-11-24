@@ -447,8 +447,14 @@ export class ChaseState extends YUKA.State {
       saber.lostSightTimer = 0;
       saber.navigateTo(player.position, saber.delta);
 
-      // Melee attack range
-      if (saber.targetDistance <= saber.attackRange) {
+      const distToPlayer = saber.position.distanceTo(player.position);
+      const contactDist = saber.getContactDistance ? saber.getContactDistance(player) : 0.64;
+      const attackThreshold = (saber.difficulty === 'HARD') ? saber.attackRange : contactDist;
+
+      // Melee attack range:
+      // In NORMAL mode: strikes ONLY when physically touching player (distance <= 0.64m)
+      // In HARD mode: uses attack range (1.8m)
+      if (distToPlayer <= attackThreshold) {
         saber.stateMachine.changeTo(SABER_STATES.ATTACK);
         return;
       }
@@ -495,14 +501,28 @@ export class AttackState extends YUKA.State {
     saber.velocity.set(0, 0, 0);
     saber.seekBehavior.active = false;
     saber.attackTimer = 0;
+
+    const player = saber.targetEntity;
+    if (!player) return;
+
+    const dist = saber.position.distanceTo(player.position);
+    const contactDist = saber.getContactDistance ? saber.getContactDistance(player) : 0.64;
+    const inRange = (saber.difficulty === 'HARD') ? (dist <= saber.attackRange) : (dist <= contactDist + 0.001);
+
+    if (!inRange) {
+      saber.logState(`Attack aborted: target out of physical contact range (${dist.toFixed(2)}m > ${contactDist.toFixed(2)}m)`);
+      saber.stateMachine.changeTo(SABER_STATES.CHASE);
+      return;
+    }
+
     saber.logState('Entered ATTACK (striking player for ' + saber.damage + ' damage)');
 
     // Execute initial attack strike
-    if (saber.targetEntity && typeof saber.targetEntity.takeDamage === 'function') {
-      saber.targetEntity.takeDamage(saber.damage);
+    if (typeof player.takeDamage === 'function') {
+      player.takeDamage(saber.damage);
     }
     if (typeof saber.onAttack === 'function') {
-      saber.onAttack(saber.targetEntity, saber.damage);
+      saber.onAttack(player, saber.damage);
     }
   }
 
@@ -524,10 +544,13 @@ export class AttackState extends YUKA.State {
     // Keep facing the player while attacking
     saber.rotateTo(player.position, saber.delta);
 
-    // After attack cooldown has elapsed, check if player is still in range
+    // After attack cooldown has elapsed, check if player is still in physical contact / range
     if (saber.attackTimer >= saber.attackCooldown) {
       const dist = saber.position.distanceTo(player.position);
-      if (dist <= saber.attackRange) {
+      const contactDist = saber.getContactDistance ? saber.getContactDistance(player) : 0.64;
+      const inRange = (saber.difficulty === 'HARD') ? (dist <= saber.attackRange) : (dist <= contactDist + 0.001);
+
+      if (inRange) {
         saber.attackTimer = 0;
         if (typeof player.takeDamage === 'function') {
           player.takeDamage(saber.damage);
@@ -624,11 +647,30 @@ export class SaberAgent extends YUKA.Vehicle {
     this.isSaber = true;
     this.isPersistent = true;
 
-    // Health & Combat (25 HP damage, 4 hits eliminate 100 HP player)
+    // Difficulty Setting: 'NORMAL' (default) vs 'HARD'
+    this.difficulty = (options.difficulty && options.difficulty.toUpperCase() === 'HARD') ? 'HARD' : 'NORMAL';
+
+    // Collision & Environmental Navigation (0.32m radius matching player)
+    this.collisionRadius = options.collisionRadius ?? 0.32;
+    this.boundingRadius = this.collisionRadius;
+    this.env = options.env || null;
+
+    // Health & Combat
+    // NORMAL mode: 15 HP per strike, physical contact (<= 0.64m) required
+    // HARD mode: 100 HP lethal damage, 1.8m attack range
     this.health = options.health ?? 100;
     this.maxHealth = options.maxHealth ?? 100;
-    this.damage = options.damage ?? 25;
-    this.attackRange = options.attackRange ?? 1.8;
+    if (options.damage !== undefined) {
+      this.damage = options.damage;
+    } else {
+      this.damage = (this.difficulty === 'HARD') ? 100 : 15;
+    }
+
+    if (options.attackRange !== undefined) {
+      this.attackRange = options.attackRange;
+    } else {
+      this.attackRange = (this.difficulty === 'HARD') ? 1.8 : (this.collisionRadius * 2); // 0.64m
+    }
     this.attackCooldown = options.attackCooldown ?? 2.0; // 2.0s attack cooldown + escape opportunity
     this.attackTimer = 0;
 
@@ -642,10 +684,6 @@ export class SaberAgent extends YUKA.Vehicle {
     this.maxForce = options.maxForce ?? 150;
     this.mass = options.mass ?? 1.5;
     this.maxTurnRate = options.maxTurnRate ?? (Math.PI * 1.5); // Fast, responsive turning
-
-    // Collision & Environmental Navigation (0.32m radius matching player)
-    this.collisionRadius = options.collisionRadius ?? 0.32;
-    this.env = options.env || null;
 
     // Dijkstra Navigation Path state
     this.currentNavPath = [];
@@ -762,6 +800,28 @@ export class SaberAgent extends YUKA.Vehicle {
     this.potentialTargets = Array.isArray(targets) ? targets.slice() : [targets];
     if (this.potentialTargets.length > 0 && (!this.targetEntity || this.targetEntity.isDead)) {
       this.targetEntity = this.potentialTargets.find(t => !t.isDead) || this.potentialTargets[0];
+    }
+  }
+
+  getContactDistance(target = null) {
+    const t = target || this.targetEntity;
+    const targetRadius = (t && typeof t.collisionRadius === 'number')
+      ? t.collisionRadius
+      : ((t && typeof t.boundingRadius === 'number' && t.boundingRadius > 0)
+        ? t.boundingRadius
+        : 0.32);
+    return (this.collisionRadius || 0.32) + targetRadius; // 0.32 + 0.32 = 0.64m
+  }
+
+  setDifficulty(difficulty) {
+    const diff = (typeof difficulty === 'string' && difficulty.toUpperCase() === 'HARD') ? 'HARD' : 'NORMAL';
+    this.difficulty = diff;
+    if (diff === 'HARD') {
+      this.damage = 100;
+      this.attackRange = 1.8;
+    } else {
+      this.damage = 15;
+      this.attackRange = this.getContactDistance();
     }
   }
 
