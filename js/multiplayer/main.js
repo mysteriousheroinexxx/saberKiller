@@ -24,6 +24,7 @@ import { WorldPlacementEditor } from './world_editor.js';
 import { InteractionManager } from './interaction_manager.js';
 import { InventoryUI } from './inventory_ui.js';
 import { ExitDoorManager } from './exit_door_manager.js';
+import { SaberObservationUI } from './saber_observation_ui.js';
 
 let scene, camera, renderer, mpManager, playerLight;
 let lastTime = performance.now();
@@ -34,6 +35,7 @@ let worldEditor = null;
 let interactionManager = null;
 let inventoryUI = null;
 let exitDoorManager = null;
+let saberObservationUI = null;
 let devToolsEnabled = false;
 
 // Survival Mode Sanity System
@@ -236,6 +238,8 @@ async function init() {
     console.log('[DEV TOOLS] Developer tools disabled by server. Removing panels from DOM.');
     document.getElementById('dev-comparison-panel')?.remove();
     document.getElementById('dev-panel-toggle')?.remove();
+    document.getElementById('dev-saber-panel')?.remove();
+    document.getElementById('dev-saber-toggle')?.remove();
     document.getElementById('world-editor-overlay')?.remove();
     document.getElementById('dev-pickup-hud-diag')?.remove();
     document.getElementById('dev-weapon-hud-diag')?.remove();
@@ -699,6 +703,26 @@ async function init() {
     window.worldEditor = worldEditor;
     initDevComparisonUI();
 
+    // Saber AI Developer Observation Interface
+    saberObservationUI = new SaberObservationUI(mpManager);
+    window.saberObservationUI = saberObservationUI;
+
+    mpManager.network.onDevAiTelemetry = (payload) => {
+      if (saberObservationUI) {
+        saberObservationUI.updateTelemetry(payload);
+      }
+    };
+
+    const origSoundBroadcast = mpManager.network.onSoundEventBroadcast;
+    mpManager.network.onSoundEventBroadcast = (payload) => {
+      if (origSoundBroadcast) origSoundBroadcast(payload);
+      if (saberObservationUI) {
+        const st = payload.soundType || payload.stimulus?.soundType || 'SOUND';
+        const rad = payload.detectionRadius || payload.stimulus?.detectionRadius || 0;
+        saberObservationUI.addLog(`[SOUND] ${st} (r=${rad.toFixed(0)}m)`, st.includes('GUNSHOT') ? 'alert' : 'highlight');
+      }
+    };
+
     // Developer weapon firing and coordinates diagnostic HUD elements
     const devWeaponHud = document.getElementById('dev-weapon-hud-diag');
     if (devWeaponHud) {
@@ -713,6 +737,8 @@ async function init() {
     console.log('[DEV TOOLS] Developer tools disabled by server. Removing panel from DOM.');
     document.getElementById('dev-comparison-panel')?.remove();
     document.getElementById('dev-panel-toggle')?.remove();
+    document.getElementById('dev-saber-panel')?.remove();
+    document.getElementById('dev-saber-toggle')?.remove();
     document.getElementById('world-editor-overlay')?.remove();
     document.getElementById('dev-pickup-hud-diag')?.remove();
     document.getElementById('dev-weapon-hud-diag')?.remove();
