@@ -420,7 +420,11 @@ export class RoomSimulation {
         visionCheck: beta.lastVisionCheck || null,
         lastLog: beta.logHistory[0]?.entry || ''
       },
-      director: director.getTelemetry(),
+      director: {
+        ...director.getTelemetry(),
+        matchGeneration: this.room?.matchGeneration || 1
+      },
+      matchGeneration: this.room?.matchGeneration || 1,
       activeSoundsCount: this.sim.soundSystem.activeStimuli.length
     };
   }

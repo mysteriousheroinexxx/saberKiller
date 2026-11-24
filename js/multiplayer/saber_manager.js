@@ -319,7 +319,35 @@ class SaberEntity {
     this.pathLine.visible = false;
     this.scene.add(this.pathLine);
 
+    // 5. Authoritative Wall Collision Boundary (0.32m radius cylinder/ring at feet)
+    const colGeo = new THREE.RingGeometry(0.30, 0.34, 24);
+    colGeo.rotateX(-Math.PI / 2);
+    this.colRing = new THREE.Mesh(colGeo, new THREE.MeshBasicMaterial({
+      color: this.colorHex,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.85
+    }));
+    this.colRing.position.y = 0.05;
+    this.debugGroup.add(this.colRing);
+
+    // 6. Encounter Director Approximate Intuition Hint Marker
+    const hintGeo = new THREE.RingGeometry(0.5, 0.75, 24);
+    hintGeo.rotateX(-Math.PI / 2);
+    this.hintMarker = new THREE.Mesh(hintGeo, new THREE.MeshBasicMaterial({
+      color: 0xfb923c,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.85
+    }));
+    this.hintMarker.visible = false;
+    this.scene.add(this.hintMarker);
+
     this.group.add(this.debugGroup);
+  }
+
+  get currentActionName() {
+    return this.currentClipName;
   }
 
   setDebugVisible(visible) {
@@ -331,6 +359,17 @@ class SaberEntity {
     if (!this.debugVisible) {
       if (this.losLine) this.losLine.visible = false;
       if (this.pathLine) this.pathLine.visible = false;
+      if (this.hintMarker) this.hintMarker.visible = false;
+    }
+  }
+
+  setIntuitionVisualization(target) {
+    if (!this.debugVisible || !this.hintMarker) return;
+    if (target && typeof target.x === 'number' && typeof target.z === 'number') {
+      this.hintMarker.position.set(target.x, 0.08, target.z);
+      this.hintMarker.visible = true;
+    } else {
+      this.hintMarker.visible = false;
     }
   }
 
@@ -493,6 +532,7 @@ class SaberEntity {
       this.scene.remove(this.group);
       if (this.losLine) this.scene.remove(this.losLine);
       if (this.pathLine) this.scene.remove(this.pathLine);
+      if (this.hintMarker) this.scene.remove(this.hintMarker);
     }
     if (this.mixer) {
       this.mixer.stopAllAction();

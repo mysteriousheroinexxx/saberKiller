@@ -532,3 +532,38 @@ test('18. Robust match reset: clean run state restored after Saber death across 
 
   room.simulation.destroy();
 });
+
+test('19. Developer Observation Deck: Telemetry provides animation, speeds, FSM, intuition hints, Dijkstra path, and match generation', () => {
+  const room = {
+    code: 'OBSV01',
+    matchGeneration: 3,
+    players: new Map()
+  };
+
+  const sim = new RoomSimulation(room, { usePrototypeMap: true });
+  sim.sim.saberAlpha.health = 50;
+  sim.sim.saberAlpha.hasDirectorHint = true;
+  sim.sim.saberAlpha.directorHintTarget = { x: 12.5, y: 0, z: -18.2 };
+  sim.sim.saberAlpha.directorHintDistance = 7.8;
+  sim.sim.saberAlpha.currentNavPath = [{ x: 0, z: 0 }, { x: 5, z: 5 }, { x: 10, z: 5 }];
+
+  const telemetry = sim.buildDevTelemetry();
+
+  assert.ok(telemetry, 'Telemetry payload built');
+  assert.equal(telemetry.matchGeneration, 3, 'Root matchGeneration matches room');
+  assert.equal(telemetry.director.matchGeneration, 3, 'Director matchGeneration matches room');
+
+  // Verify Alpha telemetry
+  assert.equal(telemetry.saberAlpha.health, 50);
+  assert.equal(telemetry.saberAlpha.shotsToStagger, 1, '1 shot remaining to stagger at 50 HP');
+  assert.equal(telemetry.saberAlpha.hasDirectorHint, true);
+  assert.deepEqual(telemetry.saberAlpha.intuitionTarget, { x: 12.5, z: -18.2 });
+  assert.equal(telemetry.saberAlpha.intuitionOffset, 7.8);
+  assert.equal(telemetry.saberAlpha.currentNavPath.length, 3, 'Path has 3 waypoints');
+
+  // Verify Beta telemetry
+  assert.equal(telemetry.saberBeta.health, 100);
+  assert.equal(telemetry.saberBeta.shotsToStagger, 2, '2 shots remaining to stagger at 100 HP');
+
+  sim.destroy();
+});
