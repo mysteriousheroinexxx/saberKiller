@@ -33,6 +33,18 @@
       "modelUrl": "assets/items/ammo_box.glb",
       "scale": [1.0, 1.0, 1.0]
     },
+    "pistol_ammo": {
+      "name": "Pistol Ammunition",
+      "category": "ammunition",
+      "modelUrl": "assets/items/ammo_box.glb",
+      "scale": [1.0, 1.0, 1.0]
+    },
+    "shotgun_ammo": {
+      "name": "Shotgun Ammunition",
+      "category": "ammunition",
+      "modelUrl": "assets/items/ammo_box.glb",
+      "scale": [1.0, 1.0, 1.0]
+    },
     "almond_can": {
       "name": "Almond Water Can",
       "category": "consumable",
@@ -67,6 +79,12 @@
       "name": "Brass Door Key",
       "category": "key",
       "modelUrl": "assets/items/doorKey.glb",
+      "scale": [1.0, 1.0, 1.0]
+    },
+    "exit_door": {
+      "name": "Level 0 Exit Door",
+      "category": "environmental",
+      "modelUrl": null,
       "scale": [1.0, 1.0, 1.0]
     },
     "weapon_pistol": {
@@ -151,7 +169,7 @@
     },
     {
       "id": "floor_ammo_box_01",
-      "type": "ammo_box",
+      "type": "pistol_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
       "position": [43.3, 0.0, -188.70],
@@ -194,17 +212,6 @@
       }
     },
     {
-      "id": "floor_door_key_01",
-      "type": "doorKey",
-      "surfaceType": "floor",
-      "surfaceName": "Carpet Floor",
-      "position": [43.1, 0.0, -186.00],
-      "rotation": [0.0, 1.2, 0.0],
-      "anchor": {
-        "surface": "floor"
-      }
-    },
-    {
       "id": "table_first_aid_01",
       "type": "first_aid",
       "surfaceType": "table",
@@ -218,7 +225,7 @@
     },
     {
       "id": "table_ammo_box_01",
-      "type": "ammo_box",
+      "type": "pistol_ammo",
       "surfaceType": "table",
       "surfaceName": "Office Table Top",
       "position": [44.35, 0.936, -185.45],
@@ -265,18 +272,6 @@
       }
     },
     {
-      "id": "table_door_key_01",
-      "type": "doorKey",
-      "surfaceType": "table",
-      "surfaceName": "Office Table Top",
-      "position": [44.15, 0.936, -185.20],
-      "rotation": [0.0, -1.1, 0.0],
-      "anchor": {
-        "surface": "table",
-        "supportProp": "prop_table_01"
-      }
-    },
-    {
       "id": "shelf_ammo_crate_tier1",
       "type": "ammo_crate",
       "surfaceType": "shelf_tier",
@@ -292,7 +287,7 @@
     },
     {
       "id": "shelf_ammo_box_tier2",
-      "type": "ammo_box",
+      "type": "shotgun_ammo",
       "surfaceType": "shelf_tier",
       "shelfTier": 2,
       "surfaceName": "Metal Shelf Tier 2",
@@ -361,6 +356,28 @@
       }
     },
     {
+      "id": "table_door_key_01",
+      "type": "doorKey",
+      "surfaceType": "table",
+      "surfaceName": "Exploration Table",
+      "position": [44.15, 0.936, -185.20],
+      "rotation": [0.0, 0.4, 0.0],
+      "anchor": {
+        "surface": "table"
+      }
+    },
+    {
+      "id": "floor_door_key_01",
+      "type": "doorKey",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [45.0, 0.02, -189.50],
+      "rotation": [0.0, 0.1, 0.0],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
       "id": "shelf_almond_can_tier3",
       "type": "almond_can",
       "surfaceType": "shelf_tier",
@@ -409,6 +426,177 @@
       "anchor": {
         "surface": "floor"
       }
+    },
+    {
+      "id": "floor_pistol_ammo_03",
+      "type": "pistol_ammo",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [45.1, 0.0, -186.2],
+      "rotation": [0.0, 0.1, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "floor_pistol_ammo_04",
+      "type": "pistol_ammo",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [42.1, 0.0, -185.8],
+      "rotation": [0.0, -0.4, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "floor_pistol_ammo_05",
+      "type": "pistol_ammo",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [46.5, 0.0, -184.2],
+      "rotation": [0.0, 0.6, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "floor_pistol_ammo_06",
+      "type": "pistol_ammo",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [47.8, 0.0, -187.0],
+      "rotation": [0.0, 0.2, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "floor_pistol_ammo_07",
+      "type": "pistol_ammo",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [41.2, 0.0, -188.0],
+      "rotation": [0.0, -0.2, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "floor_pistol_ammo_08",
+      "type": "pistol_ammo",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [43.9, 0.0, -183.5],
+      "rotation": [0.0, 0.8, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "floor_pistol_ammo_09",
+      "type": "pistol_ammo",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [45.8, 0.0, -188.5],
+      "rotation": [0.0, 0.3, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "floor_pistol_ammo_10",
+      "type": "pistol_ammo",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [48.2, 0.0, -185.0],
+      "rotation": [0.0, -0.5, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "floor_pistol_ammo_11",
+      "type": "pistol_ammo",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [40.8, 0.0, -186.5],
+      "rotation": [0.0, 0.7, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "floor_pistol_ammo_12",
+      "type": "pistol_ammo",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [42.9, 0.0, -184.0],
+      "rotation": [0.0, -0.1, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "floor_pistol_ammo_13",
+      "type": "pistol_ammo",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [46.2, 0.0, -186.8],
+      "rotation": [0.0, 0.4, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "floor_pistol_ammo_14",
+      "type": "pistol_ammo",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [47.1, 0.0, -183.0],
+      "rotation": [0.0, -0.3, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "floor_pistol_ammo_15",
+      "type": "pistol_ammo",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [41.9, 0.0, -187.2],
+      "rotation": [0.0, 0.5, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "floor_pistol_ammo_16",
+      "type": "pistol_ammo",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [44.8, 0.0, -189.0],
+      "rotation": [0.0, 0.1, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "floor_pistol_ammo_17",
+      "type": "pistol_ammo",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [48.9, 0.0, -186.0],
+      "rotation": [0.0, -0.6, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "floor_pistol_ammo_18",
+      "type": "pistol_ammo",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [43.6, 0.0, -185.1],
+      "rotation": [0.0, 0.2, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "floor_shotgun_ammo_02",
+      "type": "shotgun_ammo",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [41.0, 0.0, -180.5],
+      "rotation": [0.0, 0.3, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "floor_shotgun_ammo_03",
+      "type": "shotgun_ammo",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [39.8, 0.0, -178.9],
+      "rotation": [0.0, -0.4, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "level0_exit_door",
+      "type": "exit_door",
+      "surfaceType": "floor",
+      "surfaceName": "Transit Gateway",
+      "position": [79.55, 0.0, 207.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "anchor": { "surface": "floor" }
     }
   ]
 }

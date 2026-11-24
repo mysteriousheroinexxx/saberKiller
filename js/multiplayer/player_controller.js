@@ -9,6 +9,7 @@ export class LocalPlayerController {
     this.scene = scene;
     this.networkClient = networkClient;
     this.collisionHandler = collisionHandler;
+    this.saberManager = null;
 
     this.pos = new THREE.Vector3(48.69, 0.0, -187.65);
     this.yaw = 0.0;
@@ -107,10 +108,44 @@ export class LocalPlayerController {
     this.pos.set(spawn.x, spawn.y || 0.0, spawn.z);
     this.yaw = spawn.yaw || 0.0;
     this.pitch = spawn.pitch || 0.0;
-    this.camera.position.set(this.pos.x, 1.62, this.pos.z);
+    this.currentCameraY = (spawn.y || 0.0) + 1.62;
+    this.camera.position.set(this.pos.x, this.currentCameraY, this.pos.z);
     this.camera.rotation.order = 'YXZ';
     this.camera.rotation.y = this.yaw;
     this.camera.rotation.x = this.pitch;
+  }
+
+  /**
+   * Authoritative player teleportation for developer debugging and map exploration.
+   * Immediately relocates player position, updates camera, and synchronizes authoritative
+   * position state to server and remote peers.
+   */
+  teleport(x, y, z, yaw = null, pitch = null) {
+    if (typeof x === 'number' && !isNaN(x)) this.pos.x = x;
+    if (typeof y === 'number' && !isNaN(y)) this.pos.y = y;
+    if (typeof z === 'number' && !isNaN(z)) this.pos.z = z;
+    if (typeof yaw === 'number' && !isNaN(yaw)) this.yaw = yaw;
+    if (typeof pitch === 'number' && !isNaN(pitch)) this.pitch = pitch;
+
+    this.bob = 0;
+    this.currentCameraY = (typeof y === 'number' && !isNaN(y)) ? y + 1.62 : ((this.pos.y || 0.0) + 1.62);
+    if (this.camera) {
+      this.camera.position.set(this.pos.x, this.currentCameraY, this.pos.z);
+      this.camera.rotation.order = 'YXZ';
+      this.camera.rotation.y = this.yaw;
+      this.camera.rotation.x = this.pitch;
+    }
+
+    if (this.networkClient && this.networkClient.isConnected) {
+      this.networkClient.sendUpdate(
+        +this.pos.x.toFixed(3),
+        +this.pos.y.toFixed(3),
+        +this.pos.z.toFixed(3),
+        +this.yaw.toFixed(4),
+        +this.pitch.toFixed(4),
+        this.weapon ?? 2
+      );
+    }
   }
 
   setEditorActive(active) {
@@ -122,6 +157,37 @@ export class LocalPlayerController {
         } catch (e) {}
       }
       this.keys = {};
+    }
+  }
+
+  setSaberManager(saberManager) {
+    this.saberManager = saberManager;
+  }
+
+  _performMonsterHitscan(weaponType) {
+    if (!this.saberManager || !this.networkClient) return;
+    const hitboxes = this.saberManager.getHitboxes();
+    if (!hitboxes || hitboxes.length === 0) return;
+
+    const raycaster = new THREE.Raycaster();
+    const eyePos = new THREE.Vector3(this.pos.x, (this.currentCameraY || 1.62), this.pos.z);
+    const dir = new THREE.Vector3();
+    this.camera.getWorldDirection(dir);
+    raycaster.set(eyePos, dir);
+    raycaster.far = (weaponType === 'SHOTGUN') ? 28.0 : 45.0;
+
+    const intersects = raycaster.intersectObjects(hitboxes, false);
+    if (intersects.length > 0) {
+      const hit = intersects[0];
+      const targetMonsterId = hit.object.userData?.monsterId;
+      if (targetMonsterId) {
+        // Combat balance: Beretta Px4 pistol = 50 damage (2 shots to stagger), Coach Gun = 100 damage (1 blast to stagger)
+        const dmg = (weaponType === 'SHOTGUN') ? 100 : 50;
+        this.networkClient.attackMonster(targetMonsterId, dmg, weaponType);
+        if (typeof this.saberManager.triggerHitEffect === 'function') {
+          this.saberManager.triggerHitEffect(targetMonsterId, hit.point);
+        }
+      }
     }
   }
 
@@ -473,7 +539,12 @@ export class LocalPlayerController {
       this.battery = Math.min(this.maxBattery, this.battery + effect.batteryCharge);
     }
     if (typeof effect.rounds === 'number') {
-      this.bullets = Math.min(120, this.bullets + effect.rounds);
+      if (effect.ammoKey === 'shells' || effect.ammoType === 'shells' || effect.weapon === 'shotgun') {
+        this.shells = Math.min(12, (this.shells || 0) + effect.rounds);
+      } else {
+        this.bullets = Math.min(48, (this.bullets || 0) + effect.rounds);
+      }
+      this._notifyStateChange();
     }
     if (typeof effect.staminaBoost === 'number') {
       this.stamina = Math.min(this.maxStamina, this.stamina + effect.staminaBoost);
@@ -529,18 +600,31 @@ export class LocalPlayerController {
     if (hasPistol && !this._discoveredWeapons.has('weapon_pistol')) {
       this._discoveredWeapons.add('weapon_pistol');
       this.mag.bullets = 12;
-      this.bullets = Math.max(this.bullets, 36);
+      // Fixed Ammunition Economy: Do NOT generate additional reserve ammunition on discovery
       stateChanged = true;
     }
     if (hasShotgun && !this._discoveredWeapons.has('weapon_shotgun')) {
       this._discoveredWeapons.add('weapon_shotgun');
       this.mag.shells = 6;
-      this.shells = Math.max(this.shells, 6);
+      // Fixed Ammunition Economy: Do NOT generate additional reserve ammunition on discovery
       stateChanged = true;
     }
     if (stateChanged) {
       this._notifyStateChange();
     }
+  }
+
+  addReserveAmmo(ammoType, rounds = 2) {
+    if (ammoType === 'bullets' || ammoType === 'pistol_ammo' || ammoType === 'weapon_pistol') {
+      this.bullets = Math.min(48, (this.bullets || 0) + rounds);
+      this._notifyStateChange();
+      return this.bullets;
+    } else if (ammoType === 'shells' || ammoType === 'shotgun_ammo' || ammoType === 'weapon_shotgun') {
+      this.shells = Math.min(12, (this.shells || 0) + rounds);
+      this._notifyStateChange();
+      return this.shells;
+    }
+    return 0;
   }
 
   playCanThrowAnimation() {
@@ -665,6 +749,11 @@ export class LocalPlayerController {
       this.pitch = Math.max(-1.48, Math.min(1.48, this.pitch + 0.016));
       this._triggerMuzzleFlash(0);
 
+      if (this.networkClient) {
+        this.networkClient.fireWeapon('PISTOL', { x: this.pos.x, y: this.pos.y, z: this.pos.z });
+      }
+      this._performMonsterHitscan('PISTOL');
+
       this.firingDiagnostics.lastRejectionReason = 'NONE';
 
       if (this.mag.bullets === 0 && this.bullets > 0) {
@@ -688,6 +777,11 @@ export class LocalPlayerController {
       this.recoilKick = 0.09;
       this.pitch = Math.max(-1.48, Math.min(1.48, this.pitch + 0.038));
       this._triggerMuzzleFlash(1);
+
+      if (this.networkClient) {
+        this.networkClient.fireWeapon('SHOTGUN', { x: this.pos.x, y: this.pos.y, z: this.pos.z });
+      }
+      this._performMonsterHitscan('SHOTGUN');
 
       this.firingDiagnostics.lastRejectionReason = 'NONE';
 
@@ -793,6 +887,40 @@ export class LocalPlayerController {
     if (typeof revivalsUsed === 'number') {
       this.revivalsUsed = revivalsUsed;
     }
+  }
+
+  resetCombatState() {
+    this.setState('ACTIVE', 0);
+    this.setHp(100);
+    this.camera.position.y = 1.62;
+    this.currentCameraY = 1.62;
+    this.cameraTargetY = 1.62;
+    this.stamina = 100.0;
+    this._staminaExhausted = false;
+    this.speedMultiplier = 1.0;
+    this.speedBoostTimer = 0.0;
+    this.activeEffects = [];
+    this.isCrawling = false;
+    this.isSprinting = false;
+    this.weapon = 2; // Torch / Tactical Flashlight in slot 0 (0 is pistol, 1 is shotgun, 2 is torch)
+    this._discoveredWeapons.clear();
+    this.mag = { bullets: 0, shells: 0 };
+    this.bullets = 0;
+    this.shells = 0;
+    this.ammo = 0;
+    this.reserveAmmo = 0;
+    this.reloadT = 0;
+    this.reloadWeapon = -1;
+    this._clearHeldItem();
+    this._updateViewmodelVisibility();
+  }
+
+  get discoveredWeapons() {
+    return this._discoveredWeapons;
+  }
+
+  get health() {
+    return this.hp;
   }
 
   setHp(hp) {
@@ -994,7 +1122,8 @@ export class LocalPlayerController {
             +this.pos.z.toFixed(3),
             +this.yaw.toFixed(4),
             +this.pitch.toFixed(4),
-            this.weapon
+            this.weapon,
+            this.isSprinting
           );
         }
       }
@@ -1082,7 +1211,8 @@ export class LocalPlayerController {
     }
 
     // 2. Camera positioning & bobbing
-    this.currentCameraY += (1.62 - this.currentCameraY) * Math.min(1.0, dt * 6.0);
+    const targetEyeY = (this.pos.y || 0.0) + 1.62;
+    this.currentCameraY += (targetEyeY - this.currentCameraY) * Math.min(1.0, dt * 6.0);
     const bobY = len > 0 ? Math.sin(this.bob) * 0.04 : 0;
     this.camera.position.set(this.pos.x, this.currentCameraY + bobY, this.pos.z);
     this.camera.rotation.order = 'YXZ';
@@ -1104,7 +1234,8 @@ export class LocalPlayerController {
           +this.pos.z.toFixed(3),
           +this.yaw.toFixed(4),
           +this.pitch.toFixed(4),
-          this.weapon
+          this.weapon,
+          this.isSprinting
         );
       }
     }

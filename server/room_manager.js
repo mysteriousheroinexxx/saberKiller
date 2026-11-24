@@ -1,7 +1,26 @@
 // Saber Killer Room & Player Session Manager
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { MAX_PLAYERS_PER_ROOM, isValidNumber } from './protocol.js';
 import { InventoryController } from '../js/multiplayer/inventory_controller.js';
 import { isPickupItem, getItemDefinition, ITEM_EFFECTS_CONFIG } from '../js/multiplayer/item_catalog.js';
+import { RoomSimulation } from './ai/room_simulation.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DEFAULT_LAYOUT_PATH = path.join(__dirname, '../assets/data/world_items.json');
+
+function loadDefaultLayout() {
+  try {
+    if (fs.existsSync(DEFAULT_LAYOUT_PATH)) {
+      return JSON.parse(fs.readFileSync(DEFAULT_LAYOUT_PATH, 'utf8'));
+    }
+  } catch (e) {
+    console.warn('[RoomManager] Failed to read fallback layout:', e.message);
+  }
+  return null;
+}
 
 // Configurable Survival Mode Health, Damage & Revival Parameters
 export const SURVIVAL_CONFIG = {
@@ -10,8 +29,10 @@ export const SURVIVAL_CONFIG = {
   revivedHp: 50,
   maxRevivalsPerRun: 1,
   maxReviveDistance: 2.8,
+  keysPerStartingPlayer: 1,
   damageValues: {
     ZOMBIE_HIT: 25,
+    SABER_ATTACK: 25,
     HAZARD: 20,
     DEV_TEST: 25,
     DEFAULT: 25
@@ -24,6 +45,7 @@ export function configureSurvivalRules(opts = {}) {
   if (typeof opts.revivedHp === 'number') SURVIVAL_CONFIG.revivedHp = Math.max(1, opts.revivedHp);
   if (typeof opts.maxRevivalsPerRun === 'number') SURVIVAL_CONFIG.maxRevivalsPerRun = Math.max(0, opts.maxRevivalsPerRun);
   if (typeof opts.maxReviveDistance === 'number') SURVIVAL_CONFIG.maxReviveDistance = Math.max(0, opts.maxReviveDistance);
+  if (typeof opts.keysPerStartingPlayer === 'number') SURVIVAL_CONFIG.keysPerStartingPlayer = Math.max(1, Math.floor(opts.keysPerStartingPlayer));
   if (opts.damageValues && typeof opts.damageValues === 'object') {
     SURVIVAL_CONFIG.damageValues = { ...SURVIVAL_CONFIG.damageValues, ...opts.damageValues };
   }
@@ -35,6 +57,27 @@ export const VENDING_CONFIG = {
   defaultMaxStock: 5,
   cooldownMs: 1000,
   maxInteractionDistance: 2.8
+};
+
+// Fixed Ammunition Economy Configuration (Level 0 Room Budget)
+export const AMMO_CONFIG = {
+  pistol: {
+    maxTotal: 48,
+    magCapacity: 12,
+    roundsPerBox: 2,
+    boxType: 'pistol_ammo',
+    ammoKey: 'bullets',
+    requiredBoxes: 18 // 18 boxes * 2 rounds = 36 rounds (+ 12 loaded in weapon = 48)
+  },
+  shotgun: {
+    maxTotal: 12,
+    magCapacity: 6,
+    roundsPerBox: 2,
+    boxType: 'shotgun_ammo',
+    ammoKey: 'shells',
+    requiredBoxes: 3 // 3 boxes * 2 rounds = 6 rounds (+ 6 loaded in weapon = 12)
+  },
+  totalBudget: 60
 };
 
 export function configureVendingMachine(opts = {}) {
@@ -103,28 +146,51 @@ export class RoomManager {
       revivalsUsed: 0,
       isDead: false,
       isDowned: false,
+      bullets: 0,
+      shells: 0,
+      mag: { bullets: 0, shells: 0 },
+      discoveredWeapons: new Set(),
       lastUpdate: 0,
       seq: 0
     };
     player.inventory.initDefaultLoadout();
+
+    const activeLayout = layoutData || loadDefaultLayout();
 
     const room = {
       code: roomCode,
       createdAt: Date.now(),
       leaderId: playerId,
       layoutRevision: (typeof layoutRevision === 'string' && layoutRevision.trim()) ? layoutRevision.trim() : 'default',
+      rawLayoutData: activeLayout,
       players: new Map([[playerId, player]]),
       worldItems: new Map(),
+      doors: new Map(),
       pickupRequests: new Map(),
+      useRequests: new Map(),
       runState: (options && (options.directStart || typeof options.startingPlayers === 'number')) ? 'IN_PROGRESS' : 'LOBBY', // 'LOBBY', 'IN_PROGRESS', 'GAME_OVER'
       healthPacksFrozen: false,
       startingPlayerCount: 0,
-      availableHealthPackCount: 0
+      availableHealthPackCount: 0,
+      simulation: null
     };
 
+    // Initialize room exit door
+    const defaultDoorPos = [79.55, 0.0, 207.0];
+    room.doors.set('level0_exit_door', {
+      id: 'level0_exit_door',
+      type: 'exit_door',
+      name: 'Level 0 Exit Door',
+      locked: true,
+      requiredKey: 'doorKey',
+      position: defaultDoorPos,
+      unlockedBy: null,
+      unlockedAt: null
+    });
+
     // Initialize room world pickup state from frozen layout
-    if (layoutData && Array.isArray(layoutData.placements)) {
-      for (const p of layoutData.placements) {
+    if (activeLayout && Array.isArray(activeLayout.placements)) {
+      for (const p of activeLayout.placements) {
         const isPickup = isPickupItem(p.type);
         const isVending = (p.type === 'vending_almond');
         const maxStock = isVending
@@ -134,7 +200,7 @@ export class RoomManager {
         room.worldItems.set(p.id, {
           id: p.id,
           type: p.type,
-          category: p.category || (layoutData.catalog?.[p.type]?.category) || 'prop',
+          category: p.category || (activeLayout.catalog?.[p.type]?.category) || 'prop',
           position: Array.isArray(p.position) ? [p.position[0], p.position[1], p.position[2]] : [0, 0, 0],
           rotation: Array.isArray(p.rotation) ? [p.rotation[0], p.rotation[1], p.rotation[2]] : [0, 0, 0],
           isPickup,
@@ -154,8 +220,21 @@ export class RoomManager {
       this._freezeRoomHealthPacks(room, options.startingPlayers);
     }
 
+    // Fixed Ammunition Economy: Initialize and enforce Level 0 room budget
+    this._initializeRoomAmmo(room);
+
+    // Level 0 Key & Exit Door: Configure physical keys based on starting player count
+    const startingCount = (options && typeof options.startingPlayers === 'number' && options.startingPlayers > 0)
+      ? options.startingPlayers
+      : (options?.directStart ? room.players.size : 1);
+    this._configureRoomKeys(room, startingCount);
+
     this.rooms.set(roomCode, room);
     this.clientToRoom.set(ws, { roomCode, playerId });
+
+    if (room.runState === 'IN_PROGRESS') {
+      this._initializeRoomSimulation(room);
+    }
 
     // Collect any world items that are unavailable from the start (e.g. capped health packs)
     const collectedItems = [];
@@ -175,6 +254,7 @@ export class RoomManager {
       layoutRevision: room.layoutRevision,
       collectedItems,
       spawnedItems: [],
+      doors: this.serializeDoors(room),
       inventory: player.inventory.serialize()
     };
   }
@@ -215,6 +295,208 @@ export class RoomManager {
     return this._freezeRoomHealthPacks(room, startingCount);
   }
 
+  /**
+   * Fixed Ammunition Economy: Initializes room world items to guarantee exactly
+   * 48 pistol bullets (12 in weapon magazine + 18 boxes * 2 rounds) and
+   * 12 shotgun shells (6 in weapon magazine + 3 boxes * 2 rounds).
+   * Total budget: 60 ammunition units.
+   */
+  _initializeRoomAmmo(room) {
+    // 1. Ensure weapon pickups exist in room
+    if (![...room.worldItems.values()].some(i => i.type === 'weapon_pistol')) {
+      room.worldItems.set('floor_weapon_pistol_01', {
+        id: 'floor_weapon_pistol_01',
+        type: 'weapon_pistol',
+        category: 'weapon',
+        position: [44.2, 0.0, -187.5],
+        rotation: [0, 0, 0],
+        isPickup: true,
+        available: true,
+        collectedBy: null,
+        collectedAt: null
+      });
+    }
+    if (![...room.worldItems.values()].some(i => i.type === 'weapon_shotgun')) {
+      room.worldItems.set('floor_weapon_shotgun_01', {
+        id: 'floor_weapon_shotgun_01',
+        type: 'weapon_shotgun',
+        category: 'weapon',
+        position: [40.5, 0.0, -179.8],
+        rotation: [0, 0, 0],
+        isPickup: true,
+        available: true,
+        collectedBy: null,
+        collectedAt: null
+      });
+    }
+
+    // Convert any legacy ammo_box items to pistol_ammo
+    for (const [_, item] of room.worldItems) {
+      if (item.type === 'ammo_box') {
+        item.type = 'pistol_ammo';
+      }
+    }
+
+    // 2. Default Level 0 positions for pistol_ammo boxes (18 total needed)
+    const defaultPistolPositions = [
+      [43.3, 0.0, -188.70], [44.35, 0.936, -185.45], [45.1, 0.0, -186.2], [42.1, 0.0, -185.8],
+      [46.5, 0.0, -184.2], [47.8, 0.0, -187.0], [41.2, 0.0, -188.0], [43.9, 0.0, -183.5],
+      [45.8, 0.0, -188.5], [48.2, 0.0, -185.0], [40.8, 0.0, -186.5], [42.9, 0.0, -184.0],
+      [46.2, 0.0, -186.8], [47.1, 0.0, -183.0], [41.9, 0.0, -187.2], [44.8, 0.0, -189.0],
+      [48.9, 0.0, -186.0], [43.6, 0.0, -185.1]
+    ];
+
+    // Default Level 0 positions for shotgun_ammo boxes (3 total needed)
+    const defaultShotgunPositions = [
+      [44.3, 0.715, -189.50], [41.0, 0.0, -180.5], [39.8, 0.0, -178.9]
+    ];
+
+    let pCount = [...room.worldItems.values()].filter(i => i.type === 'pistol_ammo').length;
+    let pIdx = pCount + 1;
+    while (pCount < AMMO_CONFIG.pistol.requiredBoxes) {
+      const pos = defaultPistolPositions[pCount] || [45.0 + pCount * 0.3, 0.0, -186.0];
+      const id = `floor_pistol_ammo_${String(pIdx++).padStart(2, '0')}`;
+      room.worldItems.set(id, {
+        id,
+        type: 'pistol_ammo',
+        category: 'ammunition',
+        position: pos,
+        rotation: [0, 0, 0],
+        isPickup: true,
+        available: true,
+        collectedBy: null,
+        collectedAt: null
+      });
+      pCount++;
+    }
+
+    let sCount = [...room.worldItems.values()].filter(i => i.type === 'shotgun_ammo').length;
+    let sIdx = sCount + 1;
+    while (sCount < AMMO_CONFIG.shotgun.requiredBoxes) {
+      const pos = defaultShotgunPositions[sCount] || [41.0 + sCount * 0.5, 0.0, -180.0];
+      const id = `floor_shotgun_ammo_${String(sIdx++).padStart(2, '0')}`;
+      room.worldItems.set(id, {
+        id,
+        type: 'shotgun_ammo',
+        category: 'ammunition',
+        position: pos,
+        rotation: [0, 0, 0],
+        isPickup: true,
+        available: true,
+        collectedBy: null,
+        collectedAt: null
+      });
+      sCount++;
+    }
+  }
+
+  /**
+   * Room-wide authoritative ammunition accounting
+   * Counts all ammunition across:
+   * 1. Loaded weapon magazines (held by players or in unclaimed world weapons)
+   * 2. Player reserve ammunition (bullets & shells across all players)
+   * 3. Unclaimed ammunition boxes in the world (at exactly 2 rounds per box)
+   */
+  getRoomAmmoAccounting(roomCode) {
+    const room = this.rooms.get(roomCode);
+    if (!room) return null;
+
+    let pistolLoaded = 0;
+    let shotgunLoaded = 0;
+    let pistolReserve = 0;
+    let shotgunReserve = 0;
+
+    let anyPlayerDiscoveredPistol = false;
+    let anyPlayerDiscoveredShotgun = false;
+
+    for (const [_, p] of room.players) {
+      pistolReserve += (p.bullets || 0);
+      shotgunReserve += (p.shells || 0);
+      pistolLoaded += (p.mag?.bullets || 0);
+      shotgunLoaded += (p.mag?.shells || 0);
+      if (p.discoveredWeapons?.has('weapon_pistol') || p.inventory?.hasItem('weapon_pistol')) {
+        anyPlayerDiscoveredPistol = true;
+      }
+      if (p.discoveredWeapons?.has('weapon_shotgun') || p.inventory?.hasItem('weapon_shotgun')) {
+        anyPlayerDiscoveredShotgun = true;
+      }
+    }
+
+    // If weapon is still in the world (unclaimed), count its loaded magazine rounds
+    for (const [_, item] of room.worldItems) {
+      if (item.available) {
+        if (item.type === 'weapon_pistol' && !anyPlayerDiscoveredPistol) {
+          pistolLoaded += AMMO_CONFIG.pistol.magCapacity;
+        } else if (item.type === 'weapon_shotgun' && !anyPlayerDiscoveredShotgun) {
+          shotgunLoaded += AMMO_CONFIG.shotgun.magCapacity;
+        }
+      }
+    }
+
+    let worldPistolBoxes = 0;
+    let worldShotgunBoxes = 0;
+
+    for (const [_, item] of room.worldItems) {
+      if (item.available) {
+        if (item.type === 'pistol_ammo' || item.type === 'ammo_box') {
+          worldPistolBoxes += (item.quantity || 1);
+        } else if (item.type === 'shotgun_ammo') {
+          worldShotgunBoxes += (item.quantity || 1);
+        }
+      }
+    }
+
+    let inventoryPistolBoxes = 0;
+    let inventoryShotgunBoxes = 0;
+
+    for (const [_, p] of room.players) {
+      if (p.inventory) {
+        inventoryPistolBoxes += (p.inventory.getCount('pistol_ammo') + p.inventory.getCount('ammo_box'));
+        inventoryShotgunBoxes += p.inventory.getCount('shotgun_ammo');
+      }
+    }
+
+    const totalUnusedPistolBoxes = worldPistolBoxes + inventoryPistolBoxes;
+    const totalUnusedShotgunBoxes = worldShotgunBoxes + inventoryShotgunBoxes;
+
+    const unclaimedPistolRounds = worldPistolBoxes * AMMO_CONFIG.pistol.roundsPerBox;
+    const unclaimedShotgunRounds = worldShotgunBoxes * AMMO_CONFIG.shotgun.roundsPerBox;
+    const unusedPistolRounds = totalUnusedPistolBoxes * AMMO_CONFIG.pistol.roundsPerBox;
+    const unusedShotgunRounds = totalUnusedShotgunBoxes * AMMO_CONFIG.shotgun.roundsPerBox;
+
+    const totalPistol = pistolLoaded + pistolReserve + unusedPistolRounds;
+    const totalShotgun = shotgunLoaded + shotgunReserve + unusedShotgunRounds;
+
+    return {
+      pistol: {
+        loaded: pistolLoaded,
+        reserve: pistolReserve,
+        worldBoxes: worldPistolBoxes,
+        inventoryBoxes: inventoryPistolBoxes,
+        unclaimedBoxes: worldPistolBoxes,
+        unusedBoxes: totalUnusedPistolBoxes,
+        unclaimedRounds: unclaimedPistolRounds,
+        unusedRounds: unusedPistolRounds,
+        total: totalPistol,
+        max: AMMO_CONFIG.pistol.maxTotal
+      },
+      shotgun: {
+        loaded: shotgunLoaded,
+        reserve: shotgunReserve,
+        worldBoxes: worldShotgunBoxes,
+        inventoryBoxes: inventoryShotgunBoxes,
+        unclaimedBoxes: worldShotgunBoxes,
+        unusedBoxes: totalUnusedShotgunBoxes,
+        unclaimedRounds: unclaimedShotgunRounds,
+        unusedRounds: unusedShotgunRounds,
+        total: totalShotgun,
+        max: AMMO_CONFIG.shotgun.maxTotal
+      },
+      totalBudget: AMMO_CONFIG.totalBudget,
+      totalUnits: totalPistol + totalShotgun
+    };
+  }
+
   joinRoom(ws, roomCode, options = {}) {
     const code = (roomCode || '').trim().toUpperCase();
     const room = this.rooms.get(code);
@@ -248,6 +530,10 @@ export class RoomManager {
       revivalsUsed: 0,
       isDead: false,
       isDowned: false,
+      bullets: 0,
+      shells: 0,
+      mag: { bullets: 0, shells: 0 },
+      discoveredWeapons: new Set(),
       lastUpdate: 0,
       seq: 0
     };
@@ -277,13 +563,16 @@ export class RoomManager {
     for (const [id, item] of room.worldItems) {
       if (item.isPickup && !item.available) {
         collectedItems.push(id);
-      } else if ((item.isDropped || item.isDispensed) && item.available) {
+      } else if ((item.isDropped || item.isDispensed || item.isGenerated) && item.available) {
         spawnedItems.push(item);
       }
     }
 
     room.players.set(playerId, player);
     this.clientToRoom.set(ws, { roomCode: code, playerId });
+
+    // Register player in active room simulation if already running
+    room.simulation?.addPlayer(player);
 
     return {
       roomCode: code,
@@ -296,6 +585,7 @@ export class RoomManager {
       layoutRevision: room.layoutRevision || 'default',
       collectedItems,
       spawnedItems,
+      doors: this.serializeDoors(room),
       inventory: player.inventory.serialize()
     };
   }
@@ -336,7 +626,8 @@ export class RoomManager {
 
     if (!item.available) {
       if (item.cappedUnavailable) {
-        return { error: `Item '${itemId}' is unavailable (Health Pack supply capped by starting player count)`, room, player };
+        const itemLabel = (item.type === 'doorKey') ? 'Key' : ((item.type === 'first_aid') ? 'Health Pack' : 'Item');
+        return { error: `Item '${itemId}' is unavailable (${itemLabel} supply capped by starting player count)`, room, player };
       }
       return { error: `Item '${itemId}' has already been collected by player ${item.collectedBy}`, room, player };
     }
@@ -375,8 +666,25 @@ export class RoomManager {
       return { error: `Player too far from item (${dist.toFixed(2)}m > 2.1m limit)`, room, player };
     }
 
+    // Weapon discovery logic: Discovered weapons start with loaded magazine, no reserve ammo
+    if (item.type === 'weapon_pistol') {
+      if (!player.discoveredWeapons.has('weapon_pistol')) {
+        player.discoveredWeapons.add('weapon_pistol');
+        player.mag.bullets = AMMO_CONFIG.pistol.magCapacity;
+      }
+    } else if (item.type === 'weapon_shotgun') {
+      if (!player.discoveredWeapons.has('weapon_shotgun')) {
+        player.discoveredWeapons.add('weapon_shotgun');
+        player.mag.shells = AMMO_CONFIG.shotgun.magCapacity;
+      }
+    }
+
+    // Ammunition box pickups: do NOT grant reserve ammunition on pickup.
+    // Boxes are consumable inventory items that must be used from inventory to gain reserve rounds.
+    let ammoUpdate = null;
+
     // Add item to player's authoritative inventory
-    const addResult = player.inventory.addItem(item.type, 1);
+    const addResult = player.inventory.addItem(item.type, item.quantity || 1);
     if (!addResult.success) {
       return { error: addResult.reason || 'Player inventory is full', room, player };
     }
@@ -391,7 +699,8 @@ export class RoomManager {
       room,
       player,
       item,
-      inventory: player.inventory.serialize()
+      inventory: player.inventory.serialize(),
+      ammoUpdate
     };
   }
 
@@ -400,16 +709,16 @@ export class RoomManager {
    */
   handleUseItem(ws, slotIndex, instanceId = null) {
     const meta = this.clientToRoom.get(ws);
-    if (!meta) return { error: 'Client not associated with any active room session' };
+    if (!meta) return { success: false, error: 'Client not associated with any active room session' };
 
     const room = this.rooms.get(meta.roomCode);
-    if (!room) return { error: `Room ${meta.roomCode} does not exist` };
+    if (!room) return { success: false, error: `Room ${meta.roomCode} does not exist` };
 
     const player = room.players.get(meta.playerId);
-    if (!player) return { error: `Player ${meta.playerId} not found in room` };
+    if (!player) return { success: false, error: `Player ${meta.playerId} not found in room` };
 
     if (player.state === 'DOWNED' || player.state === 'ELIMINATED') {
-      return { error: `Player is ${player.state.toLowerCase()} and cannot use items`, room, player };
+      return { success: false, error: `Player is ${player.state.toLowerCase()} and cannot use items`, room, player };
     }
 
     let item = null;
@@ -426,12 +735,12 @@ export class RoomManager {
     }
 
     if (!item) {
-      return { error: 'Item not found in player inventory', room, player };
+      return { success: false, error: 'Item not found in player inventory', room, player };
     }
 
     const def = getItemDefinition(item.typeId);
     if (!def || !def.consumable) {
-      return { error: `Item '${item.name}' cannot be consumed`, room, player };
+      return { success: false, error: `Item '${item.name}' cannot be consumed`, room, player };
     }
 
     const effectConfig = ITEM_EFFECTS_CONFIG[item.typeId] || def.metadata || {};
@@ -439,11 +748,33 @@ export class RoomManager {
     // Remove exactly 1 unit from inventory
     const removeRes = player.inventory.removeItem(targetSlot, 1);
     if (!removeRes.success) {
-      return { error: 'Failed to consume item from slot', room, player };
+      return { success: false, error: 'Failed to consume item from slot', room, player };
     }
 
     const remainingItem = player.inventory.getItem(targetSlot);
     const remainingQuantity = remainingItem ? remainingItem.quantity : 0;
+
+    // Ammunition box consumption: atomically grants exactly 2 rounds to compatible weapon reserve
+    let ammoUpdate = null;
+    if (item.typeId === 'pistol_ammo' || item.typeId === 'ammo_box') {
+      player.bullets = (player.bullets || 0) + AMMO_CONFIG.pistol.roundsPerBox;
+      ammoUpdate = {
+        type: item.typeId,
+        ammoKey: 'bullets',
+        rounds: AMMO_CONFIG.pistol.roundsPerBox,
+        bullets: player.bullets,
+        shells: player.shells
+      };
+    } else if (item.typeId === 'shotgun_ammo') {
+      player.shells = (player.shells || 0) + AMMO_CONFIG.shotgun.roundsPerBox;
+      ammoUpdate = {
+        type: item.typeId,
+        ammoKey: 'shells',
+        rounds: AMMO_CONFIG.shotgun.roundsPerBox,
+        bullets: player.bullets,
+        shells: player.shells
+      };
+    }
 
     return {
       success: true,
@@ -453,6 +784,7 @@ export class RoomManager {
       itemName: item.name,
       slotIndex: targetSlot,
       effect: effectConfig,
+      ammoUpdate,
       remainingQuantity,
       inventory: player.inventory.serialize()
     };
@@ -692,8 +1024,13 @@ export class RoomManager {
     if (!room) return null;
 
     room.players.delete(playerId);
+    room.simulation?.removePlayer(playerId);
 
     if (room.players.size === 0) {
+      if (room.simulation) {
+        room.simulation.destroy();
+        room.simulation = null;
+      }
       this.rooms.delete(roomCode);
       return { roomCode, playerId, roomDeleted: true, remainingPlayers: 0 };
     }
@@ -762,6 +1099,111 @@ export class RoomManager {
     };
   }
 
+  /**
+   * Authoritatively initializes a clean run state for a match.
+   * Full reset of:
+   * - Players: 100 HP, 100 Sanity, ACTIVE, 0 revivalsUsed, clean starting loadout
+   * - World: world items re-derived from rawLayoutData, ammo economy reset, door locked
+   * - AI: previous simulation destroyed, fresh 20Hz simulation instantiated, Sabers at home spawns
+   * - matchGeneration incremented to invalidate stale callbacks
+   */
+  _initializeRunState(room) {
+    room.matchGeneration = (room.matchGeneration || 0) + 1;
+    const currentGen = room.matchGeneration;
+
+    // 1. Destroy old simulation instance and stop its loop
+    if (room.simulation) {
+      room.simulation.destroy();
+      room.simulation = null;
+    }
+
+    // 2. Clear all mutable world items and re-derive from rawLayoutData
+    room.worldItems.clear();
+    room.healthPacksFrozen = false;
+    room.availableHealthPackCount = 0;
+
+    if (!room.rawLayoutData) {
+      room.rawLayoutData = loadDefaultLayout();
+    }
+    const layoutData = room.rawLayoutData;
+    if (layoutData && Array.isArray(layoutData.placements)) {
+      for (const p of layoutData.placements) {
+        const isPickup = isPickupItem(p.type);
+        const isVending = (p.type === 'vending_almond');
+        const maxStock = isVending
+          ? ((p.metadata && typeof p.metadata.maxStock === 'number') ? p.metadata.maxStock : VENDING_CONFIG.defaultMaxStock)
+          : undefined;
+
+        room.worldItems.set(p.id, {
+          id: p.id,
+          type: p.type,
+          category: p.category || (layoutData.catalog?.[p.type]?.category) || 'prop',
+          position: Array.isArray(p.position) ? [p.position[0], p.position[1], p.position[2]] : [0, 0, 0],
+          rotation: Array.isArray(p.rotation) ? [p.rotation[0], p.rotation[1], p.rotation[2]] : [0, 0, 0],
+          isPickup,
+          available: isPickup,
+          collectedBy: null,
+          collectedAt: null,
+          stock: maxStock,
+          maxStock: maxStock
+        });
+      }
+    }
+
+    // Re-initialize fixed ammunition economy
+    this._initializeRoomAmmo(room);
+
+    // Freeze Health Pack economy using starting player count at actual match start
+    this._freezeRoomHealthPacks(room, room.players.size);
+
+    // Reset exit door to locked
+    const door = room.doors?.get('level0_exit_door');
+    if (door) {
+      door.locked = true;
+      door.unlockedBy = null;
+      door.unlockedAt = null;
+    }
+
+    // Configure keys authoritatively based on starting players
+    const spawnedKeys = this._configureRoomKeys(room, room.players.size);
+
+    // 3. Reset all players to clean run state
+    for (const [id, player] of room.players) {
+      player.hp = SURVIVAL_CONFIG.startingHp;
+      player.maxHp = SURVIVAL_CONFIG.maxHp;
+      player.sanity = 100;
+      player.maxSanity = 100;
+      player.state = 'ACTIVE';
+      player.revivalsUsed = 0;
+      player.downedAt = null;
+      player.eliminatedAt = null;
+      player.isDead = false;
+      player.isDowned = false;
+      player.inventory = new InventoryController(30);
+      player.inventory.initDefaultLoadout();
+      player.equipment = {
+        flashlight: true,
+        primary: null,
+        secondary: null
+      };
+      player.ammoReserves = {
+        pistol: 0,
+        shotgun: 0
+      };
+      player.bullets = 0;
+      player.shells = 0;
+      player.mag = { bullets: 0, shells: 0 };
+      player.discoveredWeapons = new Set();
+      player.weapons = [];
+      player.isReady = (player.id === room.leaderId);
+    }
+
+    // 4. Instantiate fresh authoritative Saber AI simulation
+    this._initializeRoomSimulation(room);
+
+    return { currentGen, spawnedKeys };
+  }
+
   startMatch(ws) {
     const session = this.getPlayer(ws);
     if (!session) return { error: 'Client not associated with any active room session' };
@@ -771,29 +1213,29 @@ export class RoomManager {
       return { error: 'Only the room leader can start the match.', room, player };
     }
 
-    if (room.runState !== 'LOBBY') {
+    if (room.runState !== 'LOBBY' && room.runState !== 'GAME_OVER') {
       return { error: 'Match has already started.', room, player };
     }
 
-    // Check that every connected non-leader player is ready
-    const unready = [...room.players.values()].filter(p => p.id !== room.leaderId && !p.isReady);
-    if (unready.length > 0) {
-      return {
-        error: 'Waiting for all players to ready up.',
-        room,
-        player,
-        unreadyCount: unready.length,
-        unreadyPlayers: unready.map(p => p.id)
-      };
+    // Check that every connected non-leader player is ready (if starting from LOBBY)
+    if (room.runState === 'LOBBY') {
+      const unready = [...room.players.values()].filter(p => p.id !== room.leaderId && !p.isReady);
+      if (unready.length > 0) {
+        return {
+          error: 'Waiting for all players to ready up.',
+          room,
+          player,
+          unreadyCount: unready.length,
+          unreadyPlayers: unready.map(p => p.id)
+        };
+      }
     }
 
-    // All players ready! Transition to IN_PROGRESS
+    // All players ready or new run started! Transition to IN_PROGRESS
     room.runState = 'IN_PROGRESS';
 
-    // Freeze Health Pack economy using current starting player count at actual match start
-    if (!room.healthPacksFrozen) {
-      this._freezeRoomHealthPacks(room, room.players.size);
-    }
+    // Establish clean authoritative run state
+    const { currentGen, spawnedKeys } = this._initializeRunState(room);
 
     const collectedItems = [];
     for (const [id, item] of room.worldItems) {
@@ -802,7 +1244,16 @@ export class RoomManager {
       }
     }
 
-    // Build complete player list with their initial spawns and statuses
+    const spawnedItems = [...spawnedKeys];
+    for (const [id, item] of room.worldItems) {
+      if ((item.isDropped || item.isGenerated) && item.available) {
+        if (!spawnedItems.some(si => si.id === item.id)) {
+          spawnedItems.push(item);
+        }
+      }
+    }
+
+    // Build complete player list with their reset spawns, hp and statuses
     const players = [];
     for (const [id, p] of room.players) {
       players.push({
@@ -821,8 +1272,11 @@ export class RoomManager {
     return {
       success: true,
       room,
+      matchGeneration: currentGen,
       startingPlayers: room.players.size,
       collectedItems,
+      spawnedItems,
+      doors: this.serializeDoors(room),
       players
     };
   }
@@ -929,6 +1383,13 @@ export class RoomManager {
     });
 
     if (player.hp === 0) {
+      // Authoritatively drop inventory and equipment upon reaching 0 HP
+      const dropResult = this.dropPlayerInventoryOnDowned(room, player, player.position);
+      if (dropResult.events && dropResult.events.length > 0) {
+        result.events.push(...dropResult.events);
+      }
+      result.droppedItems = dropResult.droppedItems || [];
+
       // Check solo vs co-op
       const isSolo = (room.players.size <= 1);
 
@@ -1011,6 +1472,14 @@ export class RoomManager {
           }
         }
       }
+
+      // Synchronize player mortality state with AI simulation
+      room.simulation?.setPlayerState(player.id, player.state, player.hp);
+      if (room.runState === 'GAME_OVER') {
+        room.simulation?.stop();
+      }
+    } else {
+      room.simulation?.setPlayerState(player.id, player.state, player.hp);
     }
 
     return result;
@@ -1128,6 +1597,9 @@ export class RoomManager {
     target.hp = SURVIVAL_CONFIG.revivedHp;
     target.revivalsUsed += 1;
 
+    // Synchronize revival state with room simulation
+    room.simulation?.setPlayerState(target.id, 'ACTIVE', target.hp);
+
     return {
       success: true,
       room,
@@ -1155,5 +1627,460 @@ export class RoomManager {
         }
       ]
     };
+  }
+
+  /**
+   * Configures Level 0 physical Brass Door Keys scaling with starting player count.
+   * Default rule: 1 key per starting player (SURVIVAL_CONFIG.keysPerStartingPlayer).
+   *
+   * Crucial Fix for Key Collection Rejection:
+   * Extra layout keys are NOT deleted from room.worldItems (which causes
+   * "Item does not exist in room layout"). Instead, surplus layout keys are marked
+   * as available: false, cappedUnavailable: true, collectedReason: 'SUPPLY_CAPPED'.
+   * This ensures they are included in collectedItems sent to clients, hiding them cleanly.
+   *
+   * Returns newly generated or activated key items so startMatch can include them in spawnedItems.
+   */
+  _configureRoomKeys(room, startingPlayerCount = 1) {
+    const keysPerPlayer = SURVIVAL_CONFIG.keysPerStartingPlayer || 1;
+    const requiredKeys = Math.max(1, Math.floor(startingPlayerCount || 1) * keysPerPlayer);
+    room.requiredKeyCount = requiredKeys;
+    room.startingPlayerCount = startingPlayerCount;
+
+    // Candidate key spawn positions across Level 0 exploration locations
+    const candidateLocations = [
+      { id: 'shelf_door_key_tier3', position: [44.5, 1.188, -189.50], rotation: [0, -0.3, 0] },
+      { id: 'table_door_key_01', position: [44.15, 0.936, -185.20], rotation: [0.0, 0.4, 0.0] },
+      { id: 'floor_door_key_01', position: [45.0, 0.02, -189.50], rotation: [0.0, 0.1, 0.0] },
+      { id: 'alcove_door_key_01', position: [40.5, 0.715, -179.80], rotation: [0.0, 0.0, 0.0] },
+      { id: 'corridor_door_key_01', position: [48.0, 0.02, -186.00], rotation: [0.0, 0.5, 0.0] }
+    ];
+
+    const activeKeys = [];
+    const newlyGeneratedKeys = [];
+
+    // Ensure we have enough key definitions in room.worldItems
+    for (const cand of candidateLocations) {
+      if (activeKeys.length >= requiredKeys) break;
+      let keyItem = room.worldItems.get(cand.id);
+      if (!keyItem) {
+        keyItem = {
+          id: cand.id,
+          type: 'doorKey',
+          category: 'key',
+          position: cand.position,
+          rotation: cand.rotation,
+          isPickup: true,
+          available: true,
+          isGenerated: true,
+          collectedBy: null,
+          collectedAt: null
+        };
+        room.worldItems.set(cand.id, keyItem);
+        newlyGeneratedKeys.push(keyItem);
+      } else {
+        const wasInactive = !keyItem.available;
+        keyItem.available = true;
+        keyItem.isPickup = true;
+        keyItem.collectedBy = null;
+        keyItem.collectedAt = null;
+        delete keyItem.cappedUnavailable;
+        delete keyItem.collectedReason;
+        if (wasInactive) {
+          newlyGeneratedKeys.push(keyItem);
+        }
+      }
+      activeKeys.push(keyItem);
+    }
+
+    // If there are still not enough (e.g. 6+ players), dynamically generate additional keys
+    while (activeKeys.length < requiredKeys) {
+      const idx = activeKeys.length + 1;
+      const genId = `gen_door_key_${idx}`;
+      const angle = (idx / requiredKeys) * 2 * Math.PI;
+      const genPos = [+(44.5 + Math.cos(angle) * 1.5).toFixed(3), 0.02, +(-187.0 + Math.sin(angle) * 1.5).toFixed(3)];
+      const keyItem = {
+        id: genId,
+        type: 'doorKey',
+        category: 'key',
+        position: genPos,
+        rotation: [0, 0, 0],
+        isPickup: true,
+        available: true,
+        isGenerated: true,
+        collectedBy: null,
+        collectedAt: null
+      };
+      room.worldItems.set(genId, keyItem);
+      activeKeys.push(keyItem);
+      newlyGeneratedKeys.push(keyItem);
+    }
+
+    // CRITICAL: Any existing keys in room.worldItems that are NOT active
+    // MUST NOT be deleted (which causes "Item does not exist in room layout").
+    // Instead mark them as supply-capped / unavailable so they are reported in collectedItems and hidden.
+    for (const [id, item] of room.worldItems) {
+      if (item.type === 'doorKey' && !activeKeys.some(ak => ak.id === item.id)) {
+        item.available = false;
+        item.isPickup = true;
+        item.cappedUnavailable = true;
+        item.collectedReason = 'SUPPLY_CAPPED';
+      }
+    }
+
+    return newlyGeneratedKeys;
+  }
+
+  /**
+   * Authoritative Death / Downed Item Drop Handler:
+   * When a player reaches 0 health and enters DOWNED (or death/eliminated),
+   * their entire inventory and equipment are converted to physical world pickups
+   * at their current world position, registered in room.worldItems, and broadcast.
+   *
+   * Includes:
+   * - Keys (doorKey)
+   * - Weapons (weapon_pistol, weapon_shotgun)
+   * - Ammunition (boxes in inventory + reserve rounds converted to boxes)
+   * - Health Packs (first_aid)
+   * - Consumables (almond_can)
+   * - All other carried equipment (equipment_torch)
+   *
+   * Player's inventory, discovered weapons, loaded magazines, and reserve ammo
+   * are authoritatively cleared so items cannot be duplicated. Revived players return empty.
+   */
+  dropPlayerInventoryOnDowned(room, player, clientPos = null) {
+    if (!room || !player) return { droppedItems: [], events: [] };
+
+    // Resolve world position
+    let pPos = player.position || player.spawn;
+    if (clientPos && isValidNumber(clientPos.x) && isValidNumber(clientPos.z)) {
+      pPos = {
+        x: clientPos.x,
+        y: (typeof clientPos.y === 'number') ? clientPos.y : (pPos?.y ?? 0.02),
+        z: clientPos.z
+      };
+    }
+    const baseY = (typeof pPos?.y === 'number' && pPos.y > 0.05) ? pPos.y : 0.02;
+
+    const itemsToDrop = [];
+
+    // 1. All carried items in player inventory
+    if (player.inventory) {
+      const slots = player.inventory.getSlots();
+      for (const slot of slots) {
+        if (slot && slot.typeId && slot.quantity > 0) {
+          itemsToDrop.push({
+            type: slot.typeId,
+            quantity: slot.quantity,
+            metadata: slot.metadata || {}
+          });
+        }
+      }
+    }
+
+    // 2. Discovered weapons not already accounted for in inventory slots
+    if (player.discoveredWeapons) {
+      for (const wType of player.discoveredWeapons) {
+        if (!itemsToDrop.some(it => it.type === wType)) {
+          itemsToDrop.push({ type: wType, quantity: 1, metadata: {} });
+        }
+      }
+    }
+
+    // 3. Reserve ammunition converted back to physical boxes (each box = 2 rounds)
+    if (player.bullets && player.bullets >= 2) {
+      const pBoxes = Math.floor(player.bullets / 2);
+      if (pBoxes > 0) {
+        itemsToDrop.push({ type: 'pistol_ammo', quantity: pBoxes, metadata: {} });
+      }
+    }
+    if (player.shells && player.shells >= 2) {
+      const sBoxes = Math.floor(player.shells / 2);
+      if (sBoxes > 0) {
+        itemsToDrop.push({ type: 'shotgun_ammo', quantity: sBoxes, metadata: {} });
+      }
+    }
+
+    // Authoritative clearance of player's inventory and equipment
+    if (player.inventory) {
+      player.inventory.clear();
+    }
+    if (player.discoveredWeapons) {
+      player.discoveredWeapons.clear();
+    }
+    player.bullets = 0;
+    player.shells = 0;
+    player.mag = { bullets: 0, shells: 0 };
+
+    const droppedItems = [];
+    const events = [];
+    const count = itemsToDrop.length;
+
+    for (let i = 0; i < count; i++) {
+      const it = itemsToDrop[i];
+      const angle = (count > 1) ? (i / count) * 2 * Math.PI : 0;
+      const radius = (count > 1) ? 0.45 : 0;
+      const dropX = +( (pPos?.x || 0) + Math.cos(angle) * radius ).toFixed(3);
+      const dropZ = +( (pPos?.z || 0) + Math.sin(angle) * radius ).toFixed(3);
+      const dropY = baseY;
+
+      const dropId = `drop_${it.type}_${Date.now()}_${i}_${Math.floor(Math.random() * 10000)}`;
+      const def = getItemDefinition(it.type);
+      const worldItem = {
+        id: dropId,
+        type: it.type,
+        category: def?.category || 'general',
+        position: [dropX, dropY, dropZ],
+        rotation: [0, +(Math.random() * 6.28).toFixed(2), 0],
+        isPickup: true,
+        available: true,
+        isDropped: true,
+        droppedBy: player.id,
+        quantity: it.quantity,
+        collectedBy: null,
+        collectedAt: null
+      };
+
+      room.worldItems.set(dropId, worldItem);
+      droppedItems.push(worldItem);
+
+      events.push({
+        type: 'ITEM_SPAWNED',
+        payload: {
+          item: worldItem,
+          droppedBy: player.id,
+          reason: 'PLAYER_DOWNED'
+        }
+      });
+    }
+
+    // Authoritative inventory update event for this player
+    events.push({
+      type: 'INVENTORY_UPDATE',
+      payload: {
+        playerId: player.id,
+        inventory: player.inventory ? player.inventory.serialize() : { capacity: 30, slots: [] },
+        reason: 'PLAYER_DOWNED'
+      }
+    });
+
+    return {
+      droppedItems,
+      events
+    };
+  }
+
+  /**
+   * Serializes active doors for network transmission
+   */
+  serializeDoors(room) {
+    if (!room || !room.doors) return [];
+    const requiredKeyCount = room.requiredKeyCount || room.startingPlayerCount || 1;
+    return [...room.doors.values()].map(d => ({
+      id: d.id,
+      type: d.type || 'exit_door',
+      name: d.name || 'Level 0 Exit Door',
+      locked: d.locked,
+      requiredKey: d.requiredKey || 'doorKey',
+      requiredKeys: requiredKeyCount,
+      position: d.position,
+      unlockedBy: d.unlockedBy,
+      unlockedAt: d.unlockedAt
+    }));
+  }
+
+  /**
+   * Authoritative Door Unlock Handler:
+   * - Validates player state (DOWNED or ELIMINATED rejected)
+   * - Validates proximity to door (<= 3.5m)
+   * - Validates player inventory has ALL required keys for this run carried by this SINGLE player
+   * - Sets door.locked = false authoritatively
+   * - Returns state for room-wide broadcast
+   */
+  handleDoorUnlock(ws, doorId = 'level0_exit_door', clientPos = null, requestId = null) {
+    const meta = this.clientToRoom.get(ws);
+    if (!meta) return { success: false, error: 'Client not associated with any active room session' };
+
+    const room = this.rooms.get(meta.roomCode);
+    if (!room) return { success: false, error: `Room ${meta.roomCode} does not exist` };
+
+    const player = room.players.get(meta.playerId);
+    if (!player) return { success: false, error: `Player ${meta.playerId} not found in room` };
+
+    if (player.state === 'DOWNED' || player.state === 'ELIMINATED') {
+      return { success: false, error: `Player is ${player.state.toLowerCase()} and cannot unlock doors`, room, player };
+    }
+
+    const door = room.doors.get(doorId || 'level0_exit_door');
+    if (!door) {
+      return { success: false, error: `Door '${doorId}' not found in room`, room, player };
+    }
+
+    // If door is already unlocked, return success immediately
+    if (!door.locked) {
+      return {
+        success: true,
+        alreadyUnlocked: true,
+        doorId: door.id,
+        locked: false,
+        unlockedBy: door.unlockedBy,
+        unlockedAt: door.unlockedAt,
+        room,
+        player
+      };
+    }
+
+    // Distance validation: tolerance up to 3.5m
+    const dPos = door.position || [79.55, 0.0, 207.0];
+    const pPos = (clientPos && isValidNumber(clientPos.x) && isValidNumber(clientPos.z))
+      ? clientPos
+      : (player.position || SPAWN_SLOTS[0]);
+    const dx = pPos.x - dPos[0];
+    const dy = (typeof pPos.y === 'number' ? pPos.y : 0) - dPos[1];
+    const dz = pPos.z - dPos[2];
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const MAX_DOOR_DIST = 3.5;
+
+    if (dist > MAX_DOOR_DIST) {
+      return { success: false, error: `Player too far from door (${dist.toFixed(2)}m > ${MAX_DOOR_DIST}m)`, room, player };
+    }
+
+    // Key requirement validation: single player must carry ALL required keys for this run
+    const requiredKey = door.requiredKey || 'doorKey';
+    const requiredCount = room.requiredKeyCount || room.startingPlayerCount || 1;
+    const playerKeyCount = player.inventory.getCount(requiredKey);
+    if (playerKeyCount < requiredCount) {
+      return {
+        success: false,
+        error: `Door is locked. Requires all ${requiredCount} Brass Door Keys to be carried by you (you have ${playerKeyCount}).`,
+        reason: 'MISSING_KEY',
+        requiredKeys: requiredCount,
+        carriedKeys: playerKeyCount,
+        room,
+        player
+      };
+    }
+
+    // Authoritatively unlock door permanently for the room
+    door.locked = false;
+    door.unlockedBy = player.id;
+    door.unlockedAt = Date.now();
+
+    return {
+      success: true,
+      doorId: door.id,
+      locked: false,
+      requiredKeys: requiredCount,
+      unlockedBy: door.unlockedBy,
+      unlockedAt: door.unlockedAt,
+      room,
+      player
+    };
+  }
+
+  /**
+   * Authoritative Level Escape / Run Completion Handler:
+   * - Validates player state and proximity to unlocked exit doorway
+   * - Sets room.runState = 'GAME_OVER' with status: 'ESCAPED'
+   * - Returns victory payload for room-wide broadcast
+   */
+  handleEscape(ws, doorId = 'level0_exit_door', clientPos = null) {
+    const meta = this.clientToRoom.get(ws);
+    if (!meta) return { success: false, error: 'Client not associated with any active room session' };
+
+    const room = this.rooms.get(meta.roomCode);
+    if (!room) return { success: false, error: `Room ${meta.roomCode} does not exist` };
+
+    const player = room.players.get(meta.playerId);
+    if (!player) return { success: false, error: `Player ${meta.playerId} not found in room` };
+
+    if (player.state === 'DOWNED' || player.state === 'ELIMINATED') {
+      return { success: false, error: `Player is ${player.state.toLowerCase()} and cannot escape`, room, player };
+    }
+
+    const door = room.doors.get(doorId || 'level0_exit_door');
+    if (!door) {
+      return { success: false, error: `Door '${doorId}' not found in room`, room, player };
+    }
+
+    if (door.locked) {
+      return { success: false, error: 'Door is locked. Cannot escape.', room, player };
+    }
+
+    const dPos = door.position || [79.55, 0.0, 207.0];
+    const pPos = (clientPos && isValidNumber(clientPos.x) && isValidNumber(clientPos.z))
+      ? clientPos
+      : (player.position || SPAWN_SLOTS[0]);
+    const dx = pPos.x - dPos[0];
+    const dy = (typeof pPos.y === 'number' ? pPos.y : 0) - dPos[1];
+    const dz = pPos.z - dPos[2];
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const MAX_ESCAPE_DIST = 3.8;
+
+    if (dist > MAX_ESCAPE_DIST) {
+      return { success: false, error: `Player too far from exit doorway (${dist.toFixed(2)}m > ${MAX_ESCAPE_DIST}m)`, room, player };
+    }
+
+    // Authoritative Run Completion
+    room.runState = 'GAME_OVER';
+    room.simulation?.stop();
+
+    return {
+      success: true,
+      status: 'ESCAPED',
+      reason: 'LEVEL_COMPLETED',
+      title: 'LEVEL ESCAPED!',
+      message: `${player.name || 'Survivor'} unlocked the exit door and escaped the Backrooms!`,
+      escapedBy: player.id,
+      escapedByName: player.name || 'Survivor',
+      room,
+      player
+    };
+  }
+
+  /**
+   * Initializes authoritative Saber AI simulation for a room
+   */
+  _initializeRoomSimulation(room) {
+    if (room.simulation) return room.simulation;
+
+    room.simulation = new RoomSimulation(room, {
+      onPlayerDamaged: (playerId, damage, reason) => {
+        const res = this.applyDamage(playerId, damage, reason);
+        if (res && res.events && this.onRoomEvents) {
+          this.onRoomEvents(room, res.events);
+        }
+      },
+      broadcastMessage: (type, payload) => {
+        if (this.onBroadcast) {
+          this.onBroadcast(room, type, payload);
+        }
+      },
+      sendDevMessage: (type, payload) => {
+        if (this.onDevBroadcast) {
+          this.onDevBroadcast(room, type, payload);
+        }
+      }
+    });
+
+    if (room.players) {
+      for (const [pId, p] of room.players) {
+        room.simulation.addPlayer(pId, p.spawn);
+      }
+    }
+    room.simulation.start();
+
+    return room.simulation;
+  }
+
+  /**
+   * Handles player weapon hit against Saber
+   */
+  handleAttackMonster(ws, monsterId = 'saber_alpha', damage = 50, weaponType = 'PISTOL') {
+    const session = this.getPlayer(ws);
+    if (!session) return { error: 'Client not associated with any active room session' };
+    const { room, player } = session;
+    if (!room.simulation) return { error: 'Room simulation not active' };
+    return room.simulation.handleAttackMonster(player.id, monsterId, damage, weaponType);
   }
 }

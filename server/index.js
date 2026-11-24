@@ -649,12 +649,47 @@ wss.on('error', (err) => {
 });
 
 function send(ws, type, payload) {
-  if (ws.readyState === WebSocket.OPEN) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type, payload }));
   }
 }
 
+// Authoritative RoomSimulation event wiring
+roomManager.onBroadcast = (room, type, payload) => {
+  if (!room || !room.players) return;
+  for (const [_, p] of room.players) {
+    if (p.ws && p.ws.readyState === WebSocket.OPEN) {
+      send(p.ws, type, payload);
+    }
+  }
+};
+
+roomManager.onDevBroadcast = (room, type, payload) => {
+  if (!room || !room.players) return;
+  for (const [_, p] of room.players) {
+    if (p.ws && p.ws.readyState === WebSocket.OPEN && (p.isDev || p.ws.isDev || DEV_RENDERING)) {
+      send(p.ws, type, payload);
+    }
+  }
+};
+
+roomManager.onRoomEvents = (room, events) => {
+  if (!room || !room.players || !Array.isArray(events)) return;
+  for (const evt of events) {
+    for (const [_, p] of room.players) {
+      if (evt.type === MSG_TYPES.INVENTORY_UPDATE && evt.payload?.playerId && p.id !== evt.payload.playerId) {
+        continue;
+      }
+      send(p.ws, evt.type, evt.payload);
+    }
+  }
+};
+
 wss.on('connection', (ws, req) => {
+  const reqUrl = req.url || '';
+  if (reqUrl.includes('dev=1') || reqUrl.includes('devtools=1') || reqUrl.includes('dev-rendering=1')) {
+    ws.isDev = true;
+  }
   console.log(`[WS CONNECTED] remote=${req.socket.remoteAddress || '(unknown)'} url=${req.url || '/'} origin=${req.headers.origin || '(none)'}`);
   // Ping/Pong keep-alive
   ws.isAlive = true;
@@ -689,6 +724,7 @@ wss.on('connection', (ws, req) => {
         if (res.error) {
           send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error });
         } else {
+          if (res.player) res.player.isDev = Boolean(payload?.isDev || ws.isDev);
           send(ws, MSG_TYPES.ROOM_JOINED, {
             roomCode: res.roomCode,
             playerId: res.player.id,
@@ -700,6 +736,7 @@ wss.on('connection', (ws, req) => {
             layoutRevision: res.layoutRevision,
             collectedItems: res.collectedItems || [],
             spawnedItems: res.spawnedItems || [],
+            doors: res.doors || [],
             inventory: res.inventory
           });
           const lobbyState = roomManager.getLobbyState(res.roomCode);
@@ -715,6 +752,7 @@ wss.on('connection', (ws, req) => {
         if (res.error) {
           send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error });
         } else {
+          if (res.player) res.player.isDev = Boolean(payload?.isDev || ws.isDev);
           // Tell joining client about the room and any existing players
           send(ws, MSG_TYPES.ROOM_JOINED, {
             roomCode: res.roomCode,
@@ -728,6 +766,7 @@ wss.on('connection', (ws, req) => {
             layoutRevision: res.layoutRevision,
             collectedItems: res.collectedItems || [],
             spawnedItems: res.spawnedItems || [],
+            doors: res.doors || [],
             inventory: res.inventory
           });
 
@@ -794,6 +833,36 @@ wss.on('connection', (ws, req) => {
           if (otherId !== player.id) {
             send(otherPlayer.ws, MSG_TYPES.PLAYER_UPDATE, updatePayload);
           }
+        }
+
+        // Advance authoritative AI simulation player movement & automatic footstep perception
+        room.simulation?.updatePlayerMovement(
+          player.id,
+          payload.x,
+          payload.y,
+          payload.z,
+          Boolean(payload.isSprinting),
+          payload.isGrounded !== false
+        );
+        break;
+      }
+
+      case MSG_TYPES.FIRE_WEAPON: {
+        const session = roomManager.getPlayer(ws);
+        if (!session) return;
+        const { room, player } = session;
+        const weaponType = payload?.weaponType || (payload?.weapon === 1 ? 'SHOTGUN' : 'PISTOL');
+        room.simulation?.handleWeaponFired(player.id, weaponType);
+        break;
+      }
+
+      case MSG_TYPES.ATTACK_MONSTER: {
+        const targetSaberId = payload?.monsterId || payload?.targetSaberId || payload?.targetSaberName || 'saber_alpha';
+        const weaponType = payload?.weaponType || (payload?.damage >= 100 ? 'SHOTGUN' : 'PISTOL');
+        const damage = (typeof payload?.damage === 'number') ? payload.damage : (weaponType === 'SHOTGUN' ? 100 : 50);
+        const res = roomManager.handleAttackMonster(ws, targetSaberId, damage, weaponType);
+        if (res && res.error) {
+          send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error });
         }
         break;
       }
@@ -888,7 +957,8 @@ wss.on('connection', (ws, req) => {
             itemId: res.item.id,
             itemType: res.item.type,
             playerId: res.player.id,
-            roomCode: res.room.code
+            roomCode: res.room.code,
+            ammoUpdate: res.ammoUpdate
           };
           if (res.room.pickupRequests) {
             res.room.pickupRequests.set(requestKey, acceptPayload);
@@ -914,7 +984,8 @@ wss.on('connection', (ws, req) => {
             addedItem: {
               id: res.item.id,
               type: res.item.type
-            }
+            },
+            ammoUpdate: res.ammoUpdate
           });
         }
         break;
@@ -990,31 +1061,49 @@ wss.on('connection', (ws, req) => {
 
         console.log(`[ITEM USE ${requestId}] Received from player=${playerId}, room=${roomCode}, slot=${slotIndex}`);
 
+        const requestKey = `${playerId}:${requestId}`;
+        const activeRoom = session?.room;
+        const cached = activeRoom?.useRequests?.get(requestKey);
+        if (cached) {
+          console.log(`[ITEM USE ${requestId}] Duplicate request; replaying prior acknowledgement`);
+          send(ws, MSG_TYPES.ITEM_USE_RESPONSE, cached);
+          break;
+        }
+
         const res = roomManager.handleUseItem(ws, slotIndex, instanceId);
         if (res.error) {
           console.log(`[ITEM USE ${requestId}] Rejected: ${res.error}`);
-          send(ws, MSG_TYPES.ITEM_USE_RESPONSE, {
+          const rejectPayload = {
             requestId,
             success: false,
             slotIndex,
             reason: res.error
-          });
+          };
+          if (activeRoom?.useRequests) activeRoom.useRequests.set(requestKey, rejectPayload);
+          send(ws, MSG_TYPES.ITEM_USE_RESPONSE, rejectPayload);
         } else {
           console.log(`[ITEM USE ${requestId}] Accepted for player=${res.player.id}, item=${res.itemType}`);
-          send(ws, MSG_TYPES.ITEM_USE_RESPONSE, {
+          const acceptPayload = {
             requestId,
             success: true,
             slotIndex: res.slotIndex,
             itemType: res.itemType,
             itemName: res.itemName,
             effect: res.effect,
+            ammoUpdate: res.ammoUpdate,
             remainingQuantity: res.remainingQuantity
-          });
+          };
+          if (res.room?.useRequests) {
+            res.room.useRequests.set(requestKey, acceptPayload);
+            if (res.room.useRequests.size > 500) res.room.useRequests.delete(res.room.useRequests.keys().next().value);
+          }
+          send(ws, MSG_TYPES.ITEM_USE_RESPONSE, acceptPayload);
 
           send(ws, MSG_TYPES.INVENTORY_UPDATE, {
             requestId,
             inventory: res.inventory,
-            usedItem: { type: res.itemType }
+            usedItem: { type: res.itemType },
+            ammoUpdate: res.ammoUpdate
           });
         }
         break;
@@ -1092,6 +1181,9 @@ wss.on('connection', (ws, req) => {
         } else if (res.events && res.room) {
           for (const evt of res.events) {
             for (const [_, p] of res.room.players) {
+              if (evt.type === MSG_TYPES.INVENTORY_UPDATE && evt.payload?.playerId && p.id !== evt.payload.playerId) {
+                continue;
+              }
               send(p.ws, evt.type, evt.payload);
             }
           }
@@ -1192,7 +1284,61 @@ wss.on('connection', (ws, req) => {
               startingPlayers: res.startingPlayers,
               layoutRevision: res.room.layoutRevision,
               collectedItems: res.collectedItems || [],
-              players: res.players || []
+              spawnedItems: res.spawnedItems || [],
+              doors: res.doors || [],
+              players: res.players || [],
+              inventory: p.inventory ? p.inventory.serialize() : null,
+              matchGeneration: res.matchGeneration
+            });
+          }
+        }
+        break;
+      }
+
+      case MSG_TYPES.DOOR_UNLOCK_REQUEST: {
+        const res = roomManager.handleDoorUnlock(ws, payload?.doorId, payload?.clientPosition, payload?.requestId);
+        if (!res.success) {
+          send(ws, MSG_TYPES.DOOR_UNLOCK_RESPONSE, {
+            success: false,
+            doorId: payload?.doorId || 'level0_exit_door',
+            reason: res.error || 'Failed to unlock door',
+            requestId: payload?.requestId
+          });
+        } else {
+          send(ws, MSG_TYPES.DOOR_UNLOCK_RESPONSE, {
+            success: true,
+            doorId: res.doorId,
+            locked: res.locked,
+            unlockedBy: res.unlockedBy,
+            requestId: payload?.requestId
+          });
+          // Broadcast door state update to all players in the room
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.DOOR_STATE_UPDATE, {
+              doorId: res.doorId,
+              locked: res.locked,
+              unlockedBy: res.unlockedBy,
+              unlockedAt: res.unlockedAt
+            });
+          }
+        }
+        break;
+      }
+
+      case MSG_TYPES.PLAYER_ESCAPE_REQUEST: {
+        const res = roomManager.handleEscape(ws, payload?.doorId, payload?.clientPosition);
+        if (!res.success) {
+          send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error || 'Failed to escape' });
+        } else {
+          // Broadcast run completion to all players in room
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.GAME_OVER, {
+              status: 'ESCAPED',
+              reason: 'LEVEL_COMPLETED',
+              title: res.title || 'LEVEL ESCAPED!',
+              message: res.message,
+              escapedBy: res.player.id,
+              escapedByName: res.player.name
             });
           }
         }

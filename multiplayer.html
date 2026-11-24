@@ -735,6 +735,156 @@
       cursor: pointer;
       padding: 0;
     }
+
+    /* Saber AI Observation Deck */
+    #dev-saber-toggle {
+      position: absolute;
+      top: 14px;
+      right: 154px;
+      padding: 6px 12px;
+      background: rgba(22, 20, 18, 0.85);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      color: #ef4444;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      border-radius: 3px;
+      cursor: pointer;
+      z-index: 1001;
+      display: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      transition: background 0.2s, color 0.2s;
+    }
+    #dev-saber-toggle:hover {
+      background: rgba(239, 68, 68, 0.2);
+    }
+    #dev-saber-toggle.active {
+      background: rgba(239, 68, 68, 0.3);
+      border-color: #ef4444;
+      color: #fff;
+    }
+
+    #dev-saber-panel {
+      display: none;
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      width: 360px;
+      max-height: calc(100vh - 28px);
+      overflow-y: auto;
+      background: rgba(14, 18, 26, 0.94);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(80, 105, 140, 0.45);
+      border-radius: 6px;
+      padding: 14px;
+      color: #edece6;
+      z-index: 1002;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.85), 0 0 16px rgba(59, 130, 246, 0.15);
+      font-size: 11px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    .agent-card {
+      background: rgba(8, 12, 18, 0.75);
+      border-left: 4px solid #ef4444;
+      border-radius: 5px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+    }
+    .agent-card.beta { border-left-color: #3b82f6; }
+    .agent-card.director { border-left-color: #a855f7; }
+
+    .agent-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .agent-name {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .agent-name.alpha { color: #ef4444; }
+    .agent-name.beta { color: #3b82f6; }
+    .agent-name.director { color: #c084fc; }
+
+    .state-badge {
+      font-size: 9px;
+      font-weight: 800;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .state-PATROL { background: #1e3d30; color: #4ade80; }
+    .state-INVESTIGATE_SOUND { background: #5c4314; color: #fbbf24; }
+    .state-SEARCH { background: #4a3424; color: #fb923c; }
+    .state-STALK { background: #43245c; color: #c084fc; }
+    .state-CHASE { background: #611515; color: #f87171; animation: saber-pulse-red 1s infinite alternate; }
+    .state-ATTACK { background: #831818; color: #ef4444; }
+    .state-STAGGERED { background: #333d4b; color: #94a3b8; }
+    .state-RECOVER { background: #193852; color: #38bdf8; }
+    .state-BUILD_UP { background: #3b2063; color: #c084fc; }
+    .state-MENACE { background: #713f12; color: #facc15; animation: saber-pulse-yellow 1.2s infinite alternate; }
+    .state-CLIMAX { background: #7f1d1d; color: #f87171; animation: saber-pulse-red 0.8s infinite alternate; }
+    .state-RELEASE { background: #1e3a5f; color: #60a5fa; }
+
+    @keyframes saber-pulse-yellow {
+      from { box-shadow: 0 0 3px #facc15; }
+      to { box-shadow: 0 0 10px #facc15; }
+    }
+    @keyframes saber-pulse-red {
+      from { box-shadow: 0 0 4px #ef4444; }
+      to { box-shadow: 0 0 12px #ef4444; }
+    }
+
+    .hp-bar {
+      width: 100%;
+      height: 5px;
+      background: #1e2430;
+      border-radius: 3px;
+      overflow: hidden;
+      margin: 3px 0 5px 0;
+    }
+    .hp-fill {
+      height: 100%;
+      background: #22c55e;
+      transition: width 0.15s ease;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10.5px;
+      color: #9cb0c7;
+      margin-top: 2px;
+    }
+    .diag-box {
+      margin-top: 4px;
+      padding: 3px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .diag-box.vis { color: #4ade80; border-color: rgba(74, 222, 128, 0.3); }
+    .diag-box.invis { color: #f87171; border-color: rgba(248, 113, 113, 0.3); }
+
+    .saber-log-entry {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 9.5px;
+      line-height: 1.4;
+      padding: 2px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      color: #cbd5e1;
+    }
+    .saber-log-entry .log-time { color: #64748b; }
+    .saber-log-entry.alert { color: #f87171; }
+    .saber-log-entry.highlight { color: #38bdf8; }
   </style>
 </head>
 <body>
@@ -742,6 +892,96 @@
 
   <!-- Developer Comparison Panel -->
   <div id="dev-panel-toggle" title="Show Render Comparison Panel (F2 or H)">RENDER DEV [F2]</div>
+  <div id="dev-saber-toggle" title="Toggle Saber AI Observation Panel (F6)">SABER AI [F6]</div>
+
+  <!-- Saber AI Observation Deck [DEV] -->
+  <div id="dev-saber-panel">
+    <div class="dev-panel-header">
+      <span class="dev-panel-title" style="color: #ef4444;">SABER AI OBSERVATION DECK [F6]</span>
+      <button class="dev-panel-close" id="saber-panel-close" title="Hide Panel (F6)">&times;</button>
+    </div>
+
+    <!-- Controls Row -->
+    <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+      <button class="dev-view-btn active" id="saber-btn-toggle-visuals" style="flex: 1;">3D Aids [ON]</button>
+      <button class="dev-view-btn" id="saber-btn-sound-pistol" style="flex: 1;">Test Pistol</button>
+      <button class="dev-view-btn" id="saber-btn-sound-shotgun" style="flex: 1;">Test Shotgun</button>
+    </div>
+
+    <!-- Saber Alpha Card -->
+    <div class="agent-card alpha" id="card-saber-alpha">
+      <div class="agent-header">
+        <span class="agent-name alpha">SABER ALPHA (MENACE)</span>
+        <span class="state-badge state-PATROL" id="saber-alpha-state">PATROL</span>
+      </div>
+      <div class="stat-row"><span>ANIMATION</span><span id="saber-alpha-anim" style="color: #60a5fa; font-family: monospace;">idle</span></div>
+      <div class="stat-row"><span>HEALTH</span><span id="saber-alpha-hp-val">100 / 100</span></div>
+      <div class="hp-bar"><div class="hp-fill" id="saber-alpha-hp-fill" style="width: 100%;"></div></div>
+      <div class="stat-row"><span>SPEED (DESIRED / ACTUAL)</span><span id="saber-alpha-speed">0.00 / 0.00 m/s</span></div>
+      <div class="stat-row"><span>SLOWDOWN REASON</span><span class="state-badge" id="saber-alpha-slowdown" style="background: #1e293b; color: #94a3b8; font-size: 9px;">NONE_AT_SPEED</span></div>
+      <div class="stat-row"><span>TIME STUCK / RECALCS</span><span id="saber-alpha-stuck" style="color: #cbd5e1; font-family: monospace;">0.0s / 0</span></div>
+      <div class="stat-row"><span>SHOTS TO STAGGER</span><span id="saber-alpha-shots" style="color: #f59e0b; font-family: monospace;">2 Pistol / 1 Shotgun</span></div>
+      <div class="stat-row"><span>STAGGER / RECOVERY</span><span id="saber-alpha-stagger-timer" style="color: #a78bfa; font-family: monospace;">Inactive</span></div>
+      <div class="stat-row"><span>TARGET</span><span id="saber-alpha-target">None</span></div>
+      <div class="stat-row"><span>TARGET ESTIMATE</span><span id="saber-alpha-target-est" style="color: #f59e0b; font-family: monospace;">None</span></div>
+      <div class="stat-row"><span>CURRENT DESTINATION</span><span id="saber-alpha-dest" style="color: #38bdf8; font-family: monospace;">None</span></div>
+      <div class="stat-row"><span>DIRECTOR HINT</span><span id="saber-alpha-hint-status" style="color: #fb923c; font-size: 10px; font-family: monospace;">None</span></div>
+      <div class="stat-row"><span>DIJKSTRA PATH</span><span id="saber-alpha-path-diag" style="color: #38bdf8; font-size: 10px; font-family: monospace;">Direct (0 nodes)</span></div>
+      <span id="saber-alpha-intuition" style="display: none;">None</span>
+      <span id="saber-alpha-path-nodes" style="display: none;">Direct (0 nodes)</span>
+      <div class="stat-row"><span>LINE OF SIGHT</span></div>
+      <div class="diag-box invis" id="saber-alpha-los">OUT OF FOV</div>
+      <div class="stat-row" style="margin-top: 4px;"><span>LAST SOUND</span></div>
+      <div class="diag-box" id="saber-alpha-sound">None</div>
+    </div>
+
+    <!-- Saber Beta Card -->
+    <div class="agent-card beta" id="card-saber-beta">
+      <div class="agent-header">
+        <span class="agent-name beta">SABER BETA (STALKER)</span>
+        <span class="state-badge state-PATROL" id="saber-beta-state">PATROL</span>
+      </div>
+      <div class="stat-row"><span>ANIMATION</span><span id="saber-beta-anim" style="color: #60a5fa; font-family: monospace;">idle</span></div>
+      <div class="stat-row"><span>HEALTH</span><span id="saber-beta-hp-val">100 / 100</span></div>
+      <div class="hp-bar"><div class="hp-fill" id="saber-beta-hp-fill" style="width: 100%;"></div></div>
+      <div class="stat-row"><span>SPEED (DESIRED / ACTUAL)</span><span id="saber-beta-speed">0.00 / 0.00 m/s</span></div>
+      <div class="stat-row"><span>SLOWDOWN REASON</span><span class="state-badge" id="saber-beta-slowdown" style="background: #1e293b; color: #94a3b8; font-size: 9px;">NONE_AT_SPEED</span></div>
+      <div class="stat-row"><span>TIME STUCK / RECALCS</span><span id="saber-beta-stuck" style="color: #cbd5e1; font-family: monospace;">0.0s / 0</span></div>
+      <div class="stat-row"><span>SHOTS TO STAGGER</span><span id="saber-beta-shots" style="color: #f59e0b; font-family: monospace;">2 Pistol / 1 Shotgun</span></div>
+      <div class="stat-row"><span>STAGGER / RECOVERY</span><span id="saber-beta-stagger-timer" style="color: #a78bfa; font-family: monospace;">Inactive</span></div>
+      <div class="stat-row"><span>TARGET</span><span id="saber-beta-target">None</span></div>
+      <div class="stat-row"><span>TARGET ESTIMATE</span><span id="saber-beta-target-est" style="color: #f59e0b; font-family: monospace;">None</span></div>
+      <div class="stat-row"><span>CURRENT DESTINATION</span><span id="saber-beta-dest" style="color: #38bdf8; font-family: monospace;">None</span></div>
+      <div class="stat-row"><span>DIRECTOR HINT</span><span id="saber-beta-hint-status" style="color: #fb923c; font-size: 10px; font-family: monospace;">None</span></div>
+      <div class="stat-row"><span>DIJKSTRA PATH</span><span id="saber-beta-path-diag" style="color: #38bdf8; font-size: 10px; font-family: monospace;">Direct (0 nodes)</span></div>
+      <span id="saber-beta-intuition" style="display: none;">None</span>
+      <span id="saber-beta-path-nodes" style="display: none;">Direct (0 nodes)</span>
+      <div class="stat-row"><span>LINE OF SIGHT</span></div>
+      <div class="diag-box invis" id="saber-beta-los">OUT OF FOV</div>
+      <div class="stat-row" style="margin-top: 4px;"><span>LAST SOUND</span></div>
+      <div class="diag-box" id="saber-beta-sound">None</div>
+    </div>
+
+    <!-- Encounter Director Card -->
+    <div class="agent-card director" id="card-saber-director">
+      <div class="agent-header">
+        <span class="agent-name director">ENCOUNTER DIRECTOR</span>
+        <span class="state-badge state-BUILD_UP" id="saber-dir-phase">BUILD_UP</span>
+      </div>
+      <div class="stat-row"><span>MATCH ROUND</span><span id="saber-dir-gen" style="color: #4ade80; font-family: monospace;">Gen #1</span></div>
+      <div class="stat-row"><span>TENSION</span><span id="saber-dir-tension-val">0.00</span></div>
+      <div class="hp-bar"><div class="hp-fill" id="saber-dir-tension-fill" style="width: 0%; background: #a855f7;"></div></div>
+      <div class="stat-row"><span>PHASE TIME</span><span id="saber-dir-time">0.0s / 30.0s</span></div>
+      <div class="stat-row"><span>TRANSITION REASON</span></div>
+      <div class="diag-box" id="saber-dir-reason" style="color: #c084fc; font-size: 10px;">Initial BUILD_UP phase</div>
+      <div class="stat-row" style="margin-top: 4px;"><span>SURVIVOR SECTORS</span></div>
+      <div class="diag-box" id="saber-dir-sectors" style="color: #c084fc;">Tracking...</div>
+    </div>
+
+    <!-- AI Event Log -->
+    <div class="dev-section-label" style="margin-top: 8px;">LIVE AI EVENT LOG</div>
+    <div id="saber-events-log" style="background: rgba(0,0,0,0.6); border: 1px solid rgba(80,105,140,0.3); border-radius: 3px; padding: 6px; font-family: monospace; font-size: 10px; max-height: 100px; overflow-y: auto; color: #edece6;"></div>
+  </div>
   <div id="dev-comparison-panel">
     <div class="dev-panel-header">
       <span class="dev-panel-title">RENDER COMPARISON [DEV]</span>
@@ -830,6 +1070,54 @@
     <div style="display: flex; gap: 4px; margin-bottom: 8px;">
       <button class="dev-view-btn" id="dev-toggle-bounds" style="flex:1;">Bounds [OFF]</button>
       <button class="dev-view-btn" id="dev-open-editor" style="flex:1; background: rgba(212, 175, 55, 0.25); border-color: #d4af37; color: #edece6; font-weight: 600;">World Editor</button>
+    </div>
+
+    <div class="dev-section-label">MAP COORDINATES & TELEPORT [DEV]</div>
+    <div class="dev-readout" id="dev-coord-readout" style="margin-bottom: 8px;">
+      <div style="display: flex; justify-content: space-between; font-weight: 600; color: #d4af37; margin-bottom: 4px;">
+        <span>CURRENT POSITION</span>
+        <span id="dev-coord-status" style="font-size: 9px; color: #00ff88;">LIVE</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px;">
+        <div class="dev-readout-row"><span>X:</span><span class="dev-readout-val" id="dev-cur-x">0.00</span></div>
+        <div class="dev-readout-row"><span>Y:</span><span class="dev-readout-val" id="dev-cur-y">0.00</span></div>
+        <div class="dev-readout-row"><span>Z:</span><span class="dev-readout-val" id="dev-cur-z">0.00</span></div>
+        <div class="dev-readout-row"><span>Yaw:</span><span class="dev-readout-val" id="dev-cur-yaw">0.0°</span></div>
+      </div>
+      <div class="dev-readout-row" style="margin-top: 4px; border-top: 1px solid rgba(156, 154, 146, 0.15); padding-top: 2px;">
+        <span>Orientation:</span>
+        <span class="dev-readout-val" id="dev-cur-rot" style="font-size: 9.5px;">Yaw: 0.0° | Pitch: 0.0°</span>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin-bottom: 6px;">
+      <div>
+        <span style="font-size: 9px; color: #9c9a92; display: block; margin-bottom: 2px;">TARGET X</span>
+        <input type="number" step="0.1" id="dev-tele-x" placeholder="X" style="width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.6); border: 1px solid rgba(212,175,55,0.4); color: #edece6; font-family: monospace; font-size: 11px; padding: 4px 6px; border-radius: 2px;">
+      </div>
+      <div>
+        <span style="font-size: 9px; color: #9c9a92; display: block; margin-bottom: 2px;">TARGET Y</span>
+        <input type="number" step="0.1" id="dev-tele-y" placeholder="Y" value="0.0" style="width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.6); border: 1px solid rgba(212,175,55,0.4); color: #edece6; font-family: monospace; font-size: 11px; padding: 4px 6px; border-radius: 2px;">
+      </div>
+      <div>
+        <span style="font-size: 9px; color: #9c9a92; display: block; margin-bottom: 2px;">TARGET Z</span>
+        <input type="number" step="0.1" id="dev-tele-z" placeholder="Z" style="width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.6); border: 1px solid rgba(212,175,55,0.4); color: #edece6; font-family: monospace; font-size: 11px; padding: 4px 6px; border-radius: 2px;">
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
+      <button class="dev-view-btn" id="dev-btn-jump" style="flex: 2; background: rgba(212, 175, 55, 0.25); border-color: #d4af37; color: #fff; font-weight: 600;">Jump To Coord</button>
+      <button class="dev-view-btn" id="dev-btn-use-curr" style="flex: 1;" title="Fill target inputs with current coordinates">Use Current</button>
+    </div>
+    <div id="dev-tele-feedback" style="font-family: monospace; font-size: 10px; color: #00ff88; min-height: 14px; margin-bottom: 6px;"></div>
+
+    <div style="font-size: 9px; color: #9c9a92; margin-bottom: 4px; text-transform: uppercase;">Quick Presets:</div>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 10px;">
+      <button class="dev-view-btn" id="dev-preset-spawn" title="Spawn [48.69, 0, -187.65]">Spawn</button>
+      <button class="dev-view-btn" id="dev-preset-key" title="Key Shelf [44.5, 0, -188.7]">Key Shelf</button>
+      <button class="dev-view-btn" id="dev-preset-exit" title="Exit Door [79.55, 0, 205.2]">Exit Door</button>
+      <button class="dev-view-btn" id="dev-preset-pistol" title="Pistol [44.2, 0, -187.5]">Pistol</button>
+      <button class="dev-view-btn" id="dev-preset-shotgun" title="Shotgun [40.5, 0, -179.8]">Shotgun</button>
     </div>
 
     <div class="dev-section-label">SANITY SIMULATION [DEV]</div>
@@ -943,6 +1231,13 @@
     <div id="crosshair"></div>
     <div id="controls-hint">WASD / Shift: Move &middot; Mouse: Look &middot; Click: Lock Mouse</div>
 
+    <!-- Dev Coordinates HUD Diagnostic Badge (Only enabled under --dev-rendering) -->
+    <div id="dev-coord-hud-diag" style="display: none; position: fixed; bottom: 188px; left: 20px; background: rgba(15, 15, 12, 0.88); border: 1px solid rgba(212, 175, 55, 0.55); border-radius: 4px; padding: 6px 12px; font-family: monospace; font-size: 11px; color: #edece6; z-index: 920; pointer-events: none; line-height: 1.45; box-shadow: 0 2px 10px rgba(0,0,0,0.5);">
+      <div style="font-weight: bold; color: #d4af37; margin-bottom: 2px; letter-spacing: 0.5px;">[DEV COORDINATES]</div>
+      <div>POS: <span id="hud-diag-pos" style="color: #edece6;">X: 0.00 | Y: 0.00 | Z: 0.00</span></div>
+      <div>ROT: <span id="hud-diag-rot" style="color: #9c9a92;">Yaw: 0.0° | Pitch: 0.0°</span></div>
+    </div>
+
     <!-- Dev Weapon Firing Diagnostic Badge (Only enabled under --dev-rendering) -->
     <div id="dev-weapon-hud-diag" style="display: none; position: fixed; bottom: 94px; left: 20px; background: rgba(15, 15, 12, 0.88); border: 1px solid rgba(212, 175, 55, 0.55); border-radius: 4px; padding: 6px 12px; font-family: monospace; font-size: 11px; color: #edece6; z-index: 920; pointer-events: none; line-height: 1.45; box-shadow: 0 2px 10px rgba(0,0,0,0.5);">
       <div style="font-weight: bold; color: #d4af37; margin-bottom: 2px; letter-spacing: 0.5px;">[DEV WEAPON FIRING DIAGNOSTICS]</div>
@@ -990,6 +1285,7 @@
   <!-- Three.js r147 Vendored Engine & Loaders -->
   <script src="vendor/three.min.js"></script>
   <script src="vendor/GLTFLoader.js"></script>
+  <script src="vendor/SkeletonUtils.js"></script>
   <script src="vendor/TransformControls.js"></script>
   <!-- Isolated Multiplayer Client Module -->
   <script type="module" src="js/multiplayer/main.js"></script>

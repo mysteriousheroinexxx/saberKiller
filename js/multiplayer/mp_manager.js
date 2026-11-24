@@ -6,6 +6,7 @@ import { RemotePlayer, preloadPlayerAssets } from './remote_player.js';
 import { LocalPlayerController } from './player_controller.js';
 import { InventoryController } from './inventory_controller.js';
 import { StagingLobby } from './staging_lobby.js';
+import { SaberManager } from './saber_manager.js';
 
 export class MPManager {
   constructor(scene, camera, uiCallbacks = {}) {
@@ -15,7 +16,9 @@ export class MPManager {
 
     this.network = new NetworkClient();
     this.remotePlayers = new Map(); // playerId -> RemotePlayer
+    this.saberManager = new SaberManager(this.scene);
     this.localPlayer = new LocalPlayerController(camera, scene, this.network, null);
+    this.localPlayer.setSaberManager(this.saberManager);
     this.inventory = new InventoryController(30);
     this.inventory.initDefaultLoadout();
     this.localPlayer.inventory = this.inventory;
@@ -115,6 +118,14 @@ export class MPManager {
         this.inventory.deserialize(payload.inventory);
       }
 
+      // Sync doors state if provided
+      if (Array.isArray(payload.doors)) {
+        this.roomDoors = payload.doors;
+        if (window.exitDoorManager && typeof window.exitDoorManager.initDoors === 'function') {
+          window.exitDoorManager.initDoors(payload.doors);
+        }
+      }
+
       // Synchronize local player viewmodel and weapon with active hotbar slot
       this.localPlayer.selectHotbarSlot(this.localPlayer.selectedHotbarSlot);
 
@@ -170,6 +181,13 @@ export class MPManager {
     };
 
     this.network.onItemPickupResponse = (payload) => {
+      if (payload && payload.success && this.localPlayer) {
+        if (payload.ammoUpdate) {
+          if (typeof payload.ammoUpdate.bullets === 'number') this.localPlayer.bullets = payload.ammoUpdate.bullets;
+          if (typeof payload.ammoUpdate.shells === 'number') this.localPlayer.shells = payload.ammoUpdate.shells;
+          this.localPlayer._notifyStateChange();
+        }
+      }
       if (window.interactionManager) {
         window.interactionManager.handlePickupResponse(payload);
       }
@@ -188,6 +206,14 @@ export class MPManager {
     };
 
     this.network.onInventoryUpdate = (payload) => {
+      if (payload && payload.playerId && payload.playerId !== this.myPlayerId) {
+        return;
+      }
+      if (payload && payload.ammoUpdate && this.localPlayer) {
+        if (typeof payload.ammoUpdate.bullets === 'number') this.localPlayer.bullets = payload.ammoUpdate.bullets;
+        if (typeof payload.ammoUpdate.shells === 'number') this.localPlayer.shells = payload.ammoUpdate.shells;
+        this.localPlayer._notifyStateChange();
+      }
       if (payload && payload.inventory) {
         this.inventory.deserialize(payload.inventory);
         if (this.localPlayer) {
@@ -220,7 +246,11 @@ export class MPManager {
 
     this.network.onItemUseResponse = (payload) => {
       if (payload && payload.success) {
-        if (payload.effect && this.localPlayer) {
+        if (payload.ammoUpdate && this.localPlayer) {
+          if (typeof payload.ammoUpdate.bullets === 'number') this.localPlayer.bullets = payload.ammoUpdate.bullets;
+          if (typeof payload.ammoUpdate.shells === 'number') this.localPlayer.shells = payload.ammoUpdate.shells;
+          this.localPlayer._notifyStateChange();
+        } else if (payload.effect && this.localPlayer) {
           this.localPlayer.applyItemEffect(payload.effect);
         }
         if (this.localPlayer) {
@@ -305,7 +335,10 @@ export class MPManager {
     };
 
     this.network.onGameOver = (payload) => {
-      this.localPlayer.setState('ELIMINATED');
+      const isVictory = (payload?.status === 'ESCAPED' || payload?.reason === 'LEVEL_COMPLETED');
+      if (!isVictory) {
+        this.localPlayer.setState('ELIMINATED');
+      }
       const downedOverlay = document.getElementById('bb-downed-overlay');
       if (downedOverlay) downedOverlay.style.display = 'none';
       const elimOverlay = document.getElementById('bb-eliminated-overlay');
@@ -314,9 +347,14 @@ export class MPManager {
       const goOverlay = document.getElementById('bb-gameover-overlay');
       if (goOverlay) {
         goOverlay.style.display = 'flex';
+        const titleEl = goOverlay.querySelector('.bb-gameover-title');
+        if (titleEl) {
+          titleEl.textContent = payload?.title || (isVictory ? 'LEVEL ESCAPED!' : 'GAME OVER');
+          titleEl.style.color = isVictory ? '#4ade80' : '#dc2626';
+        }
         const reasonEl = document.getElementById('bb-gameover-reason');
         if (reasonEl) {
-          reasonEl.textContent = payload.message || payload.reason || 'RUN FAILED';
+          reasonEl.textContent = payload?.message || payload?.reason || (isVictory ? 'Level 0 Cleared: You escaped the Backrooms!' : 'RUN FAILED');
         }
       }
       if (this.ui.onGameOver) this.ui.onGameOver(payload);
@@ -345,8 +383,68 @@ export class MPManager {
       if (this.stagingLobby) {
         this.stagingLobby.leaveLobby();
       }
-      if (this.localPlayer && this.localPlayer.gunGroup) {
-        this.localPlayer.gunGroup.visible = true;
+
+      // Hide all death, downed, and game over overlays
+      const downedOverlay = document.getElementById('bb-downed-overlay');
+      if (downedOverlay) downedOverlay.style.display = 'none';
+      const elimOverlay = document.getElementById('bb-eliminated-overlay');
+      if (elimOverlay) elimOverlay.style.display = 'none';
+      const goOverlay = document.getElementById('bb-gameover-overlay');
+      if (goOverlay) goOverlay.style.display = 'none';
+
+      // 1. Authoritatively restore client world pickups (unhide authored items, remove dynamic drops)
+      if (this.itemManager) {
+        if (typeof this.itemManager.resetRunItems === 'function') {
+          this.itemManager.resetRunItems();
+        } else if (typeof this.itemManager.resetCollectedItems === 'function') {
+          this.itemManager.resetCollectedItems();
+        }
+      }
+
+      // 2. Authoritatively reset Sabers (stop stagger animations, reset mixers, home transforms)
+      if (this.saberManager && typeof this.saberManager.reset === 'function') {
+        this.saberManager.reset(payload?.matchGeneration);
+      }
+
+      // 3. Reset interaction manager hover/prompt state
+      if (window.interactionManager && typeof window.interactionManager.reset === 'function') {
+        window.interactionManager.reset();
+      }
+
+      // 4. Reset local inventory to clean starting loadout (slot 0: flashlight only)
+      if (this.inventory) {
+        if (payload?.inventory) {
+          this.inventory.deserialize(payload.inventory);
+        } else {
+          this.inventory.initDefaultLoadout();
+        }
+      }
+
+      // 5. Reset local player to clean run state (100 HP, ACTIVE, 1.62m eye height, equip flashlight)
+      if (this.localPlayer) {
+        if (typeof this.localPlayer.resetCombatState === 'function') {
+          this.localPlayer.resetCombatState();
+        } else {
+          this.localPlayer.setState('ACTIVE');
+          this.localPlayer.setHp(100);
+        }
+        if (typeof this.localPlayer.selectHotbarSlot === 'function') {
+          this.localPlayer.selectHotbarSlot(0); // Equips starting tactical flashlight
+        }
+        if (this.localPlayer.gunGroup) {
+          this.localPlayer.gunGroup.visible = true;
+        }
+      }
+
+      // 6. Reset HUDs & Inventory UI
+      if (window.inventoryUI && typeof window.inventoryUI.render === 'function') {
+        window.inventoryUI.render();
+      }
+      if (window.sanityHud && typeof window.sanityHud.updateSanity === 'function') {
+        window.sanityHud.updateSanity(100);
+      }
+      if (window.survivalHud && typeof window.survivalHud.updateHealth === 'function') {
+        window.survivalHud.updateHealth(100, 100);
       }
       if (this.mySpawn) {
         this.localPlayer.setSpawn(this.mySpawn);
@@ -363,7 +461,7 @@ export class MPManager {
         }
       }
 
-      // Ensure every connected player from payload.players or cachedExistingPlayers is instantiated
+      // 7. Ensure every connected player from payload.players or cachedExistingPlayers is instantiated & reset
       const playerList = payload?.players || this.cachedExistingPlayers || [];
       for (const p of playerList) {
         if (p.id !== this.myPlayerId) {
@@ -371,6 +469,10 @@ export class MPManager {
           if (!rp) {
             rp = new RemotePlayer(p.id, this.scene, p.spawn);
             this.remotePlayers.set(p.id, rp);
+          } else {
+            if (typeof rp.reset === 'function') {
+              rp.reset(p.spawn);
+            }
           }
           if (p.state) rp.setState(p.state);
           rp.group.visible = (rp.state !== 'ELIMINATED');
@@ -384,11 +486,44 @@ export class MPManager {
         }
       }
 
+      // 8. Re-apply newly spawned items (keys) and collected items for this generation
+      if (Array.isArray(payload.spawnedItems) && this.itemManager) {
+        for (const it of payload.spawnedItems) {
+          this.itemManager.spawnWorldItem(it);
+        }
+      }
+
       if (Array.isArray(payload.collectedItems) && this.itemManager) {
         this.itemManager.setCollectedItems(payload.collectedItems);
       }
+
+      // 9. Re-initialize doors
+      if (Array.isArray(payload.doors)) {
+        this.roomDoors = payload.doors;
+        if (window.exitDoorManager && typeof window.exitDoorManager.initDoors === 'function') {
+          window.exitDoorManager.initDoors(payload.doors);
+        }
+      }
       this._updatePlayerCount();
       if (this.ui.onMatchStarted) this.ui.onMatchStarted(payload);
+    };
+
+    this.network.onMonsterSnapshot = (payload) => {
+      if (this.saberManager) {
+        this.saberManager.handleSnapshot(payload);
+      }
+      if (this.ui.onMonsterSnapshot) this.ui.onMonsterSnapshot(payload);
+    };
+
+    this.network.onSoundEventBroadcast = (payload) => {
+      if (this.saberManager) {
+        this.saberManager.handleSoundEvent(payload);
+      }
+      if (this.ui.onSoundEventBroadcast) this.ui.onSoundEventBroadcast(payload);
+    };
+
+    this.network.onDevAiTelemetry = (payload) => {
+      if (this.ui.onDevAiTelemetry) this.ui.onDevAiTelemetry(payload);
     };
 
     this.network.onError = (errMsg) => {
@@ -427,6 +562,10 @@ export class MPManager {
     this.currentRoomCode = null;
     this.myPlayerId = null;
     this.inventory.clear();
+    this.itemManager?.resetRunItems();
+    this.saberManager?.reset();
+    this.localPlayer?.resetCombatState();
+    window.interactionManager?.reset();
     this._updatePlayerCount();
   }
 
@@ -443,6 +582,10 @@ export class MPManager {
     this.currentRoomCode = null;
     this.myPlayerId = null;
     this.inventory.clear();
+    this.itemManager?.resetRunItems();
+    this.saberManager?.reset();
+    this.localPlayer?.resetCombatState();
+    window.interactionManager?.reset();
     this._updatePlayerCount();
   }
 
@@ -453,6 +596,11 @@ export class MPManager {
     // 2. Update remote players (interpolation)
     for (const rp of this.remotePlayers.values()) {
       rp.update(dt);
+    }
+
+    // 3. Update Saber monsters
+    if (this.saberManager) {
+      this.saberManager.update(dt, this.localPlayer ? this.localPlayer.pos : null);
     }
   }
 }

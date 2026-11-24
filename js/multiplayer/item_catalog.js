@@ -124,9 +124,51 @@ export const ITEM_DEFINITIONS = {
     droppable: true,
     metadata: {
       caliber: '.45 ACP',
-      roundsPerBox: 12,
+      roundsPerBox: 2,
       compatibleWeapons: ['pistol'],
-      description: 'Box of 12 rounds of .45 ACP ammunition for semi-automatic sidearm.'
+      description: 'Box containing 2 rounds of .45 ACP ammunition.'
+    }
+  },
+
+  pistol_ammo: {
+    id: 'pistol_ammo',
+    name: 'Pistol Ammunition',
+    category: ITEM_CATEGORIES.AMMUNITION,
+    modelUrl: 'assets/items/ammo_box.glb',
+    iconUrl: 'assets/ui/icons/item_ammo_box.svg',
+    isPickup: true,
+    stackable: true,
+    maxStack: 24,
+    consumable: true,
+    equippable: false,
+    droppable: true,
+    metadata: {
+      caliber: '.45 ACP',
+      rounds: 2,
+      compatibleWeapon: 'weapon_pistol',
+      ammoType: 'bullets',
+      description: 'Box containing 2 rounds of .45 ACP pistol ammunition.'
+    }
+  },
+
+  shotgun_ammo: {
+    id: 'shotgun_ammo',
+    name: 'Shotgun Ammunition',
+    category: ITEM_CATEGORIES.AMMUNITION,
+    modelUrl: 'assets/items/ammo_box.glb',
+    iconUrl: 'assets/ui/icons/item_ammo_box.svg',
+    isPickup: true,
+    stackable: true,
+    maxStack: 10,
+    consumable: true,
+    equippable: false,
+    droppable: true,
+    metadata: {
+      caliber: '12 Gauge',
+      rounds: 2,
+      compatibleWeapon: 'weapon_shotgun',
+      ammoType: 'shells',
+      description: 'Box containing 2 rounds of 12-gauge shotgun ammunition.'
     }
   },
 
@@ -176,7 +218,7 @@ export const ITEM_DEFINITIONS = {
     category: ITEM_CATEGORIES.EQUIPMENT,
     modelUrl: 'assets/torch.glb',
     iconUrl: 'assets/ui/icons/item_torch.svg',
-    isPickup: false,
+    isPickup: true,
     stackable: false,
     maxStack: 1,
     consumable: false,
@@ -226,6 +268,27 @@ export const ITEM_DEFINITIONS = {
       dispensesItem: 'almond_can',
       promptText: 'Use',
       description: 'Vintage commercial vending unit. Dispenses cold Almond Water.'
+    }
+  },
+
+  exit_door: {
+    id: 'exit_door',
+    name: 'Level 0 Exit Door',
+    category: ITEM_CATEGORIES.ENVIRONMENTAL,
+    modelUrl: 'assets/items/metalDoor.glb',
+    iconUrl: 'assets/ui/icons/item_key.svg',
+    isPickup: false,
+    isInteractable: true,
+    stackable: false,
+    maxStack: 0,
+    consumable: false,
+    equippable: false,
+    droppable: false,
+    metadata: {
+      requiredKey: 'doorKey',
+      promptTextLocked: 'Unlock Door',
+      promptTextUnlocked: 'Escape Level 0',
+      description: 'Reinforced security exit door. Requires Brass Door Key to unlock.'
     }
   }
 };
@@ -278,11 +341,28 @@ export const ITEM_EFFECTS_CONFIG = {
     description: 'Recharges tactical flashlight battery by +50%'
   },
   ammo_box: {
-    rounds: 12,
+    rounds: 2,
     weapon: 'pistol',
-    maxReserve: 120,
-    requiresMissingAmmo: true,
-    description: 'Adds 12 rounds of .45 ACP pistol ammunition'
+    ammoKey: 'bullets',
+    ammoType: 'bullets',
+    maxReserve: 48,
+    description: 'Consumes box to add 2 rounds of .45 ACP pistol ammunition'
+  },
+  pistol_ammo: {
+    rounds: 2,
+    weapon: 'pistol',
+    ammoKey: 'bullets',
+    ammoType: 'bullets',
+    maxReserve: 48,
+    description: 'Consumes box to add 2 rounds of .45 ACP pistol ammunition'
+  },
+  shotgun_ammo: {
+    rounds: 2,
+    weapon: 'shotgun',
+    ammoKey: 'shells',
+    ammoType: 'shells',
+    maxReserve: 12,
+    description: 'Consumes box to add 2 rounds of 12-gauge shotgun ammunition'
   }
 };
 

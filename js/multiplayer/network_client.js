@@ -38,7 +38,19 @@ export const MSG_TYPES = {
   LOBBY_STATE_UPDATE: 'LOBBY_STATE_UPDATE',
   MATCH_START_REQUEST: 'MATCH_START_REQUEST',
   MATCH_START_REJECTED: 'MATCH_START_REJECTED',
-  MATCH_STARTED: 'MATCH_STARTED'
+  MATCH_STARTED: 'MATCH_STARTED',
+  // Door & Level Escape packet types
+  DOOR_UNLOCK_REQUEST: 'DOOR_UNLOCK_REQUEST',
+  DOOR_UNLOCK_RESPONSE: 'DOOR_UNLOCK_RESPONSE',
+  DOOR_STATE_UPDATE: 'DOOR_STATE_UPDATE',
+  PLAYER_ESCAPE_REQUEST: 'PLAYER_ESCAPE_REQUEST',
+  LEVEL_ESCAPED: 'LEVEL_ESCAPED',
+  // Saber AI Simulation & Telemetry packet types
+  MONSTER_SNAPSHOT: 'MONSTER_SNAPSHOT',
+  SOUND_EVENT_BROADCAST: 'SOUND_EVENT_BROADCAST',
+  DEV_AI_TELEMETRY: 'DEV_AI_TELEMETRY',
+  FIRE_WEAPON: 'FIRE_WEAPON',
+  ATTACK_MONSTER: 'ATTACK_MONSTER'
 };
 
 function resolveWebSocketUrl(input) {
@@ -94,6 +106,12 @@ export class NetworkClient {
     this.onLobbyStateUpdate = null;
     this.onMatchStartRejected = null;
     this.onMatchStarted = null;
+    this.onDoorUnlockResponse = null;
+    this.onDoorStateUpdate = null;
+    this.onLevelEscaped = null;
+    this.onMonsterSnapshot = null;
+    this.onSoundEventBroadcast = null;
+    this.onDevAiTelemetry = null;
   }
 
   connect(url) {
@@ -324,6 +342,30 @@ export class NetworkClient {
         if (this.onMatchStarted) this.onMatchStarted(payload);
         break;
 
+      case MSG_TYPES.DOOR_UNLOCK_RESPONSE:
+        if (this.onDoorUnlockResponse) this.onDoorUnlockResponse(payload);
+        break;
+
+      case MSG_TYPES.DOOR_STATE_UPDATE:
+        if (this.onDoorStateUpdate) this.onDoorStateUpdate(payload);
+        break;
+
+      case MSG_TYPES.LEVEL_ESCAPED:
+        if (this.onLevelEscaped) this.onLevelEscaped(payload);
+        break;
+
+      case MSG_TYPES.MONSTER_SNAPSHOT:
+        if (this.onMonsterSnapshot) this.onMonsterSnapshot(payload);
+        break;
+
+      case MSG_TYPES.SOUND_EVENT_BROADCAST:
+        if (this.onSoundEventBroadcast) this.onSoundEventBroadcast(payload);
+        break;
+
+      case MSG_TYPES.DEV_AI_TELEMETRY:
+        if (this.onDevAiTelemetry) this.onDevAiTelemetry(payload);
+        break;
+
       default:
         console.log('[NetworkClient] Unhandled packet type:', type);
         break;
@@ -429,8 +471,36 @@ export class NetworkClient {
     return this.send(MSG_TYPES.MATCH_START_REQUEST, {});
   }
 
-  sendUpdate(x, y, z, yaw, pitch, weapon = 0) {
-    return this.send(MSG_TYPES.PLAYER_UPDATE, { x, y, z, yaw, pitch, weapon });
+  requestDoorUnlock(doorId = 'level0_exit_door', requestId = null, clientPosition = null) {
+    if (!requestId) {
+      requestId = 'door_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    }
+    const payload = { doorId, requestId };
+    if (clientPosition) {
+      payload.clientPosition = clientPosition;
+    }
+    const sent = this.send(MSG_TYPES.DOOR_UNLOCK_REQUEST, payload);
+    return { sent, requestId };
+  }
+
+  requestEscape(doorId = 'level0_exit_door', clientPosition = null) {
+    const payload = { doorId };
+    if (clientPosition) {
+      payload.clientPosition = clientPosition;
+    }
+    return this.send(MSG_TYPES.PLAYER_ESCAPE_REQUEST, payload);
+  }
+
+  sendUpdate(x, y, z, yaw, pitch, weapon = 0, isSprinting = false) {
+    return this.send(MSG_TYPES.PLAYER_UPDATE, { x, y, z, yaw, pitch, weapon, isSprinting });
+  }
+
+  fireWeapon(weaponType = 'PISTOL', origin = null, direction = null) {
+    return this.send(MSG_TYPES.FIRE_WEAPON, { weaponType, origin, direction });
+  }
+
+  attackMonster(monsterId = 'saber_alpha', damage = 50, weaponType = 'PISTOL') {
+    return this.send(MSG_TYPES.ATTACK_MONSTER, { monsterId, damage, weaponType });
   }
 
   disconnect() {

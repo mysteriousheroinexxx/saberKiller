@@ -23,6 +23,8 @@ import { WorldItemManager } from './item_manager.js';
 import { WorldPlacementEditor } from './world_editor.js';
 import { InteractionManager } from './interaction_manager.js';
 import { InventoryUI } from './inventory_ui.js';
+import { ExitDoorManager } from './exit_door_manager.js';
+import { SaberObservationUI } from './saber_observation_ui.js';
 
 let scene, camera, renderer, mpManager, playerLight;
 let lastTime = performance.now();
@@ -32,6 +34,8 @@ let itemManager = null;
 let worldEditor = null;
 let interactionManager = null;
 let inventoryUI = null;
+let exitDoorManager = null;
+let saberObservationUI = null;
 let devToolsEnabled = false;
 
 // Survival Mode Sanity System
@@ -137,6 +141,10 @@ function initPostProcessing(w, h) {
 }
 
 async function checkDevToolsConfig() {
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('dev') === '1' || urlParams.get('devtools') === '1' || urlParams.get('dev-rendering') === '1') {
+    return true;
+  }
   try {
     const res = await fetch('/__config', { cache: 'no-store' });
     if (res.ok) {
@@ -230,9 +238,12 @@ async function init() {
     console.log('[DEV TOOLS] Developer tools disabled by server. Removing panels from DOM.');
     document.getElementById('dev-comparison-panel')?.remove();
     document.getElementById('dev-panel-toggle')?.remove();
+    document.getElementById('dev-saber-panel')?.remove();
+    document.getElementById('dev-saber-toggle')?.remove();
     document.getElementById('world-editor-overlay')?.remove();
     document.getElementById('dev-pickup-hud-diag')?.remove();
     document.getElementById('dev-weapon-hud-diag')?.remove();
+    document.getElementById('dev-coord-hud-diag')?.remove();
   }
 
   mpManager = new MPManager(scene, camera, {
@@ -515,6 +526,13 @@ async function init() {
     enterLevel0Env(scene);
     const ch = getCollisionHandler();
     if (ch) {
+      const origCircleHitsWall = ch.circleHitsWall.bind(ch);
+      ch.circleHitsWall = (px, pz, radius) => {
+        if (exitDoorManager && exitDoorManager.collidesWithDoor(px, pz, radius)) {
+          return true;
+        }
+        return origCircleHitsWall(px, pz, radius);
+      };
       mpManager.setCollisionHandler(ch);
     }
 
@@ -581,6 +599,33 @@ async function init() {
         console.log(`[REVIVE ${requestId}] Requesting teammate revival for target ${target.targetPlayerId}`);
         const result = mpManager.network.requestRevive(target.targetPlayerId, requestId, clientPos);
         return result;
+      } else if (target.type === 'exit_door' || target.id === 'level0_exit_door') {
+        const door = exitDoorManager ? exitDoorManager.getDoor('level0_exit_door') : null;
+        const isLocked = door ? door.locked : true;
+        if (isLocked) {
+          const carriedKeys = mpManager.inventory ? mpManager.inventory.getCount('doorKey') : 0;
+          const requiredKeys = door?.requiredKeys || 1;
+          if (carriedKeys < requiredKeys) {
+            if (interactionManager) {
+              const msg = (requiredKeys > 1)
+                ? `Requires all ${requiredKeys} Brass Door Keys to be carried by you (you have ${carriedKeys})`
+                : 'Requires Brass Door Key';
+              interactionManager.diagnostics.serverResult = `REJECTED — Locked (${msg})`;
+              interactionManager.diagnostics.lastRejection = msg;
+              interactionManager._notifyDiagnostics();
+              interactionManager._finishPickupRequest(requestId);
+            }
+            return false;
+          }
+          console.log(`[EXIT DOOR ${requestId}] Unlocking door ${target.id} with all ${requiredKeys} Brass Door Keys`);
+          const result = mpManager.network.requestDoorUnlock(target.id, requestId, clientPos);
+          return result;
+        } else {
+          console.log(`[EXIT DOOR ${requestId}] Escaping Level 0 through exit doorway`);
+          const result = mpManager.network.requestEscape(target.id, clientPos);
+          if (interactionManager) interactionManager._finishPickupRequest(requestId);
+          return result;
+        }
       }
     },
     onDiagnosticsChange: (diag) => {
@@ -589,6 +634,27 @@ async function init() {
   });
   window.interactionManager = interactionManager;
   window.inventory = mpManager.inventory;
+
+  // Initialize Level 0 Exit Door Entity and Network Synchronizer
+  exitDoorManager = new ExitDoorManager(scene, interactionManager);
+  window.exitDoorManager = exitDoorManager;
+  if (mpManager.roomDoors) {
+    exitDoorManager.initDoors(mpManager.roomDoors);
+  }
+
+  // Network door response and state update handlers
+  mpManager.network.onDoorUnlockResponse = (payload) => {
+    interactionManager.handleDoorUnlockResponse(payload);
+    if (payload.success && exitDoorManager) {
+      exitDoorManager.setDoorState(payload.doorId, false);
+    }
+  };
+
+  mpManager.network.onDoorStateUpdate = (payload) => {
+    if (exitDoorManager && payload) {
+      exitDoorManager.setDoorState(payload.doorId, payload.locked, payload.unlockedBy);
+    }
+  };
 
   isEnvReady = true;
   window.isEnvReady = true;
@@ -637,19 +703,46 @@ async function init() {
     window.worldEditor = worldEditor;
     initDevComparisonUI();
 
-    // Developer weapon firing diagnostic HUD element
+    // Saber AI Developer Observation Interface
+    saberObservationUI = new SaberObservationUI(mpManager);
+    window.saberObservationUI = saberObservationUI;
+
+    mpManager.network.onDevAiTelemetry = (payload) => {
+      if (saberObservationUI) {
+        saberObservationUI.updateTelemetry(payload);
+      }
+    };
+
+    const origSoundBroadcast = mpManager.network.onSoundEventBroadcast;
+    mpManager.network.onSoundEventBroadcast = (payload) => {
+      if (origSoundBroadcast) origSoundBroadcast(payload);
+      if (saberObservationUI) {
+        const st = payload.soundType || payload.stimulus?.soundType || 'SOUND';
+        const rad = payload.detectionRadius || payload.stimulus?.detectionRadius || 0;
+        saberObservationUI.addLog(`[SOUND] ${st} (r=${rad.toFixed(0)}m)`, st.includes('GUNSHOT') ? 'alert' : 'highlight');
+      }
+    };
+
+    // Developer weapon firing and coordinates diagnostic HUD elements
     const devWeaponHud = document.getElementById('dev-weapon-hud-diag');
     if (devWeaponHud) {
       devWeaponHud.style.display = 'block';
+    }
+    const devCoordHud = document.getElementById('dev-coord-hud-diag');
+    if (devCoordHud) {
+      devCoordHud.style.display = 'block';
     }
   } else {
     // If not enabled by server flag, completely remove dev panel elements and do not bind dev keys
     console.log('[DEV TOOLS] Developer tools disabled by server. Removing panel from DOM.');
     document.getElementById('dev-comparison-panel')?.remove();
     document.getElementById('dev-panel-toggle')?.remove();
+    document.getElementById('dev-saber-panel')?.remove();
+    document.getElementById('dev-saber-toggle')?.remove();
     document.getElementById('world-editor-overlay')?.remove();
     document.getElementById('dev-pickup-hud-diag')?.remove();
     document.getElementById('dev-weapon-hud-diag')?.remove();
+    document.getElementById('dev-coord-hud-diag')?.remove();
   }
 
   // Check URL query parameters for verification suite
@@ -661,6 +754,8 @@ async function init() {
   // Expose additional multiplayer state to window
   window.mpManager = mpManager;
   window.localPlayer = mpManager.localPlayer;
+  window.teleportLocalPlayer = (x, y, z, yaw, pitch) => mpManager?.localPlayer?.teleport(x, y, z, yaw, pitch);
+  Object.defineProperty(window, 'isGameActive', { get: () => isGameActive });
   window.multiplayerLighting = {
     setExposure,
     setAmbientIntensity,
@@ -1108,6 +1203,93 @@ function initDevComparisonUI() {
       }
     });
   }
+
+  // Map Coordinates & Teleportation Developer Controls
+  const teleXInput = document.getElementById('dev-tele-x');
+  const teleYInput = document.getElementById('dev-tele-y');
+  const teleZInput = document.getElementById('dev-tele-z');
+  const btnJump = document.getElementById('dev-btn-jump');
+  const btnUseCurr = document.getElementById('dev-btn-use-curr');
+  const teleFeedback = document.getElementById('dev-tele-feedback');
+
+  function showTeleFeedback(msg, isError = false) {
+    if (!teleFeedback) return;
+    teleFeedback.textContent = msg;
+    teleFeedback.style.color = isError ? '#ff6666' : '#00ff88';
+    setTimeout(() => {
+      if (teleFeedback.textContent === msg) {
+        teleFeedback.textContent = '';
+      }
+    }, 4000);
+  }
+
+  function executeJump(x, y, z, label = null) {
+    if (!mpManager || !mpManager.localPlayer) {
+      showTeleFeedback('Player not active', true);
+      return false;
+    }
+    if (isNaN(x) || isNaN(z)) {
+      showTeleFeedback('Invalid X or Z coordinate', true);
+      return false;
+    }
+    const finalY = !isNaN(y) ? y : 0.0;
+    mpManager.localPlayer.teleport(x, finalY, z);
+    if (teleXInput) teleXInput.value = x.toFixed(2);
+    if (teleYInput) teleYInput.value = finalY.toFixed(2);
+    if (teleZInput) teleZInput.value = z.toFixed(2);
+    showTeleFeedback(`Jumped to ${label ? label + ' ' : ''}[${x.toFixed(2)}, ${finalY.toFixed(2)}, ${z.toFixed(2)}]`);
+    return true;
+  }
+
+  if (btnJump) {
+    btnJump.addEventListener('click', () => {
+      const x = parseFloat(teleXInput?.value);
+      const y = parseFloat(teleYInput?.value);
+      const z = parseFloat(teleZInput?.value);
+      executeJump(x, y, z);
+    });
+  }
+
+  // Allow pressing Enter in coordinate inputs to jump
+  [teleXInput, teleYInput, teleZInput].forEach(input => {
+    if (input) {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          btnJump?.click();
+        }
+      });
+    }
+  });
+
+  if (btnUseCurr) {
+    btnUseCurr.addEventListener('click', () => {
+      if (mpManager?.localPlayer?.pos) {
+        if (teleXInput) teleXInput.value = mpManager.localPlayer.pos.x.toFixed(2);
+        if (teleYInput) teleYInput.value = mpManager.localPlayer.pos.y.toFixed(2);
+        if (teleZInput) teleZInput.value = mpManager.localPlayer.pos.z.toFixed(2);
+        showTeleFeedback('Filled inputs from current position');
+      }
+    });
+  }
+
+  // Quick Preset Teleport Buttons
+  const presets = {
+    'dev-preset-spawn': { x: 48.69, y: 0.0, z: -187.65, label: 'Spawn' },
+    'dev-preset-key': { x: 44.50, y: 0.0, z: -188.70, label: 'Key Shelf' },
+    'dev-preset-exit': { x: 79.55, y: 0.0, z: 205.20, label: 'Exit Door' },
+    'dev-preset-pistol': { x: 44.20, y: 0.0, z: -187.50, label: 'Pistol' },
+    'dev-preset-shotgun': { x: 40.50, y: 0.0, z: -179.80, label: 'Shotgun' }
+  };
+
+  Object.entries(presets).forEach(([btnId, target]) => {
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      btn.addEventListener('click', () => {
+        executeJump(target.x, target.y, target.z, target.label);
+      });
+    }
+  });
 
   // Sanity simulation test buttons
   document.getElementById('dev-sanity-100')?.addEventListener('click', () => sanityController?.setSanity(100));
@@ -1958,11 +2140,42 @@ function loop(timestamp) {
       elRej.textContent = diag.lastRejectionReason;
       elRej.style.color = (diag.lastRejectionReason !== 'NONE') ? '#ff6666' : '#9c9a92';
     }
+
+    // Live coordinates telemetry update
+    if (mpManager.localPlayer.pos) {
+      const lp = mpManager.localPlayer;
+      const xStr = lp.pos.x.toFixed(2);
+      const yStr = lp.pos.y.toFixed(2);
+      const zStr = lp.pos.z.toFixed(2);
+      const yawDeg = (((lp.yaw * 180 / Math.PI) % 360 + 360) % 360).toFixed(1);
+      const pitchDeg = ((lp.pitch * 180 / Math.PI)).toFixed(1);
+
+      const elCurX = document.getElementById('dev-cur-x');
+      if (elCurX) elCurX.textContent = xStr;
+      const elCurY = document.getElementById('dev-cur-y');
+      if (elCurY) elCurY.textContent = yStr;
+      const elCurZ = document.getElementById('dev-cur-z');
+      if (elCurZ) elCurZ.textContent = zStr;
+      const elCurYaw = document.getElementById('dev-cur-yaw');
+      if (elCurYaw) elCurYaw.textContent = `${yawDeg}°`;
+      const elCurRot = document.getElementById('dev-cur-rot');
+      if (elCurRot) elCurRot.textContent = `Yaw: ${yawDeg}° | Pitch: ${pitchDeg}°`;
+
+      const hudPos = document.getElementById('hud-diag-pos');
+      if (hudPos) hudPos.textContent = `X: ${xStr} | Y: ${yStr} | Z: ${zStr}`;
+      const hudRot = document.getElementById('hud-diag-rot');
+      if (hudRot) hudRot.textContent = `Yaw: ${yawDeg}° | Pitch: ${pitchDeg}°`;
+    }
   }
 
   // Update Reusable Interaction Framework
   if (interactionManager && isGameActive) {
     interactionManager.update();
+  }
+
+  // Update Exit Door Entity (smooth hinge animation and doorway escape walk-through)
+  if (exitDoorManager && isGameActive && mpManager?.localPlayer) {
+    exitDoorManager.update(dt, mpManager.localPlayer.pos);
   }
 
   renderScene();
