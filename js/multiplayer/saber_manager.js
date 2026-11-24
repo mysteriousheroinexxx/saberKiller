@@ -1,8 +1,121 @@
 // Client-Side Saber Monster Manager
-// Handles 3D visual representations, TransformInterpolator smoothing,
-// animations, hitboxes, and developer Three.js debug aids for persistent Sabers (Alpha & Beta).
+// Loads and manages the authentic Saber Mixamo-animated GLB character models,
+// independent AnimationMixers for Alpha & Beta, TransformInterpolator smoothing,
+// hitboxes, and developer Three.js debug aids.
 
 import { TransformInterpolator } from './interpolation.js';
+
+let sharedSaberTemplatePromise = null;
+
+function skinnedWorldBox(root) {
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  const v = new THREE.Vector3();
+  const bm = new THREE.Matrix4();
+  root.traverse(o => {
+    if (!o.isSkinnedMesh) return;
+    o.skeleton.update();
+    const pos = o.geometry.attributes.position.array;
+    const si = o.geometry.attributes.skinIndex.array;
+    const sw = o.geometry.attributes.skinWeight.array;
+    const bones = o.skeleton.boneMatrices;
+    const n = o.geometry.attributes.position.count;
+    for (let i = 0; i < n; i++) {
+      v.set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]).applyMatrix4(o.bindMatrixInverse);
+      let x = 0, y = 0, z = 0;
+      const tx = v.x, ty = v.y, tz = v.z;
+      for (let j = 0; j < 4; j++) {
+        const w = sw[i * 4 + j];
+        if (w === 0) continue;
+        bm.fromArray(bones, si[i * 4 + j] * 16);
+        const e = bm.elements;
+        x += (e[0] * tx + e[4] * ty + e[8] * tz + e[12]) * w;
+        y += (e[1] * tx + e[5] * ty + e[9] * tz + e[13]) * w;
+        z += (e[2] * tx + e[6] * ty + e[10] * tz + e[14]) * w;
+      }
+      v.set(x, y, z).applyMatrix4(o.bindMatrix).applyMatrix4(o.matrixWorld);
+      box.expandByPoint(v);
+    }
+  });
+  return box;
+}
+
+export function preloadSaberAssets() {
+  if (sharedSaberTemplatePromise) return sharedSaberTemplatePromise;
+
+  const loader = new THREE.GLTFLoader();
+  const targetHeight = 1.85; // Matches authentic Story Mode ZMODEL.height
+
+  sharedSaberTemplatePromise = Promise.all([
+    loader.loadAsync('assets/saber.glb'),
+    loader.loadAsync('assets/saberWalking_clean.glb'),
+    loader.loadAsync('assets/saberJumpKickAndPunch_clean.glb'),
+    loader.loadAsync('assets/saberFalling_clean.glb'),
+    loader.loadAsync('assets/saberPunches_clean.glb')
+  ]).then(([orig, w, a, f, p]) => {
+    // 1. Map original texture maps by mesh-name leading digit (Mixamo stripped textures)
+    const byPrefix = {};
+    orig.scene.traverse(o => {
+      if (o.isMesh) {
+        const m = o.name.match(/^(\d+)/);
+        if (m && o.material && o.material.map) {
+          byPrefix[m[1]] = o.material;
+        }
+      }
+    });
+
+    // 2. Wrap and normalize base skinned mesh
+    const model = w.scene;
+    const wrap = new THREE.Group();
+    wrap.add(model);
+
+    // Compute bounding box and ground feet at Y = 0
+    let bb = skinnedWorldBox(wrap);
+    const rawH = Math.max(0.001, bb.max.y - bb.min.y);
+    const s = targetHeight / rawH;
+    wrap.scale.setScalar(s);
+    bb = skinnedWorldBox(wrap);
+    model.position.y = -bb.min.y / s;
+    wrap.updateMatrixWorld(true);
+
+    // 3. Strip /Hips.position$/ translation tracks to eliminate in-place sliding
+    const strip = cl => {
+      const cloned = cl.clone();
+      cloned.tracks = cloned.tracks.filter(t => !/Hips\.position$/.test(t.name));
+      return cloned;
+    };
+
+    const walkClip = strip(w.animations[0]);
+    walkClip.name = 'walk';
+
+    const jumpPunchClip = strip(a.animations[0]);
+    jumpPunchClip.name = 'jump_punch';
+
+    const punchesClip = strip(p.animations[0]);
+    punchesClip.name = 'punch';
+
+    const deathClip = f.animations.reduce((x, y) =>
+      Math.abs(y.duration - 2.17) < Math.abs(x.duration - 2.17) ? y : x
+    ).clone();
+    deathClip.name = 'falling';
+
+    return {
+      template: wrap,
+      byPrefix,
+      clips: {
+        walk: walkClip,
+        punch: punchesClip,
+        jumpPunch: jumpPunchClip,
+        falling: deathClip
+      }
+    };
+  }).catch(err => {
+    console.error('[SaberManager] Failed to load Saber GLB assets:', err);
+    return null;
+  });
+
+  return sharedSaberTemplatePromise;
+}
 
 class SaberEntity {
   constructor(id, name, colorHex, scene) {
@@ -19,127 +132,40 @@ class SaberEntity {
     this.currentSpeed = 0;
     this.debugVisible = false;
 
+    // Animation & GLB state
+    this.mixer = null;
+    this.actions = {};
+    this.currentClipName = 'idle';
+    this.isModelLoaded = false;
+    this.attackAnimT = 0;
+
     // Root group
     this.group = new THREE.Group();
     this.group.name = `Saber_${id}`;
-    this.group.visible = false; // Hidden until match starts or snapshot received
+    this.group.visible = false; // Hidden until match start / snapshot
 
-    // Procedural humanoid rig
-    this.meshGroup = new THREE.Group();
-    this.group.add(this.meshGroup);
+    // Visual model container
+    this.visualGroup = new THREE.Group();
+    this.group.add(this.visualGroup);
 
-    this._buildMesh();
+    // Hitbox for weapon hitscan raycasting
+    this._buildHitbox();
     this._buildDebugAids();
 
     this.scene.add(this.group);
+    this._initGLBModel();
   }
 
-  _buildMesh() {
-    // 1. Torso / Body
-    const torsoGeo = new THREE.BoxGeometry(0.55, 0.95, 0.35);
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: 0x1f2429,
-      roughness: 0.5,
-      metalness: 0.6
-    });
-    this.torso = new THREE.Mesh(torsoGeo, bodyMat);
-    this.torso.position.y = 1.15;
-    this.torso.castShadow = true;
-    this.torso.receiveShadow = true;
-    this.meshGroup.add(this.torso);
-
-    // Armor plate on chest
-    const chestPlateGeo = new THREE.BoxGeometry(0.48, 0.5, 0.08);
-    const chestPlateMat = new THREE.MeshStandardMaterial({
-      color: this.colorHex,
-      roughness: 0.35,
-      metalness: 0.7
-    });
-    const chestPlate = new THREE.Mesh(chestPlateGeo, chestPlateMat);
-    chestPlate.position.set(0, 0.12, 0.18);
-    this.torso.add(chestPlate);
-
-    // 2. Head & Visor
-    const headGeo = new THREE.BoxGeometry(0.32, 0.35, 0.32);
-    const headMat = new THREE.MeshStandardMaterial({
-      color: 0x15181b,
-      roughness: 0.4,
-      metalness: 0.7
-    });
-    this.head = new THREE.Mesh(headGeo, headMat);
-    this.head.position.set(0, 0.68, 0.02);
-    this.head.castShadow = true;
-    this.torso.add(this.head);
-
-    // Visor strip (Emissive glowing eye)
-    const visorGeo = new THREE.BoxGeometry(0.28, 0.08, 0.06);
-    this.visorMat = new THREE.MeshBasicMaterial({ color: this.colorHex });
-    this.visor = new THREE.Mesh(visorGeo, this.visorMat);
-    this.visor.position.set(0, 0.04, 0.16);
-    this.head.add(this.visor);
-
-    // Visor point light (illuminates surroundings)
-    this.eyeLight = new THREE.PointLight(this.colorHex, 2.5, 8.0, 1.8);
-    this.eyeLight.position.set(0, 0.04, 0.35);
-    this.head.add(this.eyeLight);
-
-    // 3. Arms (left & right)
-    const armGeo = new THREE.BoxGeometry(0.18, 0.85, 0.18);
-    const armMat = new THREE.MeshStandardMaterial({
-      color: 0x242a30,
-      roughness: 0.55,
-      metalness: 0.5
-    });
-
-    this.leftArmPivot = new THREE.Group();
-    this.leftArmPivot.position.set(-0.38, 0.38, 0);
-    this.leftArm = new THREE.Mesh(armGeo, armMat);
-    this.leftArm.position.y = -0.38;
-    this.leftArm.castShadow = true;
-    this.leftArmPivot.add(this.leftArm);
-    this.torso.add(this.leftArmPivot);
-
-    this.rightArmPivot = new THREE.Group();
-    this.rightArmPivot.position.set(0.38, 0.38, 0);
-    this.rightArm = new THREE.Mesh(armGeo, armMat);
-    this.rightArm.position.y = -0.38;
-    this.rightArm.castShadow = true;
-    this.rightArmPivot.add(this.rightArm);
-    this.torso.add(this.rightArmPivot);
-
-    // 4. Legs (left & right)
-    const legGeo = new THREE.BoxGeometry(0.2, 0.85, 0.22);
-    const legMat = new THREE.MeshStandardMaterial({
-      color: 0x181c20,
-      roughness: 0.6,
-      metalness: 0.4
-    });
-
-    this.leftLegPivot = new THREE.Group();
-    this.leftLegPivot.position.set(-0.18, 0.85, 0);
-    this.leftLeg = new THREE.Mesh(legGeo, legMat);
-    this.leftLeg.position.y = -0.42;
-    this.leftLeg.castShadow = true;
-    this.leftLegPivot.add(this.leftLeg);
-    this.meshGroup.add(this.leftLegPivot);
-
-    this.rightLegPivot = new THREE.Group();
-    this.rightLegPivot.position.set(0.18, 0.85, 0);
-    this.rightLeg = new THREE.Mesh(legGeo, legMat);
-    this.rightLeg.position.y = -0.42;
-    this.rightLeg.castShadow = true;
-    this.rightLegPivot.add(this.rightLeg);
-    this.meshGroup.add(this.rightLegPivot);
-
-    // 5. Hitbox Mesh (used for weapon raycasting)
-    const hitboxGeo = new THREE.CylinderGeometry(0.48, 0.48, 2.1, 12);
+  _buildHitbox() {
+    // 2.0m height, 0.45m radius cylindrical hitbox
+    const hitboxGeo = new THREE.CylinderGeometry(0.45, 0.45, 2.0, 12);
     const hitboxMat = new THREE.MeshBasicMaterial({
       visible: false,
       wireframe: true,
       color: 0xff0000
     });
     this.hitbox = new THREE.Mesh(hitboxGeo, hitboxMat);
-    this.hitbox.position.y = 1.05;
+    this.hitbox.position.y = 1.0;
     this.hitbox.userData = {
       isMonster: true,
       monsterId: this.id,
@@ -148,16 +174,93 @@ class SaberEntity {
     this.group.add(this.hitbox);
   }
 
+  _initGLBModel() {
+    preloadSaberAssets().then(assetData => {
+      if (!assetData || !assetData.template) return;
+
+      const { template, byPrefix, clips } = assetData;
+
+      // Clone rigged model with its own independent skeleton
+      const clone = THREE.SkeletonUtils ? THREE.SkeletonUtils.clone(template) : template.clone(true);
+
+      // Re-apply original textures and setup PBR/Lambert materials
+      const isAlpha = (this.colorHex === 0xef4444);
+      clone.traverse(o => {
+        if (o.isMesh) {
+          const m = o.name.match(/^(\d+)/);
+          const src = m && byPrefix[m[1]];
+          const mat = new THREE.MeshLambertMaterial({
+            map: src ? src.map : null,
+            color: src ? src.color.clone() : new THREE.Color(0x8899aa),
+            emissive: isAlpha ? 0x220505 : 0x051525,
+            transparent: src ? src.transparent : false,
+            alphaTest: src ? (src.alphaTest || 0) : 0
+          });
+          o.material = mat;
+          o.castShadow = true;
+          o.receiveShadow = true;
+          o.frustumCulled = false;
+        }
+      });
+
+      // Attach glowing visor and PointLight directly to Mixamo head bone
+      const headBone = clone.getObjectByName('mixamorigHead');
+      if (headBone) {
+        // Glowing visor bar on face
+        const visorGeo = new THREE.BoxGeometry(0.18, 0.04, 0.08);
+        this.visorMat = new THREE.MeshBasicMaterial({ color: this.colorHex });
+        const visorMesh = new THREE.Mesh(visorGeo, this.visorMat);
+        visorMesh.position.set(0, 0.12, 0.14);
+        headBone.add(visorMesh);
+        this.visorMesh = visorMesh;
+
+        // Ominous point light casting local glow
+        this.eyeLight = new THREE.PointLight(this.colorHex, 2.2, 7.5, 1.8);
+        this.eyeLight.position.set(0, 0.12, 0.22);
+        headBone.add(this.eyeLight);
+      }
+
+      // Initialize independent AnimationMixer
+      this.mixer = new THREE.AnimationMixer(clone);
+      this.actions = {
+        walk: this.mixer.clipAction(clips.walk),
+        punch: this.mixer.clipAction(clips.punch),
+        jumpPunch: this.mixer.clipAction(clips.jumpPunch),
+        falling: this.mixer.clipAction(clips.falling)
+      };
+
+      this.actions.walk.play();
+      this.actions.punch.setLoop(THREE.LoopOnce, 1);
+      this.actions.punch.clampWhenFinished = true;
+      this.actions.jumpPunch.setLoop(THREE.LoopOnce, 1);
+      this.actions.jumpPunch.clampWhenFinished = true;
+      this.actions.falling.setLoop(THREE.LoopOnce, 1);
+      this.actions.falling.clampWhenFinished = true;
+
+      // Handle attack animation completion
+      this.mixer.addEventListener('finished', e => {
+        if (e.action === this.actions.punch || e.action === this.actions.jumpPunch) {
+          this.actions.walk.reset().play();
+          e.action.crossFadeTo(this.actions.walk, 0.15);
+          this.currentClipName = this.currentSpeed > 0.3 ? 'walk' : 'idle';
+        }
+      });
+
+      this.visualGroup.add(clone);
+      this.isModelLoaded = true;
+    });
+  }
+
   _buildDebugAids() {
     this.debugGroup = new THREE.Group();
     this.debugGroup.name = `DebugAids_${this.id}`;
     this.debugGroup.visible = false;
 
-    // 1. Vision Cone (110° FOV, 22m range at eye height 1.8m)
-    const fovAngle = Math.PI * 0.61; // 110 deg
-    const range = 22.0;
+    // 1. Human-like ~180° FOV Vision Cone (radius = 35m)
+    const fovAngle = Math.PI; // 180 degrees
+    const range = 35.0;
     const conePoints = [new THREE.Vector3(0, 1.8, 0)];
-    const segments = 24;
+    const segments = 32;
     for (let i = 0; i <= segments; i++) {
       const theta = -fovAngle / 2 + (fovAngle * i / segments);
       conePoints.push(new THREE.Vector3(
@@ -178,7 +281,7 @@ class SaberEntity {
     );
     this.debugGroup.add(this.coneLine);
 
-    // 2. Forward Heading Arrow (2.8m length at eye height 1.8m)
+    // 2. Forward Direction Arrow (2.8m length at eye height 1.8m)
     this.arrowHelper = new THREE.ArrowHelper(
       new THREE.Vector3(0, 0, 1),
       new THREE.Vector3(0, 1.8, 0),
@@ -204,6 +307,18 @@ class SaberEntity {
     this.losLine.visible = false;
     this.scene.add(this.losLine);
 
+    // 4. Dijkstra Path Line in 3D (shows active navigation route)
+    const pathGeo = new THREE.BufferGeometry();
+    const pathMat = new THREE.LineBasicMaterial({
+      color: this.colorHex,
+      transparent: true,
+      opacity: 0.85,
+      linewidth: 3
+    });
+    this.pathLine = new THREE.Line(pathGeo, pathMat);
+    this.pathLine.visible = false;
+    this.scene.add(this.pathLine);
+
     this.group.add(this.debugGroup);
   }
 
@@ -213,8 +328,20 @@ class SaberEntity {
     if (this.hitbox && this.hitbox.material) {
       this.hitbox.material.visible = this.debugVisible;
     }
-    if (!this.debugVisible && this.losLine) {
-      this.losLine.visible = false;
+    if (!this.debugVisible) {
+      if (this.losLine) this.losLine.visible = false;
+      if (this.pathLine) this.pathLine.visible = false;
+    }
+  }
+
+  setPathVisualization(waypoints) {
+    if (!this.debugVisible || !this.pathLine) return;
+    if (Array.isArray(waypoints) && waypoints.length >= 2) {
+      const pts = waypoints.map(w => new THREE.Vector3(w.x, (w.y || 0) + 0.25, w.z));
+      this.pathLine.geometry.setFromPoints(pts);
+      this.pathLine.visible = true;
+    } else {
+      this.pathLine.visible = false;
     }
   }
 
@@ -239,11 +366,34 @@ class SaberEntity {
       timestamp: data.timestamp || Date.now()
     });
 
+    const prevState = this.state;
     this.state = data.state || 'PATROL';
     this.health = (typeof data.health === 'number') ? data.health : 100;
     this.isInvulnerable = Boolean(data.isInvulnerable);
     this.targetId = data.targetId || null;
     this.currentSpeed = (typeof data.speed === 'number') ? data.speed : (data.currentSpeed || 0);
+
+    // Trigger state-specific animation transitions
+    if (this.isModelLoaded && this.actions.walk) {
+      if (this.state === 'ATTACK' && prevState !== 'ATTACK') {
+        // Trigger attack punch or jump punch
+        const isJump = (Math.random() > 0.5) || (this.currentSpeed > 3.0);
+        const action = isJump ? this.actions.jumpPunch : this.actions.punch;
+        this.currentClipName = isJump ? 'jump_punch' : 'punch';
+        action.reset().play();
+        this.actions.walk.crossFadeTo(action, 0.1);
+      } else if (this.state === 'STAGGERED' && prevState !== 'STAGGERED') {
+        // Trigger collapse / falling animation
+        this.currentClipName = 'falling';
+        this.actions.falling.reset().play();
+        this.actions.walk.crossFadeTo(this.actions.falling, 0.2);
+      } else if (this.state === 'RECOVER' && prevState === 'STAGGERED') {
+        // Stand back up from stagger
+        this.currentClipName = 'recover';
+        this.actions.walk.reset().play();
+        this.actions.falling.crossFadeTo(this.actions.walk, 0.4);
+      }
+    }
 
     this.group.visible = true;
   }
@@ -255,16 +405,21 @@ class SaberEntity {
     this.group.position.set(s.x, s.y, s.z);
     this.group.rotation.y = s.yaw;
 
-    // Animate limbs & state visual poses
-    this._animateState(dt);
+    // Advance independent AnimationMixer
+    if (this.mixer) {
+      this.mixer.update(dt);
+    }
 
-    // Update Line of Sight debug ray if enabled
+    // Synchronize animation playback speed and transitions
+    this._updateAnimationState(dt);
+
+    // Update Line of Sight debug ray
     if (this.debugVisible && this.losLine) {
       if (targetPlayerPos && (this.state === 'CHASE' || this.state === 'ATTACK' || this.state === 'STALK')) {
         const eyePos = new THREE.Vector3(s.x, s.y + 1.8, s.z);
         const targetChest = new THREE.Vector3(targetPlayerPos.x, targetPlayerPos.y + 1.4, targetPlayerPos.z);
         this.losLine.geometry.setFromPoints([eyePos, targetChest]);
-        this.losMat.color.setHex(0x4ade80); // Clear green
+        this.losMat.color.setHex(0x4ade80);
         this.losLine.visible = true;
       } else {
         this.losLine.visible = false;
@@ -272,81 +427,63 @@ class SaberEntity {
     }
   }
 
-  _animateState(dt) {
-    const walkFreq = 8.0;
-    const walkAmp = 0.35;
-    const isMoving = this.currentSpeed > 0.4;
+  _updateAnimationState(dt) {
+    if (!this.isModelLoaded || !this.actions.walk) return;
+
     const time = Date.now() * 0.001;
 
     if (this.state === 'STAGGERED') {
-      // Collapsed / hunched posture (10s stagger window)
-      this.torso.rotation.x = THREE.MathUtils.lerp(this.torso.rotation.x, 0.75, dt * 6.0);
-      this.torso.position.y = THREE.MathUtils.lerp(this.torso.position.y, 0.75, dt * 6.0);
-      this.leftArmPivot.rotation.x = 0.2;
-      this.rightArmPivot.rotation.x = 0.2;
-      this.leftLegPivot.rotation.x = -0.5;
-      this.rightLegPivot.rotation.x = -0.5;
-      // Visor flickers erratically
-      this.eyeLight.intensity = Math.random() > 0.5 ? 0.3 : 1.8;
-      this.visorMat.color.setHex(Math.random() > 0.5 ? 0x441111 : this.colorHex);
+      // Visor flickers erratically while collapsed
+      if (this.eyeLight) {
+        this.eyeLight.intensity = Math.random() > 0.5 ? 0.2 : 1.2;
+      }
+      this.currentClipName = 'falling';
     } else if (this.state === 'RECOVER') {
-      // Standing back up, visor pulses smoothly
-      this.torso.rotation.x = THREE.MathUtils.lerp(this.torso.rotation.x, 0.1, dt * 3.0);
-      this.torso.position.y = THREE.MathUtils.lerp(this.torso.position.y, 1.15, dt * 3.0);
-      this.eyeLight.intensity = 1.5 + Math.sin(time * 6.0) * 1.0;
-      this.visorMat.color.setHex(this.colorHex);
+      // Visor pulses smoothly while rising
+      if (this.eyeLight) {
+        this.eyeLight.intensity = 1.2 + Math.sin(time * 6.0) * 1.0;
+      }
+      this.currentClipName = 'recover';
     } else if (this.state === 'ATTACK') {
-      // Aggressive strike posture / lunge
-      this.torso.rotation.x = 0.35;
-      this.torso.position.y = 1.15;
-      this.rightArmPivot.rotation.x = -1.6; // Right arm raised forward for slash
-      this.leftArmPivot.rotation.x = 0.4;
-      this.eyeLight.intensity = 4.0;
-      this.visorMat.color.setHex(0xffffff); // White-hot strike flash
-    } else if (this.state === 'CHASE') {
-      // Forward aggressive run tilt
-      this.torso.rotation.x = 0.22;
-      this.torso.position.y = 1.15;
-      this.eyeLight.intensity = 3.2;
-      this.visorMat.color.setHex(this.colorHex);
-
-      // Rapid limb swing
-      const swing = Math.sin(time * walkFreq * 1.5) * walkAmp * 1.4;
-      this.leftArmPivot.rotation.x = swing;
-      this.rightArmPivot.rotation.x = -swing;
-      this.leftLegPivot.rotation.x = -swing;
-      this.rightLegPivot.rotation.x = swing;
+      if (this.eyeLight) this.eyeLight.intensity = 4.0;
+      if (this.visorMat) this.visorMat.color.setHex(0xffffff); // White-hot strike flash
     } else {
-      // PATROL, SEARCH, INVESTIGATE_SOUND, STALK
-      this.torso.rotation.x = THREE.MathUtils.lerp(this.torso.rotation.x, 0.0, dt * 4.0);
-      this.torso.position.y = THREE.MathUtils.lerp(this.torso.position.y, 1.15, dt * 4.0);
-      this.eyeLight.intensity = (this.state === 'STALK') ? 1.0 : 2.0;
-      this.visorMat.color.setHex(this.colorHex);
+      // Locomotion (PATROL, CHASE, STALK, INVESTIGATE_SOUND)
+      if (this.visorMat) this.visorMat.color.setHex(this.colorHex);
 
-      if (isMoving) {
-        const swing = Math.sin(time * walkFreq) * walkAmp;
-        this.leftArmPivot.rotation.x = swing;
-        this.rightArmPivot.rotation.x = -swing;
-        this.leftLegPivot.rotation.x = -swing;
-        this.rightLegPivot.rotation.x = swing;
+      if (this.currentSpeed > 0.3) {
+        if (this.state === 'CHASE') {
+          // Fast pursuit sprint
+          this.actions.walk.timeScale = Math.max(1.5, this.currentSpeed / 3.8);
+          if (this.eyeLight) this.eyeLight.intensity = 3.5;
+          this.currentClipName = 'chase';
+        } else if (this.state === 'STALK') {
+          // Stalking stride
+          this.actions.walk.timeScale = Math.max(1.0, this.currentSpeed / 4.5);
+          if (this.eyeLight) this.eyeLight.intensity = 1.2;
+          this.currentClipName = 'stalk';
+        } else {
+          // Normal patrol / investigation walk
+          this.actions.walk.timeScale = Math.max(0.7, this.currentSpeed / 2.8);
+          if (this.eyeLight) this.eyeLight.intensity = 2.0;
+          this.currentClipName = 'walk';
+        }
       } else {
-        // Idle breathing
-        this.leftArmPivot.rotation.x = THREE.MathUtils.lerp(this.leftArmPivot.rotation.x, 0, dt * 4.0);
-        this.rightArmPivot.rotation.x = THREE.MathUtils.lerp(this.rightArmPivot.rotation.x, 0, dt * 4.0);
-        this.leftLegPivot.rotation.x = THREE.MathUtils.lerp(this.leftLegPivot.rotation.x, 0, dt * 4.0);
-        this.rightLegPivot.rotation.x = THREE.MathUtils.lerp(this.rightLegPivot.rotation.x, 0, dt * 4.0);
+        // Stationary idle
+        this.actions.walk.timeScale = 0.0;
+        if (this.eyeLight) this.eyeLight.intensity = 1.6;
+        this.currentClipName = 'idle';
       }
     }
   }
 
   triggerHitEffect(point) {
-    // Temporary flash on hit
-    this.visorMat.color.setHex(0xffffff);
-    this.eyeLight.intensity = 5.0;
+    if (this.visorMat) this.visorMat.color.setHex(0xffffff);
+    if (this.eyeLight) this.eyeLight.intensity = 5.0;
     setTimeout(() => {
-      if (this.state !== 'STAGGERED') {
+      if (this.state !== 'STAGGERED' && this.visorMat) {
         this.visorMat.color.setHex(this.colorHex);
-        this.eyeLight.intensity = 2.5;
+        if (this.eyeLight) this.eyeLight.intensity = 2.2;
       }
     }, 120);
   }
@@ -355,6 +492,10 @@ class SaberEntity {
     if (this.scene) {
       this.scene.remove(this.group);
       if (this.losLine) this.scene.remove(this.losLine);
+      if (this.pathLine) this.scene.remove(this.pathLine);
+    }
+    if (this.mixer) {
+      this.mixer.stopAllAction();
     }
   }
 }
@@ -374,6 +515,8 @@ export class SaberManager {
     // Saber Beta: Cyan / Blue (Stalker)
     this.saberBeta = new SaberEntity('saber_beta', 'Saber Beta (Stalker)', 0x3b82f6, this.scene);
     this.sabers.set('saber_beta', this.saberBeta);
+
+    preloadSaberAssets();
   }
 
   handleSnapshot(payload) {
@@ -383,6 +526,9 @@ export class SaberManager {
       const saber = this.sabers.get(data.id);
       if (saber) {
         saber.pushSnapshot(data);
+        if (data.pathWaypoints) {
+          saber.setPathVisualization(data.pathWaypoints);
+        }
       }
     }
   }
