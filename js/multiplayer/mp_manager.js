@@ -383,8 +383,34 @@ export class MPManager {
       if (this.stagingLobby) {
         this.stagingLobby.leaveLobby();
       }
-      if (this.localPlayer && this.localPlayer.gunGroup) {
-        this.localPlayer.gunGroup.visible = true;
+
+      // Hide all death, downed, and game over overlays
+      const downedOverlay = document.getElementById('bb-downed-overlay');
+      if (downedOverlay) downedOverlay.style.display = 'none';
+      const elimOverlay = document.getElementById('bb-eliminated-overlay');
+      if (elimOverlay) elimOverlay.style.display = 'none';
+      const goOverlay = document.getElementById('bb-gameover-overlay');
+      if (goOverlay) goOverlay.style.display = 'none';
+
+      // Reset local player to clean run state (100 HP, ACTIVE, 1.62m eye height)
+      if (this.localPlayer) {
+        if (typeof this.localPlayer.resetCombatState === 'function') {
+          this.localPlayer.resetCombatState();
+        } else {
+          this.localPlayer.setState('ACTIVE');
+          this.localPlayer.setHp(100);
+        }
+        if (this.localPlayer.gunGroup) {
+          this.localPlayer.gunGroup.visible = true;
+        }
+      }
+
+      // Reset HUDs
+      if (window.sanityHud && typeof window.sanityHud.updateSanity === 'function') {
+        window.sanityHud.updateSanity(100);
+      }
+      if (window.survivalHud && typeof window.survivalHud.updateHealth === 'function') {
+        window.survivalHud.updateHealth(100, 100);
       }
       if (this.mySpawn) {
         this.localPlayer.setSpawn(this.mySpawn);

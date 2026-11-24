@@ -1078,6 +1078,101 @@ export class RoomManager {
     };
   }
 
+  /**
+   * Authoritatively initializes a clean run state for a match.
+   * Full reset of:
+   * - Players: 100 HP, 100 Sanity, ACTIVE, 0 revivalsUsed, clean starting loadout
+   * - World: world items re-derived from rawLayoutData, ammo economy reset, door locked
+   * - AI: previous simulation destroyed, fresh 20Hz simulation instantiated, Sabers at home spawns
+   * - matchGeneration incremented to invalidate stale callbacks
+   */
+  _initializeRunState(room) {
+    room.matchGeneration = (room.matchGeneration || 0) + 1;
+    const currentGen = room.matchGeneration;
+
+    // 1. Destroy old simulation instance and stop its loop
+    if (room.simulation) {
+      room.simulation.destroy();
+      room.simulation = null;
+    }
+
+    // 2. Clear all mutable world items and re-derive from rawLayoutData
+    room.worldItems.clear();
+    room.healthPacksFrozen = false;
+    room.availableHealthPackCount = 0;
+
+    const layoutData = room.rawLayoutData;
+    if (layoutData && Array.isArray(layoutData.placements)) {
+      for (const p of layoutData.placements) {
+        const isPickup = isPickupItem(p.type);
+        const isVending = (p.type === 'vending_almond');
+        const maxStock = isVending
+          ? ((p.metadata && typeof p.metadata.maxStock === 'number') ? p.metadata.maxStock : VENDING_CONFIG.defaultMaxStock)
+          : undefined;
+
+        room.worldItems.set(p.id, {
+          id: p.id,
+          type: p.type,
+          category: p.category || (layoutData.catalog?.[p.type]?.category) || 'prop',
+          position: Array.isArray(p.position) ? [p.position[0], p.position[1], p.position[2]] : [0, 0, 0],
+          rotation: Array.isArray(p.rotation) ? [p.rotation[0], p.rotation[1], p.rotation[2]] : [0, 0, 0],
+          isPickup,
+          available: isPickup,
+          collectedBy: null,
+          collectedAt: null,
+          stock: maxStock,
+          maxStock: maxStock
+        });
+      }
+    }
+
+    // Re-initialize fixed ammunition economy
+    this._initializeRoomAmmo(room);
+
+    // Freeze Health Pack economy using starting player count at actual match start
+    this._freezeRoomHealthPacks(room, room.players.size);
+
+    // Reset exit door to locked
+    const door = room.doors?.get('level0_exit_door');
+    if (door) {
+      door.locked = true;
+      door.unlockedBy = null;
+      door.unlockedAt = null;
+    }
+
+    // Configure keys authoritatively based on starting players
+    const spawnedKeys = this._configureRoomKeys(room, room.players.size);
+
+    // 3. Reset all players to clean run state
+    for (const [id, player] of room.players) {
+      player.hp = SURVIVAL_CONFIG.startingHp;
+      player.maxHp = SURVIVAL_CONFIG.maxHp;
+      player.sanity = 100;
+      player.maxSanity = 100;
+      player.state = 'ACTIVE';
+      player.revivalsUsed = 0;
+      player.downedAt = null;
+      player.eliminatedAt = null;
+      player.inventory = new InventoryController(30);
+      player.equipment = {
+        flashlight: true,
+        primary: null,
+        secondary: null
+      };
+      player.ammoReserves = {
+        pistol: 0,
+        shotgun: 0
+      };
+      player.weapons = [];
+      player.isReady = (player.id === room.leaderId);
+    }
+
+    // 4. Instantiate fresh authoritative Saber AI simulation
+    this._initializeRoomSimulation(room);
+
+    return { currentGen, spawnedKeys };
+  }
+
   startMatch(ws) {
     const session = this.getPlayer(ws);
     if (!session) return { error: 'Client not associated with any active room session' };
@@ -1087,35 +1182,29 @@ export class RoomManager {
       return { error: 'Only the room leader can start the match.', room, player };
     }
 
-    if (room.runState !== 'LOBBY') {
+    if (room.runState !== 'LOBBY' && room.runState !== 'GAME_OVER') {
       return { error: 'Match has already started.', room, player };
     }
 
-    // Check that every connected non-leader player is ready
-    const unready = [...room.players.values()].filter(p => p.id !== room.leaderId && !p.isReady);
-    if (unready.length > 0) {
-      return {
-        error: 'Waiting for all players to ready up.',
-        room,
-        player,
-        unreadyCount: unready.length,
-        unreadyPlayers: unready.map(p => p.id)
-      };
+    // Check that every connected non-leader player is ready (if starting from LOBBY)
+    if (room.runState === 'LOBBY') {
+      const unready = [...room.players.values()].filter(p => p.id !== room.leaderId && !p.isReady);
+      if (unready.length > 0) {
+        return {
+          error: 'Waiting for all players to ready up.',
+          room,
+          player,
+          unreadyCount: unready.length,
+          unreadyPlayers: unready.map(p => p.id)
+        };
+      }
     }
 
-    // All players ready! Transition to IN_PROGRESS
+    // All players ready or new run started! Transition to IN_PROGRESS
     room.runState = 'IN_PROGRESS';
 
-    // Initialize authoritative Saber AI simulation
-    this._initializeRoomSimulation(room);
-
-    // Freeze Health Pack economy using current starting player count at actual match start
-    if (!room.healthPacksFrozen) {
-      this._freezeRoomHealthPacks(room, room.players.size);
-    }
-
-    // Scale key generation and exit door requirements authoritatively based on starting players
-    const spawnedKeys = this._configureRoomKeys(room, room.players.size);
+    // Establish clean authoritative run state
+    const { currentGen, spawnedKeys } = this._initializeRunState(room);
 
     const collectedItems = [];
     for (const [id, item] of room.worldItems) {
@@ -1133,7 +1222,7 @@ export class RoomManager {
       }
     }
 
-    // Build complete player list with their initial spawns and statuses
+    // Build complete player list with their reset spawns, hp and statuses
     const players = [];
     for (const [id, p] of room.players) {
       players.push({
@@ -1152,6 +1241,7 @@ export class RoomManager {
     return {
       success: true,
       room,
+      matchGeneration: currentGen,
       startingPlayers: room.players.size,
       collectedItems,
       spawnedItems,

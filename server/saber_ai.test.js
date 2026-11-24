@@ -473,3 +473,62 @@ test('17. Independent approximate player intuition: 5-10m randomized offset per 
 
   roomSim.destroy();
 });
+
+test('18. Robust match reset: clean run state restored after Saber death across rounds', () => {
+  const rm = new RoomManager();
+  const ws1 = { send: () => {} };
+  const ws2 = { send: () => {} };
+
+  const r1 = rm.createRoom(ws1, 'Alice');
+  const code = r1.roomCode;
+  const r2 = rm.joinRoom(ws2, code, 'Bob');
+  rm.setPlayerReady(ws2, true);
+
+  // Start round 1
+  const match1 = rm.startMatch(ws1);
+  assert.equal(match1.success, true);
+  assert.equal(match1.matchGeneration, 1);
+  const room = rm.getRoom(code);
+  const p1 = room.players.get(r1.player.id);
+  const p2 = room.players.get(r2.player.id);
+
+  // Down both players in round 1 to cause team wipe / game over
+  rm.applyDamage(p1.id, 100, 'SABER_ATTACK');
+  rm.applyDamage(p2.id, 100, 'SABER_ATTACK');
+  assert.equal(p1.hp, 0);
+  assert.equal(p1.state, 'DOWNED');
+  assert.equal(p2.hp, 0);
+  assert.equal(p2.state, 'DOWNED');
+  assert.equal(room.runState, 'GAME_OVER');
+
+  // Damage Sabers in round 1
+  room.simulation.sim.saberAlpha.takeDamage(50);
+  assert.equal(room.simulation.sim.saberAlpha.health, 50);
+
+  // Start round 2 via authoritative startMatch
+  const match2 = rm.startMatch(ws1);
+  assert.equal(match2.success, true);
+  assert.equal(match2.matchGeneration, 2);
+  assert.equal(room.runState, 'IN_PROGRESS');
+
+  // Verify full player state reset
+  assert.equal(p1.hp, 100, 'Player 1 HP reset to 100');
+  assert.equal(p1.state, 'ACTIVE', 'Player 1 state reset to ACTIVE');
+  assert.equal(p1.revivalsUsed, 0, 'Player 1 revivals reset');
+  assert.equal(p2.hp, 100, 'Player 2 HP reset to 100');
+  assert.equal(p2.state, 'ACTIVE', 'Player 2 state reset to ACTIVE');
+  assert.equal(p2.revivalsUsed, 0, 'Player 2 revivals reset');
+
+  // Verify fresh AI simulation and Sabers restored to 100 HP
+  assert.ok(room.simulation);
+  assert.equal(room.simulation.sim.saberAlpha.health, 100, 'Saber Alpha HP reset to 100');
+  assert.equal(room.simulation.sim.saberBeta.health, 100, 'Saber Beta HP reset to 100');
+  assert.equal(room.simulation.sim.saberAlpha.getCurrentStateName(), 'PATROL', 'Saber Alpha reset to PATROL');
+  assert.equal(room.simulation.sim.director.phase, 'BUILD_UP', 'Director reset to BUILD_UP');
+
+  // Verify door reset
+  const door = room.doors.get('level0_exit_door');
+  assert.equal(door.locked, true, 'Exit door reset to locked');
+
+  room.simulation.destroy();
+});

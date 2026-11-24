@@ -889,6 +889,24 @@ export class LocalPlayerController {
     }
   }
 
+  resetCombatState() {
+    this.setState('ACTIVE', 0);
+    this.setHp(100);
+    this.camera.position.y = 1.62;
+    this.currentCameraY = 1.62;
+    this.cameraTargetY = 1.62;
+    this.stamina = 100.0;
+    this._staminaExhausted = false;
+    this.speedMultiplier = 1.0;
+    this.speedBoostTimer = 0.0;
+    this.activeEffects = [];
+    this.isCrawling = false;
+    this.isSprinting = false;
+    this.weapon = 0; // Flashlight only
+    this.ammo = 0;
+    this.reserveAmmo = 0;
+  }
+
   setHp(hp) {
     this.hp = Math.max(0, Math.min(this.maxHp, hp));
   }
