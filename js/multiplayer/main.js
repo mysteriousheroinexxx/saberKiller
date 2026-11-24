@@ -599,17 +599,21 @@ async function init() {
         const door = exitDoorManager ? exitDoorManager.getDoor('level0_exit_door') : null;
         const isLocked = door ? door.locked : true;
         if (isLocked) {
-          const hasKey = mpManager.inventory && mpManager.inventory.hasItem('doorKey');
-          if (!hasKey) {
+          const carriedKeys = mpManager.inventory ? mpManager.inventory.getCount('doorKey') : 0;
+          const requiredKeys = door?.requiredKeys || 1;
+          if (carriedKeys < requiredKeys) {
             if (interactionManager) {
-              interactionManager.diagnostics.serverResult = 'REJECTED — Locked (Requires Brass Door Key)';
-              interactionManager.diagnostics.lastRejection = 'Requires Brass Door Key';
+              const msg = (requiredKeys > 1)
+                ? `Requires all ${requiredKeys} Brass Door Keys to be carried by you (you have ${carriedKeys})`
+                : 'Requires Brass Door Key';
+              interactionManager.diagnostics.serverResult = `REJECTED — Locked (${msg})`;
+              interactionManager.diagnostics.lastRejection = msg;
               interactionManager._notifyDiagnostics();
               interactionManager._finishPickupRequest(requestId);
             }
             return false;
           }
-          console.log(`[EXIT DOOR ${requestId}] Unlocking door ${target.id} with Brass Door Key`);
+          console.log(`[EXIT DOOR ${requestId}] Unlocking door ${target.id} with all ${requiredKeys} Brass Door Keys`);
           const result = mpManager.network.requestDoorUnlock(target.id, requestId, clientPos);
           return result;
         } else {

@@ -203,6 +203,9 @@ export class MPManager {
     };
 
     this.network.onInventoryUpdate = (payload) => {
+      if (payload && payload.playerId && payload.playerId !== this.myPlayerId) {
+        return;
+      }
       if (payload && payload.ammoUpdate && this.localPlayer) {
         if (typeof payload.ammoUpdate.bullets === 'number') this.localPlayer.bullets = payload.ammoUpdate.bullets;
         if (typeof payload.ammoUpdate.shells === 'number') this.localPlayer.shells = payload.ammoUpdate.shells;
@@ -418,6 +421,12 @@ export class MPManager {
 
       if (Array.isArray(payload.collectedItems) && this.itemManager) {
         this.itemManager.setCollectedItems(payload.collectedItems);
+      }
+
+      if (Array.isArray(payload.spawnedItems) && this.itemManager) {
+        for (const it of payload.spawnedItems) {
+          this.itemManager.spawnWorldItem(it);
+        }
       }
 
       if (Array.isArray(payload.doors)) {

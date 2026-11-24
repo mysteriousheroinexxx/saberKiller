@@ -1114,6 +1114,9 @@ wss.on('connection', (ws, req) => {
         } else if (res.events && res.room) {
           for (const evt of res.events) {
             for (const [_, p] of res.room.players) {
+              if (evt.type === MSG_TYPES.INVENTORY_UPDATE && evt.payload?.playerId && p.id !== evt.payload.playerId) {
+                continue;
+              }
               send(p.ws, evt.type, evt.payload);
             }
           }
@@ -1214,6 +1217,7 @@ wss.on('connection', (ws, req) => {
               startingPlayers: res.startingPlayers,
               layoutRevision: res.room.layoutRevision,
               collectedItems: res.collectedItems || [],
+              spawnedItems: res.spawnedItems || [],
               doors: res.doors || [],
               players: res.players || []
             });

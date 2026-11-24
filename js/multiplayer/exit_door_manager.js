@@ -251,8 +251,14 @@ export class ExitDoorManager {
         if (!this.doorState.locked) {
           return 'Escape';
         }
-        const hasKey = (window.mpManager?.inventory?.hasItem('doorKey'));
-        return hasKey ? 'Unlock' : 'Locked — Requires Key';
+        const carriedKeys = (window.mpManager?.inventory?.getCount('doorKey')) || 0;
+        const requiredKeys = this.doorState.requiredKeys || 1;
+        if (carriedKeys >= requiredKeys) {
+          return (requiredKeys > 1) ? `Unlock (${carriedKeys}/${requiredKeys} Keys)` : 'Unlock';
+        }
+        return (requiredKeys > 1)
+          ? `Locked (${carriedKeys}/${requiredKeys} Keys)`
+          : 'Locked — Requires Key';
       },
       getName: () => {
         if (!this.doorState.locked) {
@@ -300,6 +306,9 @@ export class ExitDoorManager {
     for (const d of doorsList) {
       if (d.id === 'level0_exit_door') {
         this.setDoorState(d.id, d.locked, d.unlockedBy);
+        if (typeof d.requiredKeys === 'number') {
+          this.doorState.requiredKeys = d.requiredKeys;
+        }
         if (Array.isArray(d.position) && this.rootGroup) {
           this.rootGroup.position.set(d.position[0], d.position[1], d.position[2]);
           this.doorState.position = d.position;

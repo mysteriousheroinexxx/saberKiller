@@ -218,7 +218,7 @@ export const ITEM_DEFINITIONS = {
     category: ITEM_CATEGORIES.EQUIPMENT,
     modelUrl: 'assets/torch.glb',
     iconUrl: 'assets/ui/icons/item_torch.svg',
-    isPickup: false,
+    isPickup: true,
     stackable: false,
     maxStack: 1,
     consumable: false,

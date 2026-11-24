@@ -356,6 +356,28 @@
       }
     },
     {
+      "id": "table_door_key_01",
+      "type": "doorKey",
+      "surfaceType": "table",
+      "surfaceName": "Exploration Table",
+      "position": [44.15, 0.936, -185.20],
+      "rotation": [0.0, 0.4, 0.0],
+      "anchor": {
+        "surface": "table"
+      }
+    },
+    {
+      "id": "floor_door_key_01",
+      "type": "doorKey",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [45.0, 0.02, -189.50],
+      "rotation": [0.0, 0.1, 0.0],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
       "id": "shelf_almond_can_tier3",
       "type": "almond_can",
       "surfaceType": "shelf_tier",
