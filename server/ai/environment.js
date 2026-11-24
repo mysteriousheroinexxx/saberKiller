@@ -247,9 +247,17 @@ export class Level0PrototypeMap {
     let targetIdx = -1, minD2 = Infinity;
     for (const n of this.navNodes) {
       const d1 = n.v.distanceTo(from);
-      if (d1 < minD1) { minD1 = d1; startIdx = n.idx; }
+      if (this.hasLineOfSight(from, n.v) && d1 < minD1) { minD1 = d1; startIdx = n.idx; }
       const d2 = n.v.distanceTo(to);
-      if (d2 < minD2) { minD2 = d2; targetIdx = n.idx; }
+      if (this.hasLineOfSight(to, n.v) && d2 < minD2) { minD2 = d2; targetIdx = n.idx; }
+    }
+    if (startIdx === -1 || targetIdx === -1) {
+      for (const n of this.navNodes) {
+        const d1 = n.v.distanceTo(from);
+        if (d1 < minD1) { minD1 = d1; startIdx = n.idx; }
+        const d2 = n.v.distanceTo(to);
+        if (d2 < minD2) { minD2 = d2; targetIdx = n.idx; }
+      }
     }
 
     if (startIdx === -1 || targetIdx === -1 || startIdx === targetIdx) {
@@ -263,9 +271,28 @@ export class Level0PrototypeMap {
     }
 
     const pathIndices = dijkstra.getPath();
-    const result = pathIndices.map(idx => this.navGraph.getNode(idx).position.clone());
-    result.push(new YUKA.Vector3().copy(to));
-    return result;
+    const rawNodes = pathIndices.map(idx => this.navGraph.getNode(idx).position.clone());
+    rawNodes.push(new YUKA.Vector3().copy(to));
+
+    // String pulling / path pruning
+    const smoothed = [];
+    let currentPos = from;
+    let currIdx = 0;
+
+    while (currIdx < rawNodes.length) {
+      let furthestIdx = currIdx;
+      for (let j = rawNodes.length - 1; j > currIdx; j--) {
+        if (this.hasLineOfSight(currentPos, rawNodes[j])) {
+          furthestIdx = j;
+          break;
+        }
+      }
+      smoothed.push(rawNodes[furthestIdx]);
+      currentPos = rawNodes[furthestIdx];
+      currIdx = furthestIdx + 1;
+    }
+
+    return smoothed.length > 0 ? smoothed : [new YUKA.Vector3().copy(to)];
   }
 }
 
@@ -476,27 +503,75 @@ export class Level0Environment {
   }
 
   findNearestNavNode(pos, maxRadius = 30) {
-    if (!this.nodeMap) return -1;
+    if (!this.nodeMap || !this.navGraph) return -1;
     const c0 = this.cellOfX(pos.x);
     const r0 = this.cellOfZ(pos.z);
     const directKey = c0 + ',' + r0;
-    if (this.nodeMap.has(directKey)) return this.nodeMap.get(directKey);
+    if (this.nodeMap.has(directKey)) {
+      const idx = this.nodeMap.get(directKey);
+      const node = this.navGraph.getNode(idx);
+      if (node && this.hasLineOfSight(pos, node.position)) {
+        return idx;
+      }
+    }
+
+    let bestIdx = -1;
+    let bestDist = Infinity;
+    let bestHasLoS = false;
 
     for (let rad = 1; rad <= maxRadius; rad++) {
+      let foundInRing = false;
       for (let dc = -rad; dc <= rad; dc++) {
         for (const dr of [-rad, rad]) {
           const k = (c0 + dc) + ',' + (r0 + dr);
-          if (this.nodeMap.has(k)) return this.nodeMap.get(k);
+          if (this.nodeMap.has(k)) {
+            const idx = this.nodeMap.get(k);
+            const node = this.navGraph.getNode(idx);
+            if (node) {
+              const d = pos.distanceTo(node.position);
+              const hasLoS = this.hasLineOfSight(pos, node.position);
+              if (hasLoS) {
+                if (!bestHasLoS || d < bestDist) {
+                  bestHasLoS = true;
+                  bestDist = d;
+                  bestIdx = idx;
+                  foundInRing = true;
+                }
+              } else if (!bestHasLoS && d < bestDist) {
+                bestDist = d;
+                bestIdx = idx;
+              }
+            }
+          }
         }
       }
       for (let dr = -rad + 1; dr < rad; dr++) {
         for (const dc of [-rad, rad]) {
           const k = (c0 + dc) + ',' + (r0 + dr);
-          if (this.nodeMap.has(k)) return this.nodeMap.get(k);
+          if (this.nodeMap.has(k)) {
+            const idx = this.nodeMap.get(k);
+            const node = this.navGraph.getNode(idx);
+            if (node) {
+              const d = pos.distanceTo(node.position);
+              const hasLoS = this.hasLineOfSight(pos, node.position);
+              if (hasLoS) {
+                if (!bestHasLoS || d < bestDist) {
+                  bestHasLoS = true;
+                  bestDist = d;
+                  bestIdx = idx;
+                  foundInRing = true;
+                }
+              } else if (!bestHasLoS && d < bestDist) {
+                bestDist = d;
+                bestIdx = idx;
+              }
+            }
+          }
         }
       }
+      if (foundInRing) break;
     }
-    return -1;
+    return bestIdx;
   }
 
   findPath(from, to) {
@@ -524,9 +599,28 @@ export class Level0Environment {
     }
 
     const pathIndices = dijkstra.getPath();
-    const result = pathIndices.map(idx => this.navGraph.getNode(idx).position.clone());
-    result.push(new YUKA.Vector3().copy(to));
-    return result;
+    const rawNodes = pathIndices.map(idx => this.navGraph.getNode(idx).position.clone());
+    rawNodes.push(new YUKA.Vector3().copy(to));
+
+    // String pulling / path pruning
+    const smoothed = [];
+    let currentPos = from;
+    let currIdx = 0;
+
+    while (currIdx < rawNodes.length) {
+      let furthestIdx = currIdx;
+      for (let j = rawNodes.length - 1; j > currIdx; j--) {
+        if (this.hasLineOfSight(currentPos, rawNodes[j])) {
+          furthestIdx = j;
+          break;
+        }
+      }
+      smoothed.push(rawNodes[furthestIdx]);
+      currentPos = rawNodes[furthestIdx];
+      currIdx = furthestIdx + 1;
+    }
+
+    return smoothed.length > 0 ? smoothed : [new YUKA.Vector3().copy(to)];
   }
 
   raycastGrid(ray, intersectionPoint, customMaxDist = 500.0) {

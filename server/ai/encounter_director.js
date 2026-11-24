@@ -89,23 +89,24 @@ export class EncounterDirector {
     this.phaseTimer = 0;
     this.isPaused = false;
 
-    // Configurable Pacing Parameters
-    this.buildUpDuration = options.buildUpDuration ?? 12.0; // seconds before entering menace
-    this.menaceDuration = options.menaceDuration ?? 15.0;   // seconds to maintain pressure
-    this.releaseDuration = options.releaseDuration ?? 10.0; // cooldown seconds before rebuilding tension
+    // Configurable Pacing Parameters (scaled to Level 0 macro map dimensions ~270x640m)
+    this.buildUpDuration = options.buildUpDuration ?? 30.0; // Scaled tension accumulation
+    this.menaceDuration = options.menaceDuration ?? 45.0;   // Sustained macro pressure window
+    this.releaseDuration = options.releaseDuration ?? 15.0; // Cooldown relief window
+    this.phaseTransitionReason = 'Initial BUILD_UP phase';
 
     // Macro Tracking
     this.activeMenace = null; // Reference to Saber Alpha or Saber Beta
     this.currentSector = null;
     this.hintTargetSector = null;
     this.lastHintTime = -999;
-    this.hintInterval = options.hintInterval ?? 8.0;
+    this.hintInterval = options.hintInterval ?? 6.0;
 
     // Decision & Explainability Log
     this.recentDecisions = [];
     this.maxDecisions = 30;
 
-    this.logDecision('DIRECTOR_INIT', 'Encounter Director initialized in BUILD_UP phase');
+    this.logDecision('DIRECTOR_INIT', 'Encounter Director initialized in BUILD_UP phase (scaled to Level 0)');
   }
 
   logDecision(action, reason) {
@@ -156,45 +157,78 @@ export class EncounterDirector {
     const focusPlayer = activePlayers.length > 0 ? activePlayers[0] : sim.player;
     this.currentSector = this.getSectorForPosition(focusPlayer.position);
 
-    const alphaState = sim.saberAlpha.getCurrentStateName();
-    const betaState = sim.saberBeta.getCurrentStateName();
+    const alphaState = sim.saberAlpha?.getCurrentStateName() || 'PATROL';
+    const betaState = sim.saberBeta?.getCurrentStateName() || 'PATROL';
 
     const isAnySaberInCombat = (
       alphaState === 'CHASE' || alphaState === 'ATTACK' ||
       betaState === 'CHASE' || betaState === 'ATTACK'
     );
 
+    const isAnySaberStalkingOrInvestigating = (
+      alphaState === 'STALK' || alphaState === 'INVESTIGATE_SOUND' || alphaState === 'SEARCH' ||
+      betaState === 'STALK' || betaState === 'INVESTIGATE_SOUND' || betaState === 'SEARCH'
+    );
+
+    const isAnySaberNavigatingHint = Boolean(
+      (sim.saberAlpha?.hasDirectorHint && sim.saberAlpha.currentNavPath?.length > 0) ||
+      (sim.saberBeta?.hasDirectorHint && sim.saberBeta.currentNavPath?.length > 0)
+    );
+
+    // Measure proximity to nearest Saber from all active survivors
+    let closestDist = Infinity;
+    for (const p of activePlayers) {
+      if (sim.saberAlpha) closestDist = Math.min(closestDist, sim.saberAlpha.position.distanceTo(p.position));
+      if (sim.saberBeta) closestDist = Math.min(closestDist, sim.saberBeta.position.distanceTo(p.position));
+    }
+    if (closestDist === Infinity) closestDist = 100.0;
+
     // 1. Calculate dynamic threat intensity
     this.evaluateThreat(delta, sim, isAnySaberInCombat);
 
-    // 2. State Machine Transitions based on Pacing & Tension
+    // 2. State Machine Transitions based on Pacing, Proximity & Tension
     if (isAnySaberInCombat) {
       if (this.phase !== DIRECTOR_PHASES.CLIMAX) {
         this.transitionTo(DIRECTOR_PHASES.CLIMAX, 'Saber acquired player visual lock or entered combat');
       }
     } else {
-      // Not in active combat
+      // Not in active direct combat
       if (this.phase === DIRECTOR_PHASES.CLIMAX) {
-        // Combat ended -> transition to RELEASE for relief
-        this.transitionTo(DIRECTOR_PHASES.RELEASE, 'Player broke pursuit line-of-sight / combat concluded');
+        // Line-of-sight broken: check if Sabers are still actively stalking or searching
+        if (isAnySaberStalkingOrInvestigating || isAnySaberNavigatingHint) {
+          this.transitionTo(DIRECTOR_PHASES.MENACE, 'Combat LoS lost, actively searching/stalking', sim);
+        } else {
+          this.transitionTo(DIRECTOR_PHASES.RELEASE, 'Combat concluded and area sweep completed; granting relief pacing');
+        }
       } else if (this.phase === DIRECTOR_PHASES.RELEASE) {
-        // Pacing Cooldown
+        // Pacing Cooldown before rebuilding tension
         if (this.phaseTimer >= this.releaseDuration) {
           this.transitionTo(DIRECTOR_PHASES.BUILD_UP, 'Relief cooldown completed. Rebuilding tension.');
         }
       } else if (this.phase === DIRECTOR_PHASES.BUILD_UP) {
-        // Tension accumulation
-        if (this.threatIntensity >= 50.0 || this.phaseTimer >= this.buildUpDuration) {
+        // Tension accumulation: scale with map travel times
+        if (this.threatIntensity >= 45.0 || this.phaseTimer >= this.buildUpDuration) {
           this.transitionTo(DIRECTOR_PHASES.MENACE, 'Tension threshold reached. Menace phase initiated.', sim);
+          this.considerMacroHint(sim);
+        } else if (this.phaseTimer >= 10.0) {
+          // Provide early ambient hint so Sabers begin traversing towards survivors across Level 0
           this.considerMacroHint(sim);
         }
       } else if (this.phase === DIRECTOR_PHASES.MENACE) {
         // Active menace pressure
         if (this.phaseTimer >= this.menaceDuration) {
-          // If no combat occurred after menace duration, give player breathing room
-          this.transitionTo(DIRECTOR_PHASES.RELEASE, 'Menace phase expired without combat. Granting relief pacing.');
+          // Do NOT prematurely release pressure if Sabers are actively tracking, investigating, or near survivors
+          if (isAnySaberStalkingOrInvestigating || isAnySaberNavigatingHint || closestDist < 25.0) {
+            this.phaseTimer = Math.max(0, this.menaceDuration - 15.0);
+            this.phaseTransitionReason = `Sustaining MENACE: Sabers actively tracking/investigating (closest ${closestDist.toFixed(1)}m)`;
+            this.logDecision('MENACE_EXTENDED', `Pressure sustained: Sabers actively tracking/investigating (closest ${closestDist.toFixed(1)}m)`);
+            this.considerMacroHint(sim);
+          } else {
+            // Truly disengaged and far away -> relief pacing
+            this.transitionTo(DIRECTOR_PHASES.RELEASE, 'Menace phase expired without player contact. Granting relief pacing.');
+          }
         } else {
-          // In MENACE phase, issue macro sector investigation hints to active menace
+          // In MENACE phase, issue periodic macro hints to both Sabers
           this.considerMacroHint(sim);
         }
       }
@@ -246,6 +280,7 @@ export class EncounterDirector {
     const oldPhase = this.phase;
     this.phase = newPhase;
     this.phaseTimer = 0;
+    this.phaseTransitionReason = reason;
     if (newPhase === DIRECTOR_PHASES.MENACE && sim) {
       const distAlpha = sim.saberAlpha.position.distanceTo(sim.player.position);
       const distBeta = sim.saberBeta.position.distanceTo(sim.player.position);
@@ -302,16 +337,22 @@ export class EncounterDirector {
         closestPlayer.position.z + offsetZ
       );
 
-      // 4. Dispatch approximate intuition hint to Saber
+      const estimatedPlayerPos = new YUKA.Vector3(
+        closestPlayer.position.x,
+        0,
+        closestPlayer.position.z
+      );
+
+      // 4. Dispatch approximate intuition hint to Saber with estimated target metadata
       if (typeof saber.onReceiveIntuitionHint === 'function') {
-        saber.onReceiveIntuitionHint(approximatePos, offsetRadius);
+        saber.onReceiveIntuitionHint(approximatePos, offsetRadius, estimatedPlayerPos, closestPlayer.name || closestPlayer.id);
       } else if (typeof saber.onReceiveDirectorHint === 'function') {
         saber.onReceiveDirectorHint(approximatePos, `Intuition (${offsetRadius.toFixed(1)}m offset)`);
       }
 
       this.logDecision(
         `INTUITION_HINT -> ${saber.name}`,
-        `Provided approximate player location with ${offsetRadius.toFixed(1)}m offset (no exact coords)`
+        `Provided approximate hint for ${closestPlayer.name || closestPlayer.id} with ${offsetRadius.toFixed(1)}m offset`
       );
     }
 
@@ -340,6 +381,7 @@ export class EncounterDirector {
     this.phase = DIRECTOR_PHASES.BUILD_UP;
     this.threatIntensity = 10.0;
     this.phaseTimer = 0;
+    this.phaseTransitionReason = 'Reset to BUILD_UP';
     this.isPaused = false;
     this.activeMenace = null;
     this.currentSector = null;
@@ -354,6 +396,9 @@ export class EncounterDirector {
       phase: this.phase,
       threatIntensity: this.threatIntensity,
       phaseTimer: this.phaseTimer,
+      phaseElapsed: this.phaseTimer,
+      phaseDuration: this.phase === DIRECTOR_PHASES.BUILD_UP ? this.buildUpDuration : (this.phase === DIRECTOR_PHASES.MENACE ? this.menaceDuration : this.releaseDuration),
+      phaseTransitionReason: this.phaseTransitionReason || 'Initial BUILD_UP phase',
       isPaused: this.isPaused,
       activeMenace: this.activeMenace ? this.activeMenace.name : 'None (Independent)',
       currentSector: this.currentSector ? this.currentSector.name : 'Unknown',

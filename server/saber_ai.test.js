@@ -567,3 +567,128 @@ test('19. Developer Observation Deck: Telemetry provides animation, speeds, FSM,
 
   sim.destroy();
 });
+
+test('20. Encounter Director scaling & sustained pressure: scaled durations, no premature release when pursuing/investigating', () => {
+  const room = { code: 'PACING01', matchGeneration: 1, players: new Map() };
+  const roomSim = new RoomSimulation(room, { autoStart: false, usePrototypeMap: true });
+  const director = roomSim.sim.director;
+
+  // Verify scaled durations for Level 0 dimensions
+  assert.equal(director.buildUpDuration, 30.0, 'BUILD_UP scaled to 30s');
+  assert.equal(director.menaceDuration, 45.0, 'MENACE scaled to 45s');
+  assert.equal(director.releaseDuration, 15.0, 'RELEASE scaled to 15s');
+  assert.equal(director.hintInterval, 6.0, 'Hint interval set to 6s');
+
+  const p = roomSim.addPlayer({ id: 'p_1', name: 'Survivor 1', position: { x: -12, y: 0, z: -10 } });
+  roomSim.sim.saberAlpha.position.set(-12, 0, -25); // 15m away (< 25m proximity threshold)
+
+  // Move director to MENACE
+  director.phase = 'MENACE';
+  director.phaseTimer = 44.9; // Just before 45s expiration
+
+  // Tick director - should detect Saber Alpha in proximity (< 25m) and extend menace
+  director.update(0.2, roomSim.sim);
+  assert.equal(director.phase, 'MENACE', 'Director should not prematurely drop to RELEASE while in proximity');
+  assert.ok(director.phaseTimer <= director.menaceDuration, 'Phase timer extended');
+  assert.ok(director.phaseTransitionReason.includes('Sustaining MENACE'), 'Transition reason indicates menace sustained');
+
+  // Verify CLIMAX LoS loss transitions to MENACE if investigating/stalking
+  director.phase = 'CLIMAX';
+  director.phaseTimer = 5.0;
+  roomSim.sim.saberAlpha.stateMachine.changeTo(SABER_STATES.SEARCH);
+  director.update(0.1, roomSim.sim);
+  assert.equal(director.phase, 'MENACE', 'CLIMAX LoS loss transitions to MENACE when searching');
+  assert.ok(director.phaseTransitionReason.includes('Combat LoS lost, actively searching/stalking'));
+
+  // Telemetry checks
+  const telemetry = roomSim.buildDevTelemetry();
+  assert.ok(telemetry.director.phaseTransitionReason);
+  assert.equal(telemetry.director.phaseDuration, 45.0);
+
+  roomSim.destroy();
+});
+
+test('21. Director-to-Saber communication: independent hints, reason tracking, and telemetry', () => {
+  const room = { code: 'HINT01', matchGeneration: 1, players: new Map() };
+  const roomSim = new RoomSimulation(room, { autoStart: false, usePrototypeMap: true });
+  const p = roomSim.addPlayer({ id: 'p_1', name: 'Survivor 1', position: { x: 10, y: 0, z: 20 } });
+  const director = roomSim.sim.director;
+  const alpha = roomSim.sim.saberAlpha;
+  const beta = roomSim.sim.saberBeta;
+
+  alpha.position.set(-10, 0, -20);
+  beta.position.set(-20, 0, -30);
+
+  // Fast forward director in BUILD_UP past 10s to trigger macro hint
+  roomSim.sim.elapsedTime = 20.0;
+  director.phaseTimer = 10.1;
+  director.lastHintTime = 0;
+  director.considerMacroHint(roomSim.sim);
+
+  assert.equal(alpha.hasDirectorHint, true, 'Saber Alpha received hint');
+  assert.equal(beta.hasDirectorHint, true, 'Saber Beta received hint');
+
+  // Hints must have independent random offsets
+  assert.ok(alpha.directorHintState);
+  assert.ok(beta.directorHintState);
+  assert.equal(alpha.directorHintState.accepted, true);
+  assert.equal(alpha.directorHintState.reason, 'ACCEPTED_PATROL');
+  assert.equal(alpha.directorHintState.targetPlayerName, 'Survivor 1');
+  assert.ok(alpha.directorHintState.offsetDistance >= 4.5 && alpha.directorHintState.offsetDistance <= 10.5);
+
+  // Verify hints are rejected/ignored during active combat
+  alpha.stateMachine.changeTo(SABER_STATES.CHASE);
+  alpha.onReceiveIntuitionHint({ x: 0, y: 0, z: 0 }, 5.0, { x: 0, y: 0, z: 0 }, 'Survivor 1');
+  assert.equal(alpha.directorHintState.accepted, false);
+  assert.equal(alpha.directorHintState.reason, 'IGNORED_ACTIVE_COMBAT');
+
+  // Verify telemetry fields
+  const telem = roomSim.buildDevTelemetry();
+  assert.ok(telem.saberAlpha.lastDirectorHint);
+  assert.equal(telem.saberAlpha.lastDirectorHint.reason, 'IGNORED_ACTIVE_COMBAT');
+  assert.ok(telem.saberBeta.lastDirectorHint);
+  assert.equal(telem.saberBeta.lastDirectorHint.accepted, true);
+  assert.ok(telem.saberBeta.destination);
+
+  roomSim.destroy();
+});
+
+test('22. Navigation string pulling, stuck detection, and recovery diagnostics', () => {
+  const room = { code: 'NAV01', matchGeneration: 1, players: new Map() };
+  const roomSim = new RoomSimulation(room, { autoStart: false, usePrototypeMap: true });
+  const map = roomSim.sim.map;
+  const alpha = roomSim.sim.saberAlpha;
+
+  // 1. Verify string pulling reduces path waypoint count across clear corridors
+  // Room 1 has multiple waypoints between (-15, -15) and (-5, -15)
+  const path = map.findPath({ x: -15, y: 0, z: -15 }, { x: -5, y: 0, z: -15 });
+  assert.ok(Array.isArray(path) && path.length >= 2, 'Path generated');
+  // Corridor path smoothed directly between start and finish
+  assert.ok(path.length <= 3, `Expected string-pulled path length <= 3, got ${path.length}`);
+
+  // 2. Verify stuck detection when desiredSpeed > 1.0 but entity cannot move
+  alpha.maxSpeed = 5.72;
+  const origCircleHits = alpha.env.circleHitsWall;
+  alpha.env.circleHitsWall = () => true; // Simulate wedged in corner / colliding with geometry
+
+  // Tick entity for 0.6s total (6 x 0.1s)
+  for (let i = 0; i < 6; i++) {
+    alpha.update(0.1);
+  }
+
+  assert.ok(alpha.timeSpentStuck >= 0.4, `Expected timeSpentStuck >= 0.4s, got ${alpha.timeSpentStuck}`);
+  assert.ok(alpha.slowdownReason === 'STUCK_GEOMETRY' || alpha.slowdownReason === 'WALL_SLIDING', `Got slowdown reason: ${alpha.slowdownReason}`);
+  assert.ok(alpha.pathRecalculationCount >= 1, `Expected pathRecalculationCount >= 1, got ${alpha.pathRecalculationCount}`);
+
+  alpha.env.circleHitsWall = origCircleHits;
+
+  // 3. Verify telemetry exposes diagnostics
+  const telem = roomSim.buildDevTelemetry();
+  assert.equal(telem.saberAlpha.desiredSpeed, alpha.maxSpeed);
+  assert.ok(typeof telem.saberAlpha.actualSpeed === 'number');
+  assert.ok(telem.saberAlpha.timeSpentStuck >= 0.4);
+  assert.ok(telem.saberAlpha.pathRecalculationCount >= 1);
+  assert.ok(telem.saberAlpha.slowdownReason);
+
+  roomSim.destroy();
+});

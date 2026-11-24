@@ -31,8 +31,14 @@ export class SaberObservationUI {
     this.elAlphaHpFill = document.getElementById('saber-alpha-hp-fill');
     this.elAlphaShots = document.getElementById('saber-alpha-shots');
     this.elAlphaSpeed = document.getElementById('saber-alpha-speed');
+    this.elAlphaSlowdown = document.getElementById('saber-alpha-slowdown');
+    this.elAlphaStuck = document.getElementById('saber-alpha-stuck');
     this.elAlphaStaggerTimer = document.getElementById('saber-alpha-stagger-timer');
     this.elAlphaTarget = document.getElementById('saber-alpha-target');
+    this.elAlphaTargetEst = document.getElementById('saber-alpha-target-est');
+    this.elAlphaDest = document.getElementById('saber-alpha-dest');
+    this.elAlphaHintStatus = document.getElementById('saber-alpha-hint-status');
+    this.elAlphaPathDiag = document.getElementById('saber-alpha-path-diag');
     this.elAlphaIntuition = document.getElementById('saber-alpha-intuition');
     this.elAlphaPathNodes = document.getElementById('saber-alpha-path-nodes');
     this.elAlphaLos = document.getElementById('saber-alpha-los');
@@ -45,8 +51,14 @@ export class SaberObservationUI {
     this.elBetaHpFill = document.getElementById('saber-beta-hp-fill');
     this.elBetaShots = document.getElementById('saber-beta-shots');
     this.elBetaSpeed = document.getElementById('saber-beta-speed');
+    this.elBetaSlowdown = document.getElementById('saber-beta-slowdown');
+    this.elBetaStuck = document.getElementById('saber-beta-stuck');
     this.elBetaStaggerTimer = document.getElementById('saber-beta-stagger-timer');
     this.elBetaTarget = document.getElementById('saber-beta-target');
+    this.elBetaTargetEst = document.getElementById('saber-beta-target-est');
+    this.elBetaDest = document.getElementById('saber-beta-dest');
+    this.elBetaHintStatus = document.getElementById('saber-beta-hint-status');
+    this.elBetaPathDiag = document.getElementById('saber-beta-path-diag');
     this.elBetaIntuition = document.getElementById('saber-beta-intuition');
     this.elBetaPathNodes = document.getElementById('saber-beta-path-nodes');
     this.elBetaLos = document.getElementById('saber-beta-los');
@@ -58,6 +70,7 @@ export class SaberObservationUI {
     this.elDirTensionVal = document.getElementById('saber-dir-tension-val');
     this.elDirTensionFill = document.getElementById('saber-dir-tension-fill');
     this.elDirTime = document.getElementById('saber-dir-time');
+    this.elDirReason = document.getElementById('saber-dir-reason');
     this.elDirSectors = document.getElementById('saber-dir-sectors');
 
     // Action buttons & Log
@@ -166,8 +179,14 @@ export class SaberObservationUI {
         hpFill: this.elAlphaHpFill,
         shots: this.elAlphaShots,
         speed: this.elAlphaSpeed,
+        slowdown: this.elAlphaSlowdown,
+        stuck: this.elAlphaStuck,
         staggerTimer: this.elAlphaStaggerTimer,
         target: this.elAlphaTarget,
+        targetEst: this.elAlphaTargetEst,
+        dest: this.elAlphaDest,
+        hintStatus: this.elAlphaHintStatus,
+        pathDiag: this.elAlphaPathDiag,
         intuition: this.elAlphaIntuition,
         pathNodes: this.elAlphaPathNodes,
         los: this.elAlphaLos,
@@ -189,8 +208,14 @@ export class SaberObservationUI {
         hpFill: this.elBetaHpFill,
         shots: this.elBetaShots,
         speed: this.elBetaSpeed,
+        slowdown: this.elBetaSlowdown,
+        stuck: this.elBetaStuck,
         staggerTimer: this.elBetaStaggerTimer,
         target: this.elBetaTarget,
+        targetEst: this.elBetaTargetEst,
+        dest: this.elBetaDest,
+        hintStatus: this.elBetaHintStatus,
+        pathDiag: this.elBetaPathDiag,
         intuition: this.elBetaIntuition,
         pathNodes: this.elBetaPathNodes,
         los: this.elBetaLos,
@@ -292,14 +317,96 @@ export class SaberObservationUI {
       els.hpFill.style.background = (data.health <= 25) ? '#ef4444' : (data.health <= 50 ? '#f59e0b' : '#22c55e');
     }
 
-    if (els.speed && typeof data.speed === 'number') {
-      els.speed.textContent = `${data.speed.toFixed(2)} m/s`;
+    if (els.speed) {
+      const desired = typeof data.desiredSpeed === 'number' ? data.desiredSpeed.toFixed(2) : (typeof data.speed === 'number' ? data.speed.toFixed(2) : '0.00');
+      const actual = typeof data.actualSpeed === 'number' ? data.actualSpeed.toFixed(2) : (typeof data.speed === 'number' ? data.speed.toFixed(2) : '0.00');
+      els.speed.textContent = `${desired} / ${actual} m/s`;
+    }
+
+    if (els.slowdown) {
+      const reason = data.slowdownReason || 'NONE_AT_SPEED';
+      els.slowdown.textContent = reason;
+      if (reason === 'NONE_AT_SPEED') {
+        els.slowdown.style.background = '#065f46';
+        els.slowdown.style.color = '#34d399';
+      } else if (reason === 'WALL_SLIDING') {
+        els.slowdown.style.background = '#854d0e';
+        els.slowdown.style.color = '#fde047';
+      } else if (reason === 'STUCK_GEOMETRY') {
+        els.slowdown.style.background = '#991b1b';
+        els.slowdown.style.color = '#fca5a5';
+      } else if (reason === 'TURNING_DECELERATION') {
+        els.slowdown.style.background = '#581c87';
+        els.slowdown.style.color = '#d8b4fe';
+      } else {
+        els.slowdown.style.background = '#1e293b';
+        els.slowdown.style.color = '#94a3b8';
+      }
+    }
+
+    if (els.stuck) {
+      const timeStuck = typeof data.timeSpentStuck === 'number' ? data.timeSpentStuck.toFixed(1) : '0.0';
+      const recalcs = data.pathRecalculationCount || 0;
+      els.stuck.textContent = `${timeStuck}s / ${recalcs}`;
+      els.stuck.style.color = (data.timeSpentStuck > 0.5) ? '#ef4444' : '#cbd5e1';
     }
 
     if (els.target) {
       const tId = data.targetName || data.targetId || 'None';
       const dist = (typeof data.targetDistance === 'number') ? ` (${data.targetDistance.toFixed(1)}m)` : '';
       els.target.textContent = `${tId}${dist}`;
+    }
+
+    if (els.targetEst) {
+      if (data.targetEstimate) {
+        const tx = data.targetEstimate.x?.toFixed(1) ?? 0;
+        const tz = data.targetEstimate.z?.toFixed(1) ?? 0;
+        const nameStr = data.lastDirectorHint?.targetPlayerName ? ` (${data.lastDirectorHint.targetPlayerName})` : '';
+        els.targetEst.textContent = `(${tx}, ${tz})${nameStr}`;
+        els.targetEst.style.color = '#f59e0b';
+      } else {
+        els.targetEst.textContent = 'None';
+        els.targetEst.style.color = '#94a3b8';
+      }
+    }
+
+    if (els.dest) {
+      if (data.destination) {
+        const dx = data.destination.x?.toFixed(1) ?? 0;
+        const dz = data.destination.z?.toFixed(1) ?? 0;
+        els.dest.textContent = `(${dx}, ${dz})`;
+        els.dest.style.color = '#38bdf8';
+      } else {
+        els.dest.textContent = 'None';
+        els.dest.style.color = '#94a3b8';
+      }
+    }
+
+    if (els.hintStatus) {
+      if (data.lastDirectorHint && data.lastDirectorHint.reason) {
+        const h = data.lastDirectorHint;
+        const status = h.accepted ? 'ACCEPTED' : 'IGNORED';
+        const off = typeof h.offsetDistance === 'number' ? `~${h.offsetDistance.toFixed(1)}m` : '';
+        els.hintStatus.textContent = `${h.reason} [${status}] ${off}`.trim();
+        els.hintStatus.style.color = h.accepted ? '#fb923c' : '#94a3b8';
+      } else {
+        els.hintStatus.textContent = 'None';
+        els.hintStatus.style.color = '#94a3b8';
+      }
+    }
+
+    if (els.pathDiag) {
+      const nodes = Array.isArray(data.currentNavPath) ? data.currentNavPath.length : (data.pathLength || 0);
+      const remDist = (typeof data.pathRemainingDistance === 'number' && data.pathRemainingDistance > 0)
+        ? `${data.pathRemainingDistance.toFixed(1)}m remaining`
+        : (nodes > 0 ? 'navigating' : 'direct');
+      if (nodes > 0) {
+        els.pathDiag.textContent = `${nodes} nodes (${remDist})`;
+        els.pathDiag.style.color = '#38bdf8';
+      } else {
+        els.pathDiag.textContent = 'Direct LoS (0 nodes)';
+        els.pathDiag.style.color = '#4ade80';
+      }
     }
 
     if (els.los) {
@@ -345,7 +452,12 @@ export class SaberObservationUI {
 
     if (this.elDirTime && (typeof dir.phaseElapsed === 'number' || typeof dir.phaseTimer === 'number')) {
       const elapsed = typeof dir.phaseElapsed === 'number' ? dir.phaseElapsed : (dir.phaseTimer || 0);
-      this.elDirTime.textContent = `${elapsed.toFixed(1)}s`;
+      const maxTime = typeof dir.phaseDuration === 'number' ? ` / ${dir.phaseDuration.toFixed(1)}s` : '';
+      this.elDirTime.textContent = `${elapsed.toFixed(1)}s${maxTime}`;
+    }
+
+    if (this.elDirReason) {
+      this.elDirReason.textContent = dir.phaseTransitionReason || 'Initial BUILD_UP phase';
     }
 
     if (this.elDirSectors) {

@@ -223,11 +223,16 @@ export class PatrolState extends YUKA.State {
     if (saber.hasDirectorHint) {
       const distToHint = saber.position.distanceTo(saber.directorHintTarget);
       if (distToHint <= 2.5) {
-        // Reached sector gateway -> resume normal waypoint path
+        // Reached hint area -> initiate focused local search
         saber.hasDirectorHint = false;
-        saber.seekBehavior.active = false;
-        saber.followPathBehavior.active = true;
-        saber.logState('Reached Director sector gateway. Resuming standard patrol.');
+        saber.searchCenter.copy(saber.directorHintTarget);
+        saber.generateSearchSubPoints(saber.directorHintTarget);
+        saber.logState('Reached Director hint area. Initiating focused SEARCH.');
+        saber.stateMachine.changeTo(SABER_STATES.SEARCH);
+        return;
+      } else {
+        // Continuously navigate toward hint target around geometry
+        saber.navigateTo(saber.directorHintTarget, saber.delta);
       }
     }
   }
@@ -331,8 +336,8 @@ export class SearchState extends YUKA.State {
       const dist = saber.position.distanceTo(currentSubPoint);
       if (dist < 1.5) {
         saber.searchIndex = (saber.searchIndex + 1) % saber.searchSubPoints.length;
-        saber.seekBehavior.target.copy(saber.searchSubPoints[saber.searchIndex]);
       }
+      saber.navigateTo(saber.searchSubPoints[saber.searchIndex], saber.delta);
     }
 
     // 4. Search expiration -> resume patrol
@@ -383,10 +388,13 @@ export class StalkState extends YUKA.State {
         return;
       }
     } else {
-      // Grace buffer before giving up stalk
+      // Grace buffer before giving up stalk: continue navigating to last sensed position
       saber.stalkLostSightTimer += saber.delta;
-      if (saber.stalkLostSightTimer >= 2.0) {
-        const record = saber.memorySystem.getRecord(player);
+      const record = saber.memorySystem.getRecord(player);
+      if (record && record.timeLastSensed > 0) {
+        saber.navigateTo(record.lastSensedPosition, saber.delta);
+      }
+      if (saber.stalkLostSightTimer >= 3.0) {
         if (record && record.timeLastSensed > 0) {
           saber.searchCenter.copy(record.lastSensedPosition);
           saber.stateMachine.changeTo(SABER_STATES.SEARCH);
@@ -683,10 +691,28 @@ export class SaberAgent extends YUKA.Vehicle {
     this.hasNewSoundAlert = false;
     this.lastSoundStimulus = null;
 
-    // Encounter Director Macro Guidance State
+    // Encounter Director Macro Guidance State & Explainability
     this.hasDirectorHint = false;
     this.directorHintTarget = new YUKA.Vector3();
     this.directorHintSectorName = '';
+    this.directorHintDistance = 7.5;
+    this.directorHintState = {
+      lastReceivedTime: null,
+      hintPosition: null,       // { x, z }
+      offsetDistance: 0,
+      accepted: false,
+      reason: 'NONE',
+      estimatedTargetPosition: null, // { x, z }
+      targetPlayerName: 'None'
+    };
+
+    // Movement Diagnostics, Stuck Detection & Progress Tracking
+    this.actualSpeed = 0;
+    this.desiredSpeed = this.patrolSpeed;
+    this.stuckTimer = 0;
+    this.timeSpentStuck = 0;
+    this.pathRecalculationCount = 0;
+    this.slowdownReason = 'NONE_AT_SPEED';
 
     // Spatial Targets & Multi-Survivor Target Candidates
     this.searchCenter = new YUKA.Vector3();
@@ -799,26 +825,115 @@ export class SaberAgent extends YUKA.Vehicle {
    * Intuition hints NEVER override active visual contact, melee combat, or gunshot responses.
    * @param {YUKA.Vector3} hintTarget - Approximate location with randomized 5-10m offset
    * @param {number} [offsetDistance=7.5] - Positional offset radius
+   * @param {YUKA.Vector3} [estimatedPlayerPos=null] - Approximate estimated player position
+   * @param {string} [targetPlayerName='Survivor'] - Name of hinted survivor
    */
-  onReceiveIntuitionHint(hintTarget, offsetDistance = 7.5) {
+  onReceiveIntuitionHint(hintTarget, offsetDistance = 7.5, estimatedPlayerPos = null, targetPlayerName = 'Survivor') {
     const curr = this.stateMachine.currentState;
-    if (curr === this.states.PATROL) {
-      this.directorHintTarget.copy(hintTarget);
-      this.directorHintDistance = offsetDistance;
-      this.hasDirectorHint = true;
-      this.followPathBehavior.active = false;
-      this.seekBehavior.active = true;
-      this.seekBehavior.target.copy(hintTarget);
-      this.navigateTo(hintTarget, this.delta);
-      this.logState(`Received Encounter Director intuition hint (approximate offset ${offsetDistance.toFixed(1)}m)`);
+    const hintPosObj = { x: +hintTarget.x.toFixed(2), z: +hintTarget.z.toFixed(2) };
+    const estPosObj = estimatedPlayerPos ? { x: +estimatedPlayerPos.x.toFixed(2), z: +estimatedPlayerPos.z.toFixed(2) } : null;
+
+    let accepted = false;
+    let reason = 'NONE';
+
+    if (curr === this.states.STAGGERED || curr === this.states.RECOVER) {
+      accepted = false;
+      reason = 'REJECTED_INCAPACITATED';
+    } else if (curr === this.states.CHASE || curr === this.states.ATTACK) {
+      accepted = false;
+      reason = 'IGNORED_ACTIVE_COMBAT';
+    } else if (curr === this.states.STALK && this.canSeeTarget) {
+      accepted = false;
+      reason = 'IGNORED_HAS_DIRECT_LOS';
+    } else if (curr === this.states.INVESTIGATE_SOUND) {
+      const soundAge = this.lastSoundStimulus ? (this.currentTime - this.lastSoundStimulus.timestamp) : 999;
+      const soundDist = this.position.distanceTo(this.soundTarget);
+      const hintDist = this.position.distanceTo(hintTarget);
+      if (soundAge < 3.0 && soundDist < hintDist) {
+        accepted = false;
+        reason = 'IGNORED_PRIORITY_GUNSHOT';
+      } else {
+        accepted = true;
+        reason = 'REPLACED_STALE_SOUND';
+      }
+    } else if (curr === this.states.PATROL) {
+      accepted = true;
+      reason = 'ACCEPTED_PATROL';
     } else if (curr === this.states.SEARCH) {
+      accepted = true;
+      reason = 'ACCEPTED_SEARCH';
+    } else {
+      accepted = true;
+      reason = 'ACCEPTED_AMBIENT';
+    }
+
+    this.directorHintState = {
+      lastReceivedTime: +this.currentTime.toFixed(1),
+      hintPosition: hintPosObj,
+      offsetDistance: +offsetDistance.toFixed(1),
+      accepted,
+      reason,
+      estimatedTargetPosition: estPosObj,
+      targetPlayerName
+    };
+
+    if (accepted) {
       this.directorHintTarget.copy(hintTarget);
       this.directorHintDistance = offsetDistance;
       this.hasDirectorHint = true;
-      this.searchCenter.copy(hintTarget);
-      this.generateSearchSubPoints(hintTarget);
-      this.logState(`Redirected search from Encounter Director intuition hint (approximate offset ${offsetDistance.toFixed(1)}m)`);
+
+      if (curr === this.states.PATROL || curr === this.states.INVESTIGATE_SOUND) {
+        this.followPathBehavior.active = false;
+        this.seekBehavior.active = true;
+        this.navigateTo(hintTarget, this.delta);
+        this.logState(`Accepted Encounter Director hint for ${targetPlayerName} (${reason}, ~${offsetDistance.toFixed(1)}m offset)`);
+      } else if (curr === this.states.SEARCH) {
+        this.searchCenter.copy(hintTarget);
+        this.generateSearchSubPoints(hintTarget);
+        this.navigateTo(hintTarget, this.delta);
+        this.logState(`Redirected SEARCH to Encounter Director hint for ${targetPlayerName} (${reason}, ~${offsetDistance.toFixed(1)}m offset)`);
+      }
+    } else {
+      this.logState(`Ignored Encounter Director hint for ${targetPlayerName} (${reason})`);
     }
+  }
+
+  getInvestigationDestination() {
+    const curr = this.stateMachine.currentState;
+    if (this.hasDirectorHint) {
+      return this.directorHintTarget;
+    }
+    if (curr === this.states.INVESTIGATE_SOUND) {
+      return this.soundTarget;
+    }
+    if (curr === this.states.SEARCH) {
+      return (this.searchSubPoints && this.searchSubPoints[this.searchIndex]) || this.searchCenter;
+    }
+    if (curr === this.states.CHASE || curr === this.states.STALK) {
+      if (this.targetEntity && !this.targetEntity.isDead) {
+        return this.targetEntity.position;
+      }
+    }
+    if (curr === this.states.PATROL) {
+      if (this.currentNavPath && this.currentNavPath.length > 0) {
+        return this.currentNavPath[this.currentNavPath.length - 1];
+      }
+      return this.patrolPath.current() || null;
+    }
+    return null;
+  }
+
+  getPathRemainingDistance() {
+    if (!this.currentNavPath || this.currentNavPath.length === 0) return 0;
+    let dist = 0;
+    const startIdx = Math.min(this.navPathIndex, this.currentNavPath.length - 1);
+    let prev = this.position;
+    for (let i = startIdx; i < this.currentNavPath.length; i++) {
+      const wp = this.currentNavPath[i];
+      dist += Math.hypot(wp.x - prev.x, wp.z - prev.z);
+      prev = wp;
+    }
+    return dist;
   }
 
   /**
@@ -984,7 +1099,7 @@ export class SaberAgent extends YUKA.Vehicle {
 
   /**
    * Intelligently steers toward targetPos, using direct line-of-sight when unobstructed,
-   * or Dijkstra pathfinding around walls/pillars when line of sight is broken.
+   * or Dijkstra pathfinding around walls/pillars with string-pulling lookahead when line of sight is broken.
    */
   navigateTo(targetPos, delta) {
     if (!this.env) {
@@ -1004,8 +1119,9 @@ export class SaberAgent extends YUKA.Vehicle {
 
     // Line of sight obstructed: check if cached Dijkstra path is still valid
     const targetMoved = this.navTargetPos.distanceTo(targetPos) > 3.0;
-    const timeToRecalc = (this.currentTime - this.lastNavCalcTime) > 0.5;
-    const needNewPath = !this.currentNavPath || this.currentNavPath.length === 0 || targetMoved || timeToRecalc;
+    const timeToRecalc = (this.currentTime - this.lastNavCalcTime) > 1.0;
+    const hasActivePath = Array.isArray(this.currentNavPath) && this.currentNavPath.length > 0 && this.navPathIndex < this.currentNavPath.length;
+    const needNewPath = !hasActivePath || targetMoved || (timeToRecalc && this.navPathIndex >= this.currentNavPath.length - 1);
 
     if (needNewPath) {
       if (typeof this.env.findPath === 'function') {
@@ -1020,7 +1136,18 @@ export class SaberAgent extends YUKA.Vehicle {
     }
 
     if (this.currentNavPath && this.currentNavPath.length > 0) {
-      // Advance along waypoints
+      // String-pulling lookahead: advance navPathIndex directly to furthest waypoint with clear line-of-sight
+      let furthestVisibleIdx = this.navPathIndex;
+      for (let i = this.currentNavPath.length - 1; i > this.navPathIndex; i--) {
+        const wp = this.currentNavPath[i];
+        if (this.env.hasLineOfSight(this.position, wp)) {
+          furthestVisibleIdx = i;
+          break;
+        }
+      }
+      this.navPathIndex = furthestVisibleIdx;
+
+      // Advance past completed waypoints
       while (this.navPathIndex < this.currentNavPath.length - 1) {
         const wp = this.currentNavPath[this.navPathIndex];
         const distToWp = Math.hypot(this.position.x - wp.x, this.position.z - wp.z);
@@ -1037,6 +1164,41 @@ export class SaberAgent extends YUKA.Vehicle {
       this.seekBehavior.active = true;
       this.seekBehavior.target.copy(targetPos);
     }
+  }
+
+  handleStuckRecovery(delta) {
+    this.pathRecalculationCount = (this.pathRecalculationCount || 0) + 1;
+    this.slowdownReason = 'STUCK_GEOMETRY';
+    this.logState(`Stuck against obstruction for ${this.stuckTimer.toFixed(1)}s. Triggering recovery recalculation #${this.pathRecalculationCount}.`);
+
+    // 1. Advance waypoint if currently following a path
+    if (this.currentNavPath && this.currentNavPath.length > 0 && this.navPathIndex < this.currentNavPath.length - 1) {
+      this.navPathIndex++;
+      const nextWp = this.currentNavPath[this.navPathIndex];
+      this.seekBehavior.target.copy(nextWp);
+    } else {
+      // 2. Clear path to force fresh recalculation from clearance position
+      this.lastNavCalcTime = -999;
+      this.currentNavPath = [];
+      this.navPathIndex = 0;
+    }
+
+    // 3. Radial clearance probe: find open angle to nudge out of corner vertex
+    if (this.env && typeof this.env.circleHitsWall === 'function') {
+      const probeDist = 0.5;
+      const angles = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2, Math.PI * 3 / 4, -Math.PI * 3 / 4, Math.PI];
+      for (const a of angles) {
+        const testX = this.position.x + Math.cos(a) * probeDist;
+        const testZ = this.position.z + Math.sin(a) * probeDist;
+        if (!this.env.circleHitsWall(testX, testZ, this.collisionRadius)) {
+          this.velocity.x += Math.cos(a) * 3.5;
+          this.velocity.z += Math.sin(a) * 3.5;
+          break;
+        }
+      }
+    }
+
+    this.stuckTimer = 0;
   }
 
   update(delta) {
@@ -1059,6 +1221,8 @@ export class SaberAgent extends YUKA.Vehicle {
     const prevX = this.position.x;
     const prevZ = this.position.z;
 
+    this.desiredSpeed = isStationaryState ? 0 : this.maxSpeed;
+
     if (!isStationaryState) {
       super.update(delta);
     } else {
@@ -1067,6 +1231,9 @@ export class SaberAgent extends YUKA.Vehicle {
     }
 
     // 4. Enforce authoritative wall sliding collision (player dimensions: radius 0.32m)
+    let collisionOccurredX = false;
+    let collisionOccurredZ = false;
+
     if (this.env && typeof this.env.circleHitsWall === 'function') {
       const radius = this.collisionRadius;
       const newX = this.position.x;
@@ -1077,6 +1244,7 @@ export class SaberAgent extends YUKA.Vehicle {
         finalX = newX;
       } else {
         this.velocity.x = 0;
+        collisionOccurredX = true;
       }
 
       let finalZ = prevZ;
@@ -1084,10 +1252,44 @@ export class SaberAgent extends YUKA.Vehicle {
         finalZ = newZ;
       } else {
         this.velocity.z = 0;
+        collisionOccurredZ = true;
       }
 
       this.position.x = finalX;
       this.position.z = finalZ;
+    }
+
+    // 5. Measure actual displacement speed
+    const movedDist = Math.hypot(this.position.x - prevX, this.position.z - prevZ);
+    const instantSpeed = delta > 0 ? (movedDist / delta) : 0;
+    this.actualSpeed = instantSpeed;
+
+    // 6. Stuck Detection & Diagnostic Reason Tracking
+    if (isStationaryState) {
+      this.stuckTimer = 0;
+      this.slowdownReason = 'STATIONARY_STATE';
+    } else if (this.desiredSpeed > 1.0) {
+      if (instantSpeed < 0.25) {
+        this.stuckTimer = (this.stuckTimer || 0) + delta;
+        this.timeSpentStuck = (this.timeSpentStuck || 0) + delta;
+        this.slowdownReason = (collisionOccurredX && collisionOccurredZ) ? 'STUCK_GEOMETRY' : 'WALL_SLIDING';
+
+        if (this.stuckTimer >= 0.4) {
+          this.handleStuckRecovery(delta);
+        }
+      } else {
+        this.stuckTimer = Math.max(0, (this.stuckTimer || 0) - delta * 2.0);
+        if (collisionOccurredX || collisionOccurredZ) {
+          this.slowdownReason = 'WALL_SLIDING';
+        } else if (instantSpeed < this.desiredSpeed * 0.7) {
+          this.slowdownReason = 'TURNING_DECELERATION';
+        } else {
+          this.slowdownReason = 'NONE_AT_SPEED';
+        }
+      }
+    } else {
+      this.stuckTimer = 0;
+      this.slowdownReason = 'NONE_AT_SPEED';
     }
 
     return this;
