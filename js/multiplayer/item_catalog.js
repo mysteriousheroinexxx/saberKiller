@@ -275,7 +275,7 @@ export const ITEM_DEFINITIONS = {
     id: 'exit_door',
     name: 'Level 0 Exit Door',
     category: ITEM_CATEGORIES.ENVIRONMENTAL,
-    modelUrl: null,
+    modelUrl: 'assets/items/metalDoor.glb',
     iconUrl: 'assets/ui/icons/item_key.svg',
     isPickup: false,
     isInteractable: true,

@@ -517,6 +517,13 @@ async function init() {
     enterLevel0Env(scene);
     const ch = getCollisionHandler();
     if (ch) {
+      const origCircleHitsWall = ch.circleHitsWall.bind(ch);
+      ch.circleHitsWall = (px, pz, radius) => {
+        if (exitDoorManager && exitDoorManager.collidesWithDoor(px, pz, radius)) {
+          return true;
+        }
+        return origCircleHitsWall(px, pz, radius);
+      };
       mpManager.setCollisionHandler(ch);
     }
 

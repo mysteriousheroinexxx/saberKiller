@@ -309,10 +309,10 @@ async function run() {
     assert.equal(inLobby, false, 'Must transition from lobby into active Level 0 gameplay');
     console.log('[TEST] Active Level 0 gameplay entered');
 
-    // Wait for itemManager and exitDoorManager to be ready
+    // Wait for itemManager and exitDoorManager to be ready, and metalDoor.glb to load
     for (let i = 0; i < 50; i++) {
       const itemsLoaded = await client.eval(sessionId, `
-        Boolean(window.itemManager?.isLoaded && window.itemManager?.items?.length > 0 && window.exitDoorManager?.rootGroup)
+        Boolean(window.itemManager?.isLoaded && window.itemManager?.items?.length > 0 && window.exitDoorManager?.rootGroup && window.exitDoorManager?.isModelLoaded)
       `);
       if (itemsLoaded) break;
       await wait(200);
@@ -378,6 +378,21 @@ async function run() {
     assert.equal(doorTarget.doorLocked, true, 'Door must be locked initially');
     assert.equal(doorTarget.actionText, 'Unlock', 'Action text must be Unlock when possessing key');
 
+    // Verify metallic door model and closed collision
+    const modelInfo = await client.eval(sessionId, `
+      ({
+        isModelLoaded: Boolean(window.exitDoorManager?.isModelLoaded),
+        hasFrameMesh: Boolean(window.exitDoorManager?.frameMesh),
+        hasLeafMesh: Boolean(window.exitDoorManager?.doorLeafMesh),
+        materialName: window.exitDoorManager?.doorLeafMesh?.material?.name,
+        doorClosedCollision: window.exitDoorManager?.collidesWithDoor(79.55, 207.0, 0.35)
+      })
+    `);
+    console.log('[TEST] Metallic Door model info:', modelInfo);
+    assert.equal(modelInfo.isModelLoaded, true, 'Metal door GLB must be loaded');
+    assert.equal(modelInfo.hasLeafMesh, true, 'Must have door leaf mesh');
+    assert.equal(modelInfo.doorClosedCollision, true, 'Closed door must block collision');
+
     // Wait for server to process player position update
     await wait(400);
 
@@ -400,10 +415,12 @@ async function run() {
     const postUnlockState = await client.eval(sessionId, `
       ({
         doorLocked: window.exitDoorManager?.doorState?.locked,
-        targetAngle: window.exitDoorManager?.targetAngle
+        targetAngle: window.exitDoorManager?.targetAngle,
+        doorOpenCollision: window.exitDoorManager?.collidesWithDoor(79.55, 207.0, 0.35)
       })
     `);
     assert.equal(postUnlockState.doorLocked, false, 'Door must be authoritatively unlocked');
+    assert.equal(postUnlockState.doorOpenCollision, false, 'Open door must not block passage through doorway');
     console.log('[TEST] Exit Door unlocked successfully; waiting for door swing...');
     await wait(1200); // Allow smooth hinge swing animation
 
