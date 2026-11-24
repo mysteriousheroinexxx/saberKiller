@@ -115,6 +115,14 @@ export class MPManager {
         this.inventory.deserialize(payload.inventory);
       }
 
+      // Sync doors state if provided
+      if (Array.isArray(payload.doors)) {
+        this.roomDoors = payload.doors;
+        if (window.exitDoorManager && typeof window.exitDoorManager.initDoors === 'function') {
+          window.exitDoorManager.initDoors(payload.doors);
+        }
+      }
+
       // Synchronize local player viewmodel and weapon with active hotbar slot
       this.localPlayer.selectHotbarSlot(this.localPlayer.selectedHotbarSlot);
 
@@ -321,7 +329,10 @@ export class MPManager {
     };
 
     this.network.onGameOver = (payload) => {
-      this.localPlayer.setState('ELIMINATED');
+      const isVictory = (payload?.status === 'ESCAPED' || payload?.reason === 'LEVEL_COMPLETED');
+      if (!isVictory) {
+        this.localPlayer.setState('ELIMINATED');
+      }
       const downedOverlay = document.getElementById('bb-downed-overlay');
       if (downedOverlay) downedOverlay.style.display = 'none';
       const elimOverlay = document.getElementById('bb-eliminated-overlay');
@@ -330,9 +341,14 @@ export class MPManager {
       const goOverlay = document.getElementById('bb-gameover-overlay');
       if (goOverlay) {
         goOverlay.style.display = 'flex';
+        const titleEl = goOverlay.querySelector('.bb-gameover-title');
+        if (titleEl) {
+          titleEl.textContent = payload?.title || (isVictory ? 'LEVEL ESCAPED!' : 'GAME OVER');
+          titleEl.style.color = isVictory ? '#4ade80' : '#dc2626';
+        }
         const reasonEl = document.getElementById('bb-gameover-reason');
         if (reasonEl) {
-          reasonEl.textContent = payload.message || payload.reason || 'RUN FAILED';
+          reasonEl.textContent = payload?.message || payload?.reason || (isVictory ? 'Level 0 Cleared: You escaped the Backrooms!' : 'RUN FAILED');
         }
       }
       if (this.ui.onGameOver) this.ui.onGameOver(payload);
@@ -402,6 +418,13 @@ export class MPManager {
 
       if (Array.isArray(payload.collectedItems) && this.itemManager) {
         this.itemManager.setCollectedItems(payload.collectedItems);
+      }
+
+      if (Array.isArray(payload.doors)) {
+        this.roomDoors = payload.doors;
+        if (window.exitDoorManager && typeof window.exitDoorManager.initDoors === 'function') {
+          window.exitDoorManager.initDoors(payload.doors);
+        }
       }
       this._updatePlayerCount();
       if (this.ui.onMatchStarted) this.ui.onMatchStarted(payload);

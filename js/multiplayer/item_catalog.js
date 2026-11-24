@@ -269,6 +269,27 @@ export const ITEM_DEFINITIONS = {
       promptText: 'Use',
       description: 'Vintage commercial vending unit. Dispenses cold Almond Water.'
     }
+  },
+
+  exit_door: {
+    id: 'exit_door',
+    name: 'Level 0 Exit Door',
+    category: ITEM_CATEGORIES.ENVIRONMENTAL,
+    modelUrl: null,
+    iconUrl: 'assets/ui/icons/item_key.svg',
+    isPickup: false,
+    isInteractable: true,
+    stackable: false,
+    maxStack: 0,
+    consumable: false,
+    equippable: false,
+    droppable: false,
+    metadata: {
+      requiredKey: 'doorKey',
+      promptTextLocked: 'Unlock Door',
+      promptTextUnlocked: 'Escape Level 0',
+      description: 'Reinforced security exit door. Requires Brass Door Key to unlock.'
+    }
   }
 };
 

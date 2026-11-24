@@ -81,6 +81,12 @@
       "modelUrl": "assets/items/doorKey.glb",
       "scale": [1.0, 1.0, 1.0]
     },
+    "exit_door": {
+      "name": "Level 0 Exit Door",
+      "category": "environmental",
+      "modelUrl": null,
+      "scale": [1.0, 1.0, 1.0]
+    },
     "weapon_pistol": {
       "name": "Beretta Px4 Storm",
       "category": "weapon",
@@ -206,17 +212,6 @@
       }
     },
     {
-      "id": "floor_door_key_01",
-      "type": "doorKey",
-      "surfaceType": "floor",
-      "surfaceName": "Carpet Floor",
-      "position": [43.1, 0.0, -186.00],
-      "rotation": [0.0, 1.2, 0.0],
-      "anchor": {
-        "surface": "floor"
-      }
-    },
-    {
       "id": "table_first_aid_01",
       "type": "first_aid",
       "surfaceType": "table",
@@ -271,18 +266,6 @@
       "surfaceName": "Office Table Top",
       "position": [44.55, 0.936, -185.20],
       "rotation": [0.0, 0.5, 0.0],
-      "anchor": {
-        "surface": "table",
-        "supportProp": "prop_table_01"
-      }
-    },
-    {
-      "id": "table_door_key_01",
-      "type": "doorKey",
-      "surfaceType": "table",
-      "surfaceName": "Office Table Top",
-      "position": [44.15, 0.936, -185.20],
-      "rotation": [0.0, -1.1, 0.0],
       "anchor": {
         "surface": "table",
         "supportProp": "prop_table_01"
@@ -582,6 +565,15 @@
       "surfaceName": "Carpet Floor",
       "position": [39.8, 0.0, -178.9],
       "rotation": [0.0, -0.4, 0.0],
+      "anchor": { "surface": "floor" }
+    },
+    {
+      "id": "level0_exit_door",
+      "type": "exit_door",
+      "surfaceType": "floor",
+      "surfaceName": "Transit Gateway",
+      "position": [79.55, 0.0, 207.0],
+      "rotation": [0.0, 0.0, 0.0],
       "anchor": { "surface": "floor" }
     }
   ]

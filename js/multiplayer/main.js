@@ -23,6 +23,7 @@ import { WorldItemManager } from './item_manager.js';
 import { WorldPlacementEditor } from './world_editor.js';
 import { InteractionManager } from './interaction_manager.js';
 import { InventoryUI } from './inventory_ui.js';
+import { ExitDoorManager } from './exit_door_manager.js';
 
 let scene, camera, renderer, mpManager, playerLight;
 let lastTime = performance.now();
@@ -32,6 +33,7 @@ let itemManager = null;
 let worldEditor = null;
 let interactionManager = null;
 let inventoryUI = null;
+let exitDoorManager = null;
 let devToolsEnabled = false;
 
 // Survival Mode Sanity System
@@ -581,6 +583,29 @@ async function init() {
         console.log(`[REVIVE ${requestId}] Requesting teammate revival for target ${target.targetPlayerId}`);
         const result = mpManager.network.requestRevive(target.targetPlayerId, requestId, clientPos);
         return result;
+      } else if (target.type === 'exit_door' || target.id === 'level0_exit_door') {
+        const door = exitDoorManager ? exitDoorManager.getDoor('level0_exit_door') : null;
+        const isLocked = door ? door.locked : true;
+        if (isLocked) {
+          const hasKey = mpManager.inventory && mpManager.inventory.hasItem('doorKey');
+          if (!hasKey) {
+            if (interactionManager) {
+              interactionManager.diagnostics.serverResult = 'REJECTED — Locked (Requires Brass Door Key)';
+              interactionManager.diagnostics.lastRejection = 'Requires Brass Door Key';
+              interactionManager._notifyDiagnostics();
+              interactionManager._finishPickupRequest(requestId);
+            }
+            return false;
+          }
+          console.log(`[EXIT DOOR ${requestId}] Unlocking door ${target.id} with Brass Door Key`);
+          const result = mpManager.network.requestDoorUnlock(target.id, requestId, clientPos);
+          return result;
+        } else {
+          console.log(`[EXIT DOOR ${requestId}] Escaping Level 0 through exit doorway`);
+          const result = mpManager.network.requestEscape(target.id, clientPos);
+          if (interactionManager) interactionManager._finishPickupRequest(requestId);
+          return result;
+        }
       }
     },
     onDiagnosticsChange: (diag) => {
@@ -589,6 +614,27 @@ async function init() {
   });
   window.interactionManager = interactionManager;
   window.inventory = mpManager.inventory;
+
+  // Initialize Level 0 Exit Door Entity and Network Synchronizer
+  exitDoorManager = new ExitDoorManager(scene, interactionManager);
+  window.exitDoorManager = exitDoorManager;
+  if (mpManager.roomDoors) {
+    exitDoorManager.initDoors(mpManager.roomDoors);
+  }
+
+  // Network door response and state update handlers
+  mpManager.network.onDoorUnlockResponse = (payload) => {
+    interactionManager.handleDoorUnlockResponse(payload);
+    if (payload.success && exitDoorManager) {
+      exitDoorManager.setDoorState(payload.doorId, false);
+    }
+  };
+
+  mpManager.network.onDoorStateUpdate = (payload) => {
+    if (exitDoorManager && payload) {
+      exitDoorManager.setDoorState(payload.doorId, payload.locked, payload.unlockedBy);
+    }
+  };
 
   isEnvReady = true;
   window.isEnvReady = true;
@@ -1963,6 +2009,11 @@ function loop(timestamp) {
   // Update Reusable Interaction Framework
   if (interactionManager && isGameActive) {
     interactionManager.update();
+  }
+
+  // Update Exit Door Entity (smooth hinge animation and doorway escape walk-through)
+  if (exitDoorManager && isGameActive && mpManager?.localPlayer) {
+    exitDoorManager.update(dt, mpManager.localPlayer.pos);
   }
 
   renderScene();

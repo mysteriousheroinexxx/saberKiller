@@ -140,6 +140,7 @@ export class RoomManager {
       layoutRevision: (typeof layoutRevision === 'string' && layoutRevision.trim()) ? layoutRevision.trim() : 'default',
       players: new Map([[playerId, player]]),
       worldItems: new Map(),
+      doors: new Map(),
       pickupRequests: new Map(),
       useRequests: new Map(),
       runState: (options && (options.directStart || typeof options.startingPlayers === 'number')) ? 'IN_PROGRESS' : 'LOBBY', // 'LOBBY', 'IN_PROGRESS', 'GAME_OVER'
@@ -147,6 +148,19 @@ export class RoomManager {
       startingPlayerCount: 0,
       availableHealthPackCount: 0
     };
+
+    // Initialize room exit door
+    const defaultDoorPos = [79.55, 0.0, 207.0];
+    room.doors.set('level0_exit_door', {
+      id: 'level0_exit_door',
+      type: 'exit_door',
+      name: 'Level 0 Exit Door',
+      locked: true,
+      requiredKey: 'doorKey',
+      position: defaultDoorPos,
+      unlockedBy: null,
+      unlockedAt: null
+    });
 
     // Initialize room world pickup state from frozen layout
     if (layoutData && Array.isArray(layoutData.placements)) {
@@ -183,6 +197,9 @@ export class RoomManager {
     // Fixed Ammunition Economy: Initialize and enforce Level 0 room budget
     this._initializeRoomAmmo(room);
 
+    // Level 0 Key & Exit Door: Ensure exactly one Brass Door Key exists
+    this._ensureSingleKey(room);
+
     this.rooms.set(roomCode, room);
     this.clientToRoom.set(ws, { roomCode, playerId });
 
@@ -204,6 +221,7 @@ export class RoomManager {
       layoutRevision: room.layoutRevision,
       collectedItems,
       spawnedItems: [],
+      doors: this.serializeDoors(room),
       inventory: player.inventory.serialize()
     };
   }
@@ -531,6 +549,7 @@ export class RoomManager {
       layoutRevision: room.layoutRevision || 'default',
       collectedItems,
       spawnedItems,
+      doors: this.serializeDoors(room),
       inventory: player.inventory.serialize()
     };
   }
@@ -1099,6 +1118,7 @@ export class RoomManager {
       room,
       startingPlayers: room.players.size,
       collectedItems,
+      doors: this.serializeDoors(room),
       players
     };
   }
@@ -1430,6 +1450,201 @@ export class RoomManager {
           }
         }
       ]
+    };
+  }
+
+  /**
+   * Ensures exactly one Brass Door Key pickup exists in Level 0.
+   * If multiple keys exist in the layout, removes duplicates.
+   * If no keys exist, spawns one at default shelf exploration location [44.5, 1.188, -189.50].
+   */
+  _ensureSingleKey(room) {
+    const keys = [];
+    for (const [id, item] of room.worldItems) {
+      if (item.type === 'doorKey') {
+        keys.push(item);
+      }
+    }
+    if (keys.length > 1) {
+      const preferred = keys.find(k => k.id === 'shelf_door_key_tier3') || keys[0];
+      for (const k of keys) {
+        if (k.id !== preferred.id) {
+          room.worldItems.delete(k.id);
+        }
+      }
+    } else if (keys.length === 0) {
+      room.worldItems.set('shelf_door_key_tier3', {
+        id: 'shelf_door_key_tier3',
+        type: 'doorKey',
+        category: 'key',
+        position: [44.5, 1.188, -189.50],
+        rotation: [0, -0.3, 0],
+        isPickup: true,
+        available: true,
+        collectedBy: null,
+        collectedAt: null
+      });
+    }
+  }
+
+  /**
+   * Serializes active doors for network transmission
+   */
+  serializeDoors(room) {
+    if (!room || !room.doors) return [];
+    return [...room.doors.values()].map(d => ({
+      id: d.id,
+      type: d.type || 'exit_door',
+      name: d.name || 'Level 0 Exit Door',
+      locked: d.locked,
+      requiredKey: d.requiredKey,
+      position: d.position,
+      unlockedBy: d.unlockedBy,
+      unlockedAt: d.unlockedAt
+    }));
+  }
+
+  /**
+   * Authoritative Door Unlock Handler:
+   * - Validates player state (DOWNED or ELIMINATED rejected)
+   * - Validates proximity to door (<= 3.5m)
+   * - Validates player inventory has required key (doorKey)
+   * - Sets door.locked = false authoritatively
+   * - Returns state for room-wide broadcast
+   */
+  handleDoorUnlock(ws, doorId = 'level0_exit_door', clientPos = null, requestId = null) {
+    const meta = this.clientToRoom.get(ws);
+    if (!meta) return { success: false, error: 'Client not associated with any active room session' };
+
+    const room = this.rooms.get(meta.roomCode);
+    if (!room) return { success: false, error: `Room ${meta.roomCode} does not exist` };
+
+    const player = room.players.get(meta.playerId);
+    if (!player) return { success: false, error: `Player ${meta.playerId} not found in room` };
+
+    if (player.state === 'DOWNED' || player.state === 'ELIMINATED') {
+      return { success: false, error: `Player is ${player.state.toLowerCase()} and cannot unlock doors`, room, player };
+    }
+
+    const door = room.doors.get(doorId || 'level0_exit_door');
+    if (!door) {
+      return { success: false, error: `Door '${doorId}' not found in room`, room, player };
+    }
+
+    // If door is already unlocked, return success immediately
+    if (!door.locked) {
+      return {
+        success: true,
+        alreadyUnlocked: true,
+        doorId: door.id,
+        locked: false,
+        unlockedBy: door.unlockedBy,
+        unlockedAt: door.unlockedAt,
+        room,
+        player
+      };
+    }
+
+    // Distance validation: tolerance up to 3.5m
+    const dPos = door.position || [79.55, 0.0, 207.0];
+    const pPos = (clientPos && isValidNumber(clientPos.x) && isValidNumber(clientPos.z))
+      ? clientPos
+      : (player.position || SPAWN_SLOTS[0]);
+    const dx = pPos.x - dPos[0];
+    const dy = (typeof pPos.y === 'number' ? pPos.y : 0) - dPos[1];
+    const dz = pPos.z - dPos[2];
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const MAX_DOOR_DIST = 3.5;
+
+    if (dist > MAX_DOOR_DIST) {
+      return { success: false, error: `Player too far from door (${dist.toFixed(2)}m > ${MAX_DOOR_DIST}m)`, room, player };
+    }
+
+    // Key requirement validation: player must possess the key in inventory
+    const requiredKey = door.requiredKey || 'doorKey';
+    const hasKey = player.inventory.hasItem(requiredKey);
+    if (!hasKey) {
+      return {
+        success: false,
+        error: 'Door is locked. Requires Brass Door Key.',
+        reason: 'MISSING_KEY',
+        room,
+        player
+      };
+    }
+
+    // Authoritatively unlock door permanently for the room
+    door.locked = false;
+    door.unlockedBy = player.id;
+    door.unlockedAt = Date.now();
+
+    return {
+      success: true,
+      doorId: door.id,
+      locked: false,
+      unlockedBy: door.unlockedBy,
+      unlockedAt: door.unlockedAt,
+      room,
+      player
+    };
+  }
+
+  /**
+   * Authoritative Level Escape / Run Completion Handler:
+   * - Validates player state and proximity to unlocked exit doorway
+   * - Sets room.runState = 'GAME_OVER' with status: 'ESCAPED'
+   * - Returns victory payload for room-wide broadcast
+   */
+  handleEscape(ws, doorId = 'level0_exit_door', clientPos = null) {
+    const meta = this.clientToRoom.get(ws);
+    if (!meta) return { success: false, error: 'Client not associated with any active room session' };
+
+    const room = this.rooms.get(meta.roomCode);
+    if (!room) return { success: false, error: `Room ${meta.roomCode} does not exist` };
+
+    const player = room.players.get(meta.playerId);
+    if (!player) return { success: false, error: `Player ${meta.playerId} not found in room` };
+
+    if (player.state === 'DOWNED' || player.state === 'ELIMINATED') {
+      return { success: false, error: `Player is ${player.state.toLowerCase()} and cannot escape`, room, player };
+    }
+
+    const door = room.doors.get(doorId || 'level0_exit_door');
+    if (!door) {
+      return { success: false, error: `Door '${doorId}' not found in room`, room, player };
+    }
+
+    if (door.locked) {
+      return { success: false, error: 'Door is locked. Cannot escape.', room, player };
+    }
+
+    const dPos = door.position || [79.55, 0.0, 207.0];
+    const pPos = (clientPos && isValidNumber(clientPos.x) && isValidNumber(clientPos.z))
+      ? clientPos
+      : (player.position || SPAWN_SLOTS[0]);
+    const dx = pPos.x - dPos[0];
+    const dy = (typeof pPos.y === 'number' ? pPos.y : 0) - dPos[1];
+    const dz = pPos.z - dPos[2];
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const MAX_ESCAPE_DIST = 3.8;
+
+    if (dist > MAX_ESCAPE_DIST) {
+      return { success: false, error: `Player too far from exit doorway (${dist.toFixed(2)}m > ${MAX_ESCAPE_DIST}m)`, room, player };
+    }
+
+    // Authoritative Run Completion
+    room.runState = 'GAME_OVER';
+
+    return {
+      success: true,
+      status: 'ESCAPED',
+      reason: 'LEVEL_COMPLETED',
+      title: 'LEVEL ESCAPED!',
+      message: `${player.name || 'Survivor'} unlocked the exit door and escaped the Backrooms!`,
+      escapedBy: player.id,
+      escapedByName: player.name || 'Survivor',
+      room,
+      player
     };
   }
 }

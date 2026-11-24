@@ -700,6 +700,7 @@ wss.on('connection', (ws, req) => {
             layoutRevision: res.layoutRevision,
             collectedItems: res.collectedItems || [],
             spawnedItems: res.spawnedItems || [],
+            doors: res.doors || [],
             inventory: res.inventory
           });
           const lobbyState = roomManager.getLobbyState(res.roomCode);
@@ -728,6 +729,7 @@ wss.on('connection', (ws, req) => {
             layoutRevision: res.layoutRevision,
             collectedItems: res.collectedItems || [],
             spawnedItems: res.spawnedItems || [],
+            doors: res.doors || [],
             inventory: res.inventory
           });
 
@@ -1212,7 +1214,58 @@ wss.on('connection', (ws, req) => {
               startingPlayers: res.startingPlayers,
               layoutRevision: res.room.layoutRevision,
               collectedItems: res.collectedItems || [],
+              doors: res.doors || [],
               players: res.players || []
+            });
+          }
+        }
+        break;
+      }
+
+      case MSG_TYPES.DOOR_UNLOCK_REQUEST: {
+        const res = roomManager.handleDoorUnlock(ws, payload?.doorId, payload?.clientPosition, payload?.requestId);
+        if (!res.success) {
+          send(ws, MSG_TYPES.DOOR_UNLOCK_RESPONSE, {
+            success: false,
+            doorId: payload?.doorId || 'level0_exit_door',
+            reason: res.error || 'Failed to unlock door',
+            requestId: payload?.requestId
+          });
+        } else {
+          send(ws, MSG_TYPES.DOOR_UNLOCK_RESPONSE, {
+            success: true,
+            doorId: res.doorId,
+            locked: res.locked,
+            unlockedBy: res.unlockedBy,
+            requestId: payload?.requestId
+          });
+          // Broadcast door state update to all players in the room
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.DOOR_STATE_UPDATE, {
+              doorId: res.doorId,
+              locked: res.locked,
+              unlockedBy: res.unlockedBy,
+              unlockedAt: res.unlockedAt
+            });
+          }
+        }
+        break;
+      }
+
+      case MSG_TYPES.PLAYER_ESCAPE_REQUEST: {
+        const res = roomManager.handleEscape(ws, payload?.doorId, payload?.clientPosition);
+        if (!res.success) {
+          send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error || 'Failed to escape' });
+        } else {
+          // Broadcast run completion to all players in room
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.GAME_OVER, {
+              status: 'ESCAPED',
+              reason: 'LEVEL_COMPLETED',
+              title: res.title || 'LEVEL ESCAPED!',
+              message: res.message,
+              escapedBy: res.player.id,
+              escapedByName: res.player.name
             });
           }
         }

@@ -215,7 +215,9 @@ export class InteractionManager {
     }
 
     // Proximity guard
-    const maxDist = (this.currentTarget.type === 'revive_teammate') ? 2.8 : this.maxDistance;
+    const maxDist = (this.currentTarget.type === 'revive_teammate')
+      ? 2.8
+      : (this.currentTarget.maxDistance || (this.currentTarget.type === 'exit_door' ? 3.2 : this.maxDistance));
     if (this.currentTarget.distance > maxDist) {
       this.diagnostics.eligibility = `OUT OF RANGE (${this.currentTarget.distance.toFixed(2)}m > ${maxDist}m)`;
       this._notifyDiagnostics();
@@ -341,6 +343,26 @@ export class InteractionManager {
       } else {
         this.diagnostics.serverResult = `REJECTED — ${reason || 'Dispense failed'} at ${timeStr}`;
         this.diagnostics.lastRejection = reason || 'Dispense failed';
+      }
+      this._notifyDiagnostics();
+    }
+  }
+
+  /**
+   * Handles server door unlock response (DOOR_UNLOCK_RESPONSE)
+   */
+  handleDoorUnlockResponse(payload) {
+    if (!payload) return;
+    const { requestId, success, doorId, reason } = payload;
+    if (this.pendingRequestId && (this.pendingRequestId === requestId || this.pendingTargetId === doorId)) {
+      this._finishPickupRequest(requestId);
+      const timeStr = new Date().toLocaleTimeString();
+      if (success) {
+        this.diagnostics.serverResult = `ACCEPTED — Door ${doorId} unlocked at ${timeStr}`;
+        this.diagnostics.lastRejection = 'NONE';
+      } else {
+        this.diagnostics.serverResult = `REJECTED — ${reason || 'Unlock failed'} at ${timeStr}`;
+        this.diagnostics.lastRejection = reason || 'Unlock failed';
       }
       this._notifyDiagnostics();
     }
@@ -558,9 +580,10 @@ export class InteractionManager {
           foundTarget = {
             id: wrapperId,
             type: ci.type || 'custom',
-            name: ci.name || 'Object',
+            name: (typeof ci.getName === 'function') ? ci.getName() : (ci.name || 'Object'),
             category: ci.category || 'interactable',
-            actionText: ci.actionText || 'Use',
+            actionText: (typeof ci.getActionText === 'function') ? ci.getActionText() : (ci.actionText || 'Use'),
+            maxDistance: ci.maxDistance,
             distance: hit.distance,
             point: hit.point,
             object: ci.object,

@@ -124,6 +124,16 @@
         1
       ]
     },
+    "exit_door": {
+      "name": "Level 0 Exit Door",
+      "category": "environmental",
+      "modelUrl": null,
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
     "weapon_pistol": {
       "name": "Beretta Px4 Storm",
       "category": "weapon",
@@ -507,40 +517,6 @@
       }
     },
     {
-      "id": "floor_door_key_01",
-      "type": "doorKey",
-      "category": "key",
-      "placementMode": "fixed",
-      "position": [
-        45,
-        0,
-        -189.5
-      ],
-      "rotation": [
-        0,
-        1.2,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ],
-      "anchor": {
-        "surface": "floor"
-      },
-      "tags": [
-        "consumable",
-        "pickup"
-      ],
-      "validation": {
-        "status": "valid",
-        "developerApproved": false,
-        "originalStatus": "valid",
-        "reason": null
-      }
-    },
-    {
       "id": "table_first_aid_01",
       "type": "first_aid",
       "category": "medical",
@@ -693,41 +669,6 @@
       "rotation": [
         0,
         0.5,
-        0
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ],
-      "anchor": {
-        "surface": "table",
-        "supportProp": "prop_table_01"
-      },
-      "tags": [
-        "consumable",
-        "pickup"
-      ],
-      "validation": {
-        "status": "valid",
-        "developerApproved": false,
-        "originalStatus": "valid",
-        "reason": null
-      }
-    },
-    {
-      "id": "table_door_key_01",
-      "type": "doorKey",
-      "category": "key",
-      "placementMode": "fixed",
-      "position": [
-        44.15,
-        0.936,
-        -185.2
-      ],
-      "rotation": [
-        0,
-        -1.1,
         0
       ],
       "scale": [
@@ -1433,6 +1374,24 @@
       ],
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor"
+    },
+    {
+      "id": "level0_exit_door",
+      "type": "exit_door",
+      "category": "environmental",
+      "placementMode": "fixed",
+      "position": [
+        79.55,
+        0,
+        207.0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "surfaceType": "floor",
+      "surfaceName": "Transit Gateway"
     }
   ],
   "spawnGroups": [
