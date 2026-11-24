@@ -11,7 +11,7 @@ import {
 import { SaberAgent, SABER_STATES } from './ai/saber_agent.js';
 import { PlayerEntity } from './ai/simulation.js';
 
-test('Targeted Test 1: NORMAL Saber contact deals exactly 15 HP damage', () => {
+test('Scenario 1: Player approaches and touches a Saber: receives 15 damage', () => {
   // Ensure default difficulty is NORMAL
   configureSaberDifficulty('NORMAL');
 
@@ -19,6 +19,7 @@ test('Targeted Test 1: NORMAL Saber contact deals exactly 15 HP damage', () => {
   assert.equal(saber.difficulty, 'NORMAL');
   assert.equal(saber.damage, 15);
   assert.equal(saber.attackRange, 0.64);
+  assert.equal(saber.attackWindup, 0.3);
 
   const player = new PlayerEntity('Survivor', new YUKA.Vector3(0, 0, 0), { health: 100, maxHealth: 100 });
   player.collisionRadius = 0.32;
@@ -34,13 +35,24 @@ test('Targeted Test 1: NORMAL Saber contact deals exactly 15 HP damage', () => {
   };
 
   saber.stateMachine.changeTo(SABER_STATES.ATTACK);
-
-  assert.equal(damageReported, 15, 'onAttack received exactly 15 damage');
-  assert.equal(player.health, 85, 'Player entity health reduced from 100 to 85');
   assert.equal(saber.stateMachine.currentState, saber.states.ATTACK, 'Saber entered ATTACK state');
+  assert.equal(saber.attackPhase, 'WINDUP', 'Attack begins in WINDUP phase');
+  assert.equal(damageReported, null, 'No damage applied during frame 0 of windup');
+  assert.equal(player.health, 100, 'Player health remains 100 during initial windup');
+
+  // Advance simulation through windup (0.3s)
+  saber.delta = 0.05;
+  for (let i = 0; i < 6; i++) {
+    saber.states.ATTACK.execute(saber);
+  }
+
+  assert.equal(damageReported, 15, 'onAttack received exactly 15 damage at moment of strike');
+  assert.equal(player.health, 85, 'Player entity health reduced from 100 to 85');
+  assert.equal(saber.attackPhase, 'COOLDOWN', 'Attack transitioned to COOLDOWN phase after strike');
+  assert.equal(saber.attackCooldownTimer, 2.0, '2.0s attack cooldown initiated');
 });
 
-test('Targeted Test 2: No damage occurs without physical contact (> 0.64m)', () => {
+test('Scenario 2: Player immediately escapes: health stops decreasing', () => {
   configureSaberDifficulty('NORMAL');
 
   const saber = new SaberAgent('Test Saber Alpha', { difficulty: 'NORMAL' });
@@ -48,37 +60,39 @@ test('Targeted Test 2: No damage occurs without physical contact (> 0.64m)', () 
   player.collisionRadius = 0.32;
   player.boundingRadius = 0.32;
 
-  // Position saber at 1.0m (within legacy 1.8m range, but > 0.64m physical contact)
-  saber.position.set(0, 0, 1.0);
+  saber.position.set(0, 0, 0.5);
   saber.targetEntity = player;
 
-  let attackTriggered = false;
+  let strikeCount = 0;
   saber.onAttack = () => {
-    attackTriggered = true;
+    strikeCount++;
   };
 
-  // 1. In ChaseState: Saber should NOT transition to ATTACK at 1.0m
-  saber.stateMachine.changeTo(SABER_STATES.CHASE);
-  saber.canSeeTarget = true;
-  saber.states.CHASE.execute(saber);
-  assert.equal(saber.stateMachine.currentState, saber.states.CHASE, 'Saber remains in CHASE at 1.0m (> 0.64m)');
-  assert.equal(attackTriggered, false, 'No attack triggered during chase at 1.0m');
-  assert.equal(player.health, 100, 'Player health remains at 100');
-
-  // 2. Direct transition to ATTACK while out of physical contact range must abort without damage
+  // Initial attack strike
   saber.stateMachine.changeTo(SABER_STATES.ATTACK);
-  assert.equal(attackTriggered, false, 'onAttack was NOT called');
-  assert.equal(player.health, 100, 'Player health remains unaffected at 100');
-  assert.equal(saber.stateMachine.currentState, saber.states.CHASE, 'Saber returned to CHASE after out-of-range attack abort');
+  saber.delta = 0.05;
+  for (let i = 0; i < 6; i++) {
+    saber.states.ATTACK.execute(saber);
+  }
+  assert.equal(strikeCount, 1, 'Initial attack struck once');
+  assert.equal(player.health, 85, 'Player health reduced to 85');
 
-  // Test at 0.65m (just beyond 0.64m threshold)
-  saber.position.set(0, 0, 0.65);
-  saber.stateMachine.changeTo(SABER_STATES.ATTACK);
-  assert.equal(attackTriggered, false, 'No attack at 0.65m');
-  assert.equal(player.health, 100, 'Health untouched at 0.65m');
+  // Player immediately escapes outside contact range (1.5m > 0.64m)
+  player.position.set(0, 0, 1.5);
+
+  // Next tick in ATTACK detects player left contact range -> transitions immediately to CHASE
+  saber.states.ATTACK.execute(saber);
+  assert.equal(saber.stateMachine.currentState, saber.states.CHASE, 'Saber transitioned to CHASE upon player escape');
+
+  // Over subsequent 30 ticks (1.5s), health stays strictly at 85
+  for (let tick = 1; tick <= 30; tick++) {
+    saber.update(0.05);
+    assert.equal(strikeCount, 1, `No further attacks occurred at tick ${tick}`);
+    assert.equal(player.health, 85, `Player health remains 85 at tick ${tick}`);
+  }
 });
 
-test('Targeted Test 3: Continuous contact does not cause frame-by-frame damage (respects attack cooldown)', () => {
+test('Scenario 3: Player remains in contact: damage occurs no more frequently than cooldown (2.0s)', () => {
   configureSaberDifficulty('NORMAL');
 
   const saber = new SaberAgent('Test Saber Alpha', { difficulty: 'NORMAL', attackCooldown: 2.0 });
@@ -86,40 +100,197 @@ test('Targeted Test 3: Continuous contact does not cause frame-by-frame damage (
   player.collisionRadius = 0.32;
   player.boundingRadius = 0.32;
 
-  // Keep player in continuous physical contact at 0.5m
   saber.position.set(0, 0, 0.5);
   saber.targetEntity = player;
 
   let strikeCount = 0;
-  saber.onAttack = (target, dmg) => {
+  saber.onAttack = () => {
     strikeCount++;
   };
 
-  // Initial strike upon entering ATTACK
+  // Enter ATTACK and complete initial windup (0.3s = 6 ticks of 0.05s)
   saber.stateMachine.changeTo(SABER_STATES.ATTACK);
-  assert.equal(strikeCount, 1, 'Initial contact triggers exactly 1 strike');
+  saber.delta = 0.05;
+  for (let tick = 1; tick <= 6; tick++) {
+    saber.states.ATTACK.execute(saber);
+  }
+  assert.equal(strikeCount, 1, 'Initial contact triggers exactly 1 strike after windup');
   assert.equal(player.health, 85, 'Health drops to 85 on first strike');
 
-  // Simulate continuous contact over 30 simulation ticks (1.5 seconds at 20Hz: delta = 0.05s)
-  saber.delta = 0.05;
-  for (let tick = 1; tick <= 30; tick++) {
+  // Continuous contact over 39 simulation ticks (< 2.0 seconds at 20Hz: delta = 0.05s)
+  // Cooldown is counting down, no second strike can occur
+  for (let tick = 1; tick <= 39; tick++) {
     saber.states.ATTACK.execute(saber);
     assert.equal(strikeCount, 1, `Strike count must remain 1 at tick ${tick} (t=${(tick * 0.05).toFixed(2)}s < 2.0s cooldown)`);
     assert.equal(player.health, 85, `Health must remain 85 at tick ${tick}`);
   }
 
-  // Advance timer to 2.0 seconds (ticks 31 to 40)
-  for (let tick = 31; tick <= 39; tick++) {
+  // Tick 40: cooldown finishes (2.0s reached), next windup begins
+  saber.states.ATTACK.execute(saber);
+  assert.equal(saber.attackPhase, 'WINDUP', 'After 2.0s cooldown, next windup starts');
+  assert.equal(strikeCount, 1, 'No damage during windup');
+
+  // Complete second windup (6 ticks of 0.05s)
+  for (let tick = 1; tick <= 6; tick++) {
     saber.states.ATTACK.execute(saber);
-    assert.equal(strikeCount, 1, `Strike count remains 1 at tick ${tick}`);
+  }
+  assert.equal(strikeCount, 2, 'Second strike occurs after cooldown + windup');
+  assert.equal(player.health, 70, 'Health drops to 70 after second strike');
+});
+
+test('Scenario 4: Player escapes during an attack windup: no delayed damage is applied', () => {
+  configureSaberDifficulty('NORMAL');
+
+  const saber = new SaberAgent('Test Saber Alpha', { difficulty: 'NORMAL' });
+  const player = new PlayerEntity('Survivor', new YUKA.Vector3(0, 0, 0), { health: 100, maxHealth: 100 });
+  player.collisionRadius = 0.32;
+  player.boundingRadius = 0.32;
+
+  saber.position.set(0, 0, 0.5);
+  saber.targetEntity = player;
+
+  let attackHit = false;
+  saber.onAttack = () => {
+    attackHit = true;
+  };
+
+  saber.stateMachine.changeTo(SABER_STATES.ATTACK);
+  assert.equal(saber.attackPhase, 'WINDUP');
+
+  // Advance 2 ticks (0.1s < 0.3s windup) while in contact
+  saber.delta = 0.05;
+  saber.states.ATTACK.execute(saber);
+  saber.states.ATTACK.execute(saber);
+  assert.equal(saber.attackPhase, 'WINDUP');
+  assert.equal(attackHit, false);
+
+  // Player escapes to 20m during windup!
+  player.position.set(0, 0, 20.0);
+
+  // Next tick: Saber detects escape, cancels pending attack, transitions to CHASE
+  saber.states.ATTACK.execute(saber);
+  assert.equal(saber.attackPending, false, 'Pending attack cancelled');
+  assert.equal(saber.stateMachine.currentState, saber.states.CHASE, 'Transitioned to CHASE immediately');
+  assert.equal(attackHit, false, 'No attack strike applied');
+  assert.equal(player.health, 100, 'Player health remains untouched at 100');
+
+  // Advance simulation past original windup completion time (next 20 ticks = 1.0s)
+  // Distance is 20m, so Saber (max 9.5 m/s) is still pursuing and cannot reach player
+  for (let tick = 1; tick <= 20; tick++) {
+    saber.update(0.05);
+    assert.equal(attackHit, false, `No delayed damage at tick ${tick}`);
+    assert.equal(player.health, 100, `Health remains 100 at tick ${tick}`);
+  }
+});
+
+test('Scenario 5: Player re-enters contact: attacks resume according to cooldown', () => {
+  configureSaberDifficulty('NORMAL');
+
+  const saber = new SaberAgent('Test Saber Alpha', { difficulty: 'NORMAL' });
+  const player = new PlayerEntity('Survivor', new YUKA.Vector3(0, 0, 0), { health: 100, maxHealth: 100 });
+  player.collisionRadius = 0.32;
+  player.boundingRadius = 0.32;
+
+  saber.position.set(0, 0, 0.5);
+  saber.targetEntity = player;
+
+  let strikeCount = 0;
+  saber.onAttack = () => {
+    strikeCount++;
+  };
+
+  // Strike 1
+  saber.stateMachine.changeTo(SABER_STATES.ATTACK);
+  saber.delta = 0.05;
+  for (let i = 0; i < 6; i++) {
+    saber.states.ATTACK.execute(saber);
+  }
+  assert.equal(strikeCount, 1);
+  assert.equal(player.health, 85);
+
+  // Player escapes at t = 0.35s
+  player.position.set(0, 0, 1.5);
+  saber.states.ATTACK.execute(saber);
+  assert.equal(saber.stateMachine.currentState, saber.states.CHASE);
+
+  // Simulate 10 ticks (0.5s) while escaped: cooldown decreases from 2.0s to 1.5s
+  for (let i = 0; i < 10; i++) {
+    saber.update(0.05);
+  }
+  assert.ok(saber.attackCooldownTimer > 0, 'Cooldown is still active');
+
+  // Player re-enters contact range (0.5m) at t = 0.85s while cooldown still has ~1.5s remaining
+  player.position.set(0, 0, 0.5);
+  saber.canSeeTarget = true;
+  saber.states.CHASE.execute(saber);
+
+  // Because cooldown is active, Saber must NOT transition to ATTACK or deal damage
+  assert.equal(saber.stateMachine.currentState, saber.states.CHASE, 'Saber remains in CHASE while cooldown is active');
+  assert.equal(strikeCount, 1, 'No new strike on re-contact during cooldown');
+  assert.equal(player.health, 85, 'Health remains 85');
+
+  // Advance simulation until remaining cooldown expires
+  while (saber.attackCooldownTimer > 0) {
+    saber.update(0.05);
+    assert.equal(strikeCount, 1, 'No premature strike while timer > 0');
   }
 
-  // Tick 40 brings total time to exactly 2.0s -> cooldown elapses -> second strike
-  saber.states.ATTACK.execute(saber);
-  assert.equal(strikeCount, 2, 'Second strike occurs after 2.0s attack cooldown elapses');
-  assert.equal(player.health, 70, 'Health drops to 70 after second strike');
+  // Now cooldown is 0 and player is in contact -> Saber can initiate attack
+  saber.canSeeTarget = true;
+  saber.states.CHASE.execute(saber);
+  assert.equal(saber.stateMachine.currentState, saber.states.ATTACK, 'Saber transitions to ATTACK once cooldown expires');
 
-  // Frame-by-frame damage is strictly prevented
+  // Advance through second windup
+  for (let i = 0; i < 6; i++) {
+    saber.states.ATTACK.execute(saber);
+  }
+  assert.equal(strikeCount, 2, 'Second strike occurs after cooldown expires');
+  assert.equal(player.health, 70, 'Health drops to 70 after second strike');
+});
+
+test('Scenario 6: Two clients observe consistent health updates and updates cease upon escape', () => {
+  configureSaberDifficulty('NORMAL');
+
+  const rm = new RoomManager();
+  const ws1 = { send: () => {} };
+  const ws2 = { send: () => {} };
+
+  const client1Events = [];
+  const client2Events = [];
+
+  rm.onRoomEvents = (room, events) => {
+    client1Events.push(...events.filter(e => e.type === 'PLAYER_HEALTH_UPDATE'));
+    client2Events.push(...events.filter(e => e.type === 'PLAYER_HEALTH_UPDATE'));
+  };
+
+  rm.createRoom(ws1, 'TEST_ESC_SYNC', 'default', null, { startingPlayers: 2, directStart: true });
+  rm.joinRoom(ws2, 'TEST_ESC_SYNC');
+
+  const room = rm.getRoom('TEST_ESC_SYNC');
+  const p1 = room.players.get(rm.getPlayer(ws1).player.id);
+  const p2 = room.players.get(rm.getPlayer(ws2).player.id);
+
+  // 1. Saber strikes Player 1
+  const dmgRes = rm.applyDamage(p1.id, 15, 'SABER_ATTACK');
+  if (rm.onRoomEvents) rm.onRoomEvents(room, dmgRes.events);
+
+  assert.equal(p1.hp, 85);
+  assert.equal(client1Events.length, 1);
+  assert.equal(client2Events.length, 1);
+  assert.equal(client1Events[0].payload.hp, 85);
+  assert.equal(client2Events[0].payload.hp, 85, 'Both clients receive identical synchronized 85 HP');
+
+  // 2. Player 1 moves outside contact range
+  p1.position = { x: 10, y: 0, z: 10 };
+  const prevEventCount = client1Events.length;
+
+  // Simulate server ticks without contact: no further damage packets are generated
+  for (let tick = 0; tick < 20; tick++) {
+    // No damage applied
+    assert.equal(p1.hp, 85, 'Player 1 HP remains 85 after escaping');
+    assert.equal(client1Events.length, prevEventCount, 'No new damage packets sent while escaped');
+    assert.equal(client2Events.length, prevEventCount, 'Client 2 receives no extraneous damage packets');
+  }
 });
 
 test('Targeted Test 4: HARD preserves previous lethal damage behaviour (100 HP)', () => {

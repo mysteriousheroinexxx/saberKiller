@@ -120,6 +120,11 @@ test('5. Saber attacks apply damage (NORMAL 15 HP on physical contact <= 0.64m) 
   saberAlpha.lookAt(room.simulation.playerEntities.get(player1.id).position);
   saberAlpha.stateMachine.changeTo(SABER_STATES.ATTACK);
 
+  // Advance simulation through attack windup (0.3s = 6 ticks of 0.05s)
+  for (let i = 0; i < 6; i++) {
+    room.simulation.tick(0.05);
+  }
+
   assert.equal(player1.hp, 85, 'Saber attack in physical contact deducted exactly 15 HP in NORMAL difficulty');
   assert.equal(player1.state, 'ACTIVE');
 

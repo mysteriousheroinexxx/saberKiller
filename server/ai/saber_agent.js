@@ -452,9 +452,9 @@ export class ChaseState extends YUKA.State {
       const attackThreshold = (saber.difficulty === 'HARD') ? saber.attackRange : contactDist;
 
       // Melee attack range:
-      // In NORMAL mode: strikes ONLY when physically touching player (distance <= 0.64m)
-      // In HARD mode: uses attack range (1.8m)
-      if (distToPlayer <= attackThreshold) {
+      // In NORMAL mode: strikes ONLY when physically touching player (distance <= 0.64m) AND attack cooldown expired
+      // In HARD mode: uses attack range (1.8m) AND attack cooldown expired
+      if (distToPlayer <= attackThreshold && saber.attackCooldownTimer <= 0) {
         saber.stateMachine.changeTo(SABER_STATES.ATTACK);
         return;
       }
@@ -505,33 +505,58 @@ export class AttackState extends YUKA.State {
     const player = saber.targetEntity;
     if (!player) return;
 
+    // Reject attack initiation if cooldown is currently active
+    if (saber.attackCooldownTimer > 0) {
+      saber.logState(`Attack entry rejected: cooldown active (${saber.attackCooldownTimer.toFixed(2)}s remaining)`);
+      saber.attackPending = false;
+      saber.attackPhase = 'IDLE';
+      saber.stateMachine.changeTo(SABER_STATES.CHASE);
+      return;
+    }
+
     const dist = saber.position.distanceTo(player.position);
     const contactDist = saber.getContactDistance ? saber.getContactDistance(player) : 0.64;
     const inRange = (saber.difficulty === 'HARD') ? (dist <= saber.attackRange) : (dist <= contactDist + 0.001);
 
     if (!inRange) {
       saber.logState(`Attack aborted: target out of physical contact range (${dist.toFixed(2)}m > ${contactDist.toFixed(2)}m)`);
+      saber.attackPending = false;
+      saber.attackPhase = 'IDLE';
       saber.stateMachine.changeTo(SABER_STATES.CHASE);
       return;
     }
 
-    saber.logState('Entered ATTACK (striking player for ' + saber.damage + ' damage)');
+    // In HARD difficulty or 0-windup mode: strike immediately (preserves lethal behavior)
+    if (saber.difficulty === 'HARD' || saber.attackWindup <= 0) {
+      saber.logState('Entered ATTACK (striking player for ' + saber.damage + ' damage)');
+      saber.attackPending = false;
+      saber.attackPhase = 'COOLDOWN';
+      saber.attackCooldownTimer = saber.attackCooldown;
+      saber.attackTimer = 0;
 
-    // Execute initial attack strike
-    if (typeof player.takeDamage === 'function') {
-      player.takeDamage(saber.damage);
-    }
-    if (typeof saber.onAttack === 'function') {
-      saber.onAttack(player, saber.damage);
+      if (typeof player.takeDamage === 'function') {
+        player.takeDamage(saber.damage);
+      }
+      if (typeof saber.onAttack === 'function') {
+        saber.onAttack(player, saber.damage);
+      }
+    } else {
+      // In NORMAL difficulty: initiate windup; damage is strictly applied ONLY when windup completes
+      // and player is STILL in physical contact at that exact moment.
+      saber.logState(`Entered ATTACK (winding up strike for ${saber.attackWindup}s)`);
+      saber.attackPhase = 'WINDUP';
+      saber.attackTimer = 0;
+      saber.attackPending = true;
     }
   }
 
   execute(saber) {
     saber.velocity.set(0, 0, 0);
-    saber.attackTimer += saber.delta;
     const player = saber.targetEntity;
 
     if (!player || player.isDead) {
+      saber.attackPending = false;
+      saber.attackPhase = 'IDLE';
       if (saber.potentialTargets && saber.potentialTargets.some(t => !t.isDead)) {
         saber.searchCenter.copy(saber.position);
         saber.stateMachine.changeTo(SABER_STATES.SEARCH);
@@ -544,29 +569,97 @@ export class AttackState extends YUKA.State {
     // Keep facing the player while attacking
     saber.rotateTo(player.position, saber.delta);
 
-    // After attack cooldown has elapsed, check if player is still in physical contact / range
-    if (saber.attackTimer >= saber.attackCooldown) {
-      const dist = saber.position.distanceTo(player.position);
-      const contactDist = saber.getContactDistance ? saber.getContactDistance(player) : 0.64;
-      const inRange = (saber.difficulty === 'HARD') ? (dist <= saber.attackRange) : (dist <= contactDist + 0.001);
+    // If execute is run independently without saber.update(delta), tick cooldown
+    if (!saber._tickedCooldownInUpdate && saber.attackCooldownTimer > 0) {
+      saber.attackCooldownTimer = Math.max(0, saber.attackCooldownTimer - saber.delta);
+    }
+    saber.attackTimer += saber.delta;
 
-      if (inRange) {
+    // Contact detection on EVERY tick
+    const dist = saber.position.distanceTo(player.position);
+    const contactDist = saber.getContactDistance ? saber.getContactDistance(player) : 0.64;
+    const inRange = (saber.difficulty === 'HARD') ? (dist <= saber.attackRange) : (dist <= contactDist + 0.001);
+
+    // 1. WINDUP PHASE
+    if (saber.attackPhase === 'WINDUP') {
+      // If player moves out of physical contact range during windup: CANCEL ATTACK IMMEDIATELY!
+      if (!inRange) {
+        saber.logState(`Attack cancelled: player escaped contact during windup (${dist.toFixed(2)}m > ${contactDist.toFixed(2)}m)`);
+        saber.attackPending = false;
+        saber.attackPhase = 'IDLE';
         saber.attackTimer = 0;
-        if (typeof player.takeDamage === 'function') {
-          player.takeDamage(saber.damage);
-        }
-        if (typeof saber.onAttack === 'function') {
-          saber.onAttack(player, saber.damage);
-        }
-      } else {
         saber.stateMachine.changeTo(SABER_STATES.CHASE);
         return;
       }
+
+      // Windup duration reached -> validate physical contact at exact moment of damage
+      if (saber.attackTimer >= saber.attackWindup) {
+        if (inRange) {
+          saber.logState(`Attack strike connected for ${saber.damage} damage`);
+          saber.attackPending = false;
+          saber.attackPhase = 'COOLDOWN';
+          saber.attackCooldownTimer = saber.attackCooldown;
+          saber.attackTimer = 0;
+
+          if (typeof player.takeDamage === 'function') {
+            player.takeDamage(saber.damage);
+          }
+          if (typeof saber.onAttack === 'function') {
+            saber.onAttack(player, saber.damage);
+          }
+        } else {
+          saber.logState(`Attack missed: player out of range at strike moment (${dist.toFixed(2)}m > ${contactDist.toFixed(2)}m)`);
+          saber.attackPending = false;
+          saber.attackPhase = 'IDLE';
+          saber.attackTimer = 0;
+          saber.stateMachine.changeTo(SABER_STATES.CHASE);
+          return;
+        }
+      }
+      return;
+    }
+
+    // 2. COOLDOWN PHASE
+    if (saber.attackPhase === 'COOLDOWN') {
+      // If player has moved out of physical contact range: transition back to CHASE immediately!
+      // Do NOT remain frozen in ATTACK facing empty air while player runs away.
+      if (!inRange) {
+        saber.logState(`Player left contact range during cooldown (${dist.toFixed(2)}m > ${contactDist.toFixed(2)}m). Transitioning to CHASE.`);
+        saber.attackPhase = 'IDLE';
+        saber.attackTimer = 0;
+        saber.stateMachine.changeTo(SABER_STATES.CHASE);
+        return;
+      }
+
+      // Continuous contact: player remains within physical contact range.
+      // Must respect 2-second cooldown before another strike can occur.
+      if (saber.attackCooldownTimer <= 0) {
+        if (saber.attackWindup <= 0) {
+          saber.attackCooldownTimer = saber.attackCooldown;
+          saber.attackTimer = 0;
+          if (typeof player.takeDamage === 'function') {
+            player.takeDamage(saber.damage);
+          }
+          if (typeof saber.onAttack === 'function') {
+            saber.onAttack(player, saber.damage);
+          }
+        } else {
+          saber.attackPhase = 'WINDUP';
+          saber.attackTimer = 0;
+          saber.attackPending = true;
+          saber.logState(`Continuous contact: initiating next strike (windup ${saber.attackWindup}s)`);
+        }
+      }
+      return;
     }
   }
 
   exit(saber) {
     saber.attackTimer = 0;
+    saber.attackPending = false;
+    if (saber.attackPhase === 'WINDUP') {
+      saber.attackPhase = 'IDLE';
+    }
   }
 }
 
@@ -672,7 +765,12 @@ export class SaberAgent extends YUKA.Vehicle {
       this.attackRange = (this.difficulty === 'HARD') ? 1.8 : (this.collisionRadius * 2); // 0.64m
     }
     this.attackCooldown = options.attackCooldown ?? 2.0; // 2.0s attack cooldown + escape opportunity
+    this.attackWindup = (this.difficulty === 'HARD') ? 0 : (options.attackWindup ?? 0.3);
+    this.attackCooldownTimer = 0;
     this.attackTimer = 0;
+    this.attackPending = false;
+    this.attackPhase = 'IDLE'; // 'IDLE' | 'WINDUP' | 'COOLDOWN'
+    this._tickedCooldownInUpdate = false;
 
     // Movement Speeds (Overhauled relative to player walk 5.2 and sprint 7.6)
     this.patrolSpeed = options.patrolSpeed ?? 2.5;
@@ -819,9 +917,11 @@ export class SaberAgent extends YUKA.Vehicle {
     if (diff === 'HARD') {
       this.damage = 100;
       this.attackRange = 1.8;
+      this.attackWindup = 0;
     } else {
       this.damage = 15;
       this.attackRange = this.getContactDistance();
+      this.attackWindup = 0.3;
     }
   }
 
@@ -1265,11 +1365,18 @@ export class SaberAgent extends YUKA.Vehicle {
     this.delta = delta;
     this.currentTime += delta;
 
+    // Cooldown countdown across all states
+    if (this.attackCooldownTimer > 0) {
+      this.attackCooldownTimer = Math.max(0, this.attackCooldownTimer - delta);
+    }
+    this._tickedCooldownInUpdate = true;
+
     // 1. Perform sensory evaluation with current orientation and position
     this.updateSensory(delta);
 
     // 2. Update finite state machine logic (handles sensory triggers & state transitions)
     this.stateMachine.update();
+    this._tickedCooldownInUpdate = false;
 
     // 3. Advance vehicle locomotion (steering, displacement, velocity)
     const isStationaryState = (
