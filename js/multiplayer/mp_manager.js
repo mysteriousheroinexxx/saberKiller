@@ -6,6 +6,7 @@ import { RemotePlayer, preloadPlayerAssets } from './remote_player.js';
 import { LocalPlayerController } from './player_controller.js';
 import { InventoryController } from './inventory_controller.js';
 import { StagingLobby } from './staging_lobby.js';
+import { SaberManager } from './saber_manager.js';
 
 export class MPManager {
   constructor(scene, camera, uiCallbacks = {}) {
@@ -15,7 +16,9 @@ export class MPManager {
 
     this.network = new NetworkClient();
     this.remotePlayers = new Map(); // playerId -> RemotePlayer
+    this.saberManager = new SaberManager(this.scene);
     this.localPlayer = new LocalPlayerController(camera, scene, this.network, null);
+    this.localPlayer.setSaberManager(this.saberManager);
     this.inventory = new InventoryController(30);
     this.inventory.initDefaultLoadout();
     this.localPlayer.inventory = this.inventory;
@@ -439,6 +442,24 @@ export class MPManager {
       if (this.ui.onMatchStarted) this.ui.onMatchStarted(payload);
     };
 
+    this.network.onMonsterSnapshot = (payload) => {
+      if (this.saberManager) {
+        this.saberManager.handleSnapshot(payload);
+      }
+      if (this.ui.onMonsterSnapshot) this.ui.onMonsterSnapshot(payload);
+    };
+
+    this.network.onSoundEventBroadcast = (payload) => {
+      if (this.saberManager) {
+        this.saberManager.handleSoundEvent(payload);
+      }
+      if (this.ui.onSoundEventBroadcast) this.ui.onSoundEventBroadcast(payload);
+    };
+
+    this.network.onDevAiTelemetry = (payload) => {
+      if (this.ui.onDevAiTelemetry) this.ui.onDevAiTelemetry(payload);
+    };
+
     this.network.onError = (errMsg) => {
       if (this.ui.onError) this.ui.onError(errMsg);
     };
@@ -501,6 +522,11 @@ export class MPManager {
     // 2. Update remote players (interpolation)
     for (const rp of this.remotePlayers.values()) {
       rp.update(dt);
+    }
+
+    // 3. Update Saber monsters
+    if (this.saberManager) {
+      this.saberManager.update(dt, this.localPlayer ? this.localPlayer.pos : null);
     }
   }
 }

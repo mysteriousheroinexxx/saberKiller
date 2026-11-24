@@ -649,12 +649,47 @@ wss.on('error', (err) => {
 });
 
 function send(ws, type, payload) {
-  if (ws.readyState === WebSocket.OPEN) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type, payload }));
   }
 }
 
+// Authoritative RoomSimulation event wiring
+roomManager.onBroadcast = (room, type, payload) => {
+  if (!room || !room.players) return;
+  for (const [_, p] of room.players) {
+    if (p.ws && p.ws.readyState === WebSocket.OPEN) {
+      send(p.ws, type, payload);
+    }
+  }
+};
+
+roomManager.onDevBroadcast = (room, type, payload) => {
+  if (!room || !room.players) return;
+  for (const [_, p] of room.players) {
+    if (p.ws && p.ws.readyState === WebSocket.OPEN && (p.isDev || p.ws.isDev || DEV_RENDERING)) {
+      send(p.ws, type, payload);
+    }
+  }
+};
+
+roomManager.onRoomEvents = (room, events) => {
+  if (!room || !room.players || !Array.isArray(events)) return;
+  for (const evt of events) {
+    for (const [_, p] of room.players) {
+      if (evt.type === MSG_TYPES.INVENTORY_UPDATE && evt.payload?.playerId && p.id !== evt.payload.playerId) {
+        continue;
+      }
+      send(p.ws, evt.type, evt.payload);
+    }
+  }
+};
+
 wss.on('connection', (ws, req) => {
+  const reqUrl = req.url || '';
+  if (reqUrl.includes('dev=1') || reqUrl.includes('devtools=1') || reqUrl.includes('dev-rendering=1')) {
+    ws.isDev = true;
+  }
   console.log(`[WS CONNECTED] remote=${req.socket.remoteAddress || '(unknown)'} url=${req.url || '/'} origin=${req.headers.origin || '(none)'}`);
   // Ping/Pong keep-alive
   ws.isAlive = true;
@@ -689,6 +724,7 @@ wss.on('connection', (ws, req) => {
         if (res.error) {
           send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error });
         } else {
+          if (res.player) res.player.isDev = Boolean(payload?.isDev || ws.isDev);
           send(ws, MSG_TYPES.ROOM_JOINED, {
             roomCode: res.roomCode,
             playerId: res.player.id,
@@ -716,6 +752,7 @@ wss.on('connection', (ws, req) => {
         if (res.error) {
           send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error });
         } else {
+          if (res.player) res.player.isDev = Boolean(payload?.isDev || ws.isDev);
           // Tell joining client about the room and any existing players
           send(ws, MSG_TYPES.ROOM_JOINED, {
             roomCode: res.roomCode,
@@ -796,6 +833,35 @@ wss.on('connection', (ws, req) => {
           if (otherId !== player.id) {
             send(otherPlayer.ws, MSG_TYPES.PLAYER_UPDATE, updatePayload);
           }
+        }
+
+        // Advance authoritative AI simulation player movement & automatic footstep perception
+        room.simulation?.updatePlayerMovement(
+          player.id,
+          payload.x,
+          payload.y,
+          payload.z,
+          Boolean(payload.isSprinting),
+          payload.isGrounded !== false
+        );
+        break;
+      }
+
+      case MSG_TYPES.FIRE_WEAPON: {
+        const session = roomManager.getPlayer(ws);
+        if (!session) return;
+        const { room, player } = session;
+        const weaponType = payload?.weaponType || (payload?.weapon === 1 ? 'SHOTGUN' : 'PISTOL');
+        room.simulation?.handleWeaponFired(player.id, weaponType);
+        break;
+      }
+
+      case MSG_TYPES.ATTACK_MONSTER: {
+        const targetSaberId = payload?.monsterId || payload?.targetSaberId || payload?.targetSaberName || 'saber_alpha';
+        const damage = (typeof payload?.damage === 'number') ? payload.damage : 25;
+        const res = roomManager.handleAttackMonster(ws, targetSaberId, damage);
+        if (res && res.error) {
+          send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error });
         }
         break;
       }

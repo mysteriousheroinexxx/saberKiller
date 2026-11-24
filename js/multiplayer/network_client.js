@@ -44,7 +44,13 @@ export const MSG_TYPES = {
   DOOR_UNLOCK_RESPONSE: 'DOOR_UNLOCK_RESPONSE',
   DOOR_STATE_UPDATE: 'DOOR_STATE_UPDATE',
   PLAYER_ESCAPE_REQUEST: 'PLAYER_ESCAPE_REQUEST',
-  LEVEL_ESCAPED: 'LEVEL_ESCAPED'
+  LEVEL_ESCAPED: 'LEVEL_ESCAPED',
+  // Saber AI Simulation & Telemetry packet types
+  MONSTER_SNAPSHOT: 'MONSTER_SNAPSHOT',
+  SOUND_EVENT_BROADCAST: 'SOUND_EVENT_BROADCAST',
+  DEV_AI_TELEMETRY: 'DEV_AI_TELEMETRY',
+  FIRE_WEAPON: 'FIRE_WEAPON',
+  ATTACK_MONSTER: 'ATTACK_MONSTER'
 };
 
 function resolveWebSocketUrl(input) {
@@ -103,6 +109,9 @@ export class NetworkClient {
     this.onDoorUnlockResponse = null;
     this.onDoorStateUpdate = null;
     this.onLevelEscaped = null;
+    this.onMonsterSnapshot = null;
+    this.onSoundEventBroadcast = null;
+    this.onDevAiTelemetry = null;
   }
 
   connect(url) {
@@ -345,6 +354,18 @@ export class NetworkClient {
         if (this.onLevelEscaped) this.onLevelEscaped(payload);
         break;
 
+      case MSG_TYPES.MONSTER_SNAPSHOT:
+        if (this.onMonsterSnapshot) this.onMonsterSnapshot(payload);
+        break;
+
+      case MSG_TYPES.SOUND_EVENT_BROADCAST:
+        if (this.onSoundEventBroadcast) this.onSoundEventBroadcast(payload);
+        break;
+
+      case MSG_TYPES.DEV_AI_TELEMETRY:
+        if (this.onDevAiTelemetry) this.onDevAiTelemetry(payload);
+        break;
+
       default:
         console.log('[NetworkClient] Unhandled packet type:', type);
         break;
@@ -470,8 +491,16 @@ export class NetworkClient {
     return this.send(MSG_TYPES.PLAYER_ESCAPE_REQUEST, payload);
   }
 
-  sendUpdate(x, y, z, yaw, pitch, weapon = 0) {
-    return this.send(MSG_TYPES.PLAYER_UPDATE, { x, y, z, yaw, pitch, weapon });
+  sendUpdate(x, y, z, yaw, pitch, weapon = 0, isSprinting = false) {
+    return this.send(MSG_TYPES.PLAYER_UPDATE, { x, y, z, yaw, pitch, weapon, isSprinting });
+  }
+
+  fireWeapon(weaponType = 'PISTOL', origin = null, direction = null) {
+    return this.send(MSG_TYPES.FIRE_WEAPON, { weaponType, origin, direction });
+  }
+
+  attackMonster(monsterId = 'saber_alpha', damage = 25) {
+    return this.send(MSG_TYPES.ATTACK_MONSTER, { monsterId, damage });
   }
 
   disconnect() {

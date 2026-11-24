@@ -9,6 +9,7 @@ export class LocalPlayerController {
     this.scene = scene;
     this.networkClient = networkClient;
     this.collisionHandler = collisionHandler;
+    this.saberManager = null;
 
     this.pos = new THREE.Vector3(48.69, 0.0, -187.65);
     this.yaw = 0.0;
@@ -156,6 +157,36 @@ export class LocalPlayerController {
         } catch (e) {}
       }
       this.keys = {};
+    }
+  }
+
+  setSaberManager(saberManager) {
+    this.saberManager = saberManager;
+  }
+
+  _performMonsterHitscan(weaponType) {
+    if (!this.saberManager || !this.networkClient) return;
+    const hitboxes = this.saberManager.getHitboxes();
+    if (!hitboxes || hitboxes.length === 0) return;
+
+    const raycaster = new THREE.Raycaster();
+    const eyePos = new THREE.Vector3(this.pos.x, (this.currentCameraY || 1.62), this.pos.z);
+    const dir = new THREE.Vector3();
+    this.camera.getWorldDirection(dir);
+    raycaster.set(eyePos, dir);
+    raycaster.far = (weaponType === 'SHOTGUN') ? 28.0 : 45.0;
+
+    const intersects = raycaster.intersectObjects(hitboxes, false);
+    if (intersects.length > 0) {
+      const hit = intersects[0];
+      const targetMonsterId = hit.object.userData?.monsterId;
+      if (targetMonsterId) {
+        const dmg = (weaponType === 'SHOTGUN') ? 35 : 25;
+        this.networkClient.attackMonster(targetMonsterId, dmg);
+        if (typeof this.saberManager.triggerHitEffect === 'function') {
+          this.saberManager.triggerHitEffect(targetMonsterId, hit.point);
+        }
+      }
     }
   }
 
@@ -717,6 +748,11 @@ export class LocalPlayerController {
       this.pitch = Math.max(-1.48, Math.min(1.48, this.pitch + 0.016));
       this._triggerMuzzleFlash(0);
 
+      if (this.networkClient) {
+        this.networkClient.fireWeapon('PISTOL', { x: this.pos.x, y: this.pos.y, z: this.pos.z });
+      }
+      this._performMonsterHitscan('PISTOL');
+
       this.firingDiagnostics.lastRejectionReason = 'NONE';
 
       if (this.mag.bullets === 0 && this.bullets > 0) {
@@ -740,6 +776,11 @@ export class LocalPlayerController {
       this.recoilKick = 0.09;
       this.pitch = Math.max(-1.48, Math.min(1.48, this.pitch + 0.038));
       this._triggerMuzzleFlash(1);
+
+      if (this.networkClient) {
+        this.networkClient.fireWeapon('SHOTGUN', { x: this.pos.x, y: this.pos.y, z: this.pos.z });
+      }
+      this._performMonsterHitscan('SHOTGUN');
 
       this.firingDiagnostics.lastRejectionReason = 'NONE';
 
@@ -1046,7 +1087,8 @@ export class LocalPlayerController {
             +this.pos.z.toFixed(3),
             +this.yaw.toFixed(4),
             +this.pitch.toFixed(4),
-            this.weapon
+            this.weapon,
+            this.isSprinting
           );
         }
       }
@@ -1157,7 +1199,8 @@ export class LocalPlayerController {
           +this.pos.z.toFixed(3),
           +this.yaw.toFixed(4),
           +this.pitch.toFixed(4),
-          this.weapon
+          this.weapon,
+          this.isSprinting
         );
       }
     }

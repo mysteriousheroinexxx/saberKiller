@@ -2,6 +2,7 @@
 import { MAX_PLAYERS_PER_ROOM, isValidNumber } from './protocol.js';
 import { InventoryController } from '../js/multiplayer/inventory_controller.js';
 import { isPickupItem, getItemDefinition, ITEM_EFFECTS_CONFIG } from '../js/multiplayer/item_catalog.js';
+import { RoomSimulation } from './ai/room_simulation.js';
 
 // Configurable Survival Mode Health, Damage & Revival Parameters
 export const SURVIVAL_CONFIG = {
@@ -13,6 +14,7 @@ export const SURVIVAL_CONFIG = {
   keysPerStartingPlayer: 1,
   damageValues: {
     ZOMBIE_HIT: 25,
+    SABER_ATTACK: 25,
     HAZARD: 20,
     DEV_TEST: 25,
     DEFAULT: 25
@@ -148,7 +150,8 @@ export class RoomManager {
       runState: (options && (options.directStart || typeof options.startingPlayers === 'number')) ? 'IN_PROGRESS' : 'LOBBY', // 'LOBBY', 'IN_PROGRESS', 'GAME_OVER'
       healthPacksFrozen: false,
       startingPlayerCount: 0,
-      availableHealthPackCount: 0
+      availableHealthPackCount: 0,
+      simulation: null
     };
 
     // Initialize room exit door
@@ -207,6 +210,10 @@ export class RoomManager {
 
     this.rooms.set(roomCode, room);
     this.clientToRoom.set(ws, { roomCode, playerId });
+
+    if (room.runState === 'IN_PROGRESS') {
+      this._initializeRoomSimulation(room);
+    }
 
     // Collect any world items that are unavailable from the start (e.g. capped health packs)
     const collectedItems = [];
@@ -542,6 +549,9 @@ export class RoomManager {
 
     room.players.set(playerId, player);
     this.clientToRoom.set(ws, { roomCode: code, playerId });
+
+    // Register player in active room simulation if already running
+    room.simulation?.addPlayer(player);
 
     return {
       roomCode: code,
@@ -993,8 +1003,13 @@ export class RoomManager {
     if (!room) return null;
 
     room.players.delete(playerId);
+    room.simulation?.removePlayer(playerId);
 
     if (room.players.size === 0) {
+      if (room.simulation) {
+        room.simulation.destroy();
+        room.simulation = null;
+      }
       this.rooms.delete(roomCode);
       return { roomCode, playerId, roomDeleted: true, remainingPlayers: 0 };
     }
@@ -1090,6 +1105,9 @@ export class RoomManager {
 
     // All players ready! Transition to IN_PROGRESS
     room.runState = 'IN_PROGRESS';
+
+    // Initialize authoritative Saber AI simulation
+    this._initializeRoomSimulation(room);
 
     // Freeze Health Pack economy using current starting player count at actual match start
     if (!room.healthPacksFrozen) {
@@ -1333,6 +1351,14 @@ export class RoomManager {
           }
         }
       }
+
+      // Synchronize player mortality state with AI simulation
+      room.simulation?.setPlayerState(player.id, player.state, player.hp);
+      if (room.runState === 'GAME_OVER') {
+        room.simulation?.stop();
+      }
+    } else {
+      room.simulation?.setPlayerState(player.id, player.state, player.hp);
     }
 
     return result;
@@ -1449,6 +1475,9 @@ export class RoomManager {
     target.isDead = false;
     target.hp = SURVIVAL_CONFIG.revivedHp;
     target.revivalsUsed += 1;
+
+    // Synchronize revival state with room simulation
+    room.simulation?.setPlayerState(target.id, 'ACTIVE', target.hp);
 
     return {
       success: true,
@@ -1873,6 +1902,7 @@ export class RoomManager {
 
     // Authoritative Run Completion
     room.runState = 'GAME_OVER';
+    room.simulation?.stop();
 
     return {
       success: true,
@@ -1885,5 +1915,51 @@ export class RoomManager {
       room,
       player
     };
+  }
+
+  /**
+   * Initializes authoritative Saber AI simulation for a room
+   */
+  _initializeRoomSimulation(room) {
+    if (room.simulation) return room.simulation;
+
+    room.simulation = new RoomSimulation(room, {
+      onPlayerDamaged: (playerId, damage, reason) => {
+        const res = this.applyDamage(playerId, damage, reason);
+        if (res && res.events && this.onRoomEvents) {
+          this.onRoomEvents(room, res.events);
+        }
+      },
+      broadcastMessage: (type, payload) => {
+        if (this.onBroadcast) {
+          this.onBroadcast(room, type, payload);
+        }
+      },
+      sendDevMessage: (type, payload) => {
+        if (this.onDevBroadcast) {
+          this.onDevBroadcast(room, type, payload);
+        }
+      }
+    });
+
+    if (room.players) {
+      for (const [pId, p] of room.players) {
+        room.simulation.addPlayer(pId, p.spawn);
+      }
+    }
+    room.simulation.start();
+
+    return room.simulation;
+  }
+
+  /**
+   * Handles player weapon hit against Saber
+   */
+  handleAttackMonster(ws, monsterId = 'saber_alpha', damage = 25) {
+    const session = this.getPlayer(ws);
+    if (!session) return { error: 'Client not associated with any active room session' };
+    const { room, player } = session;
+    if (!room.simulation) return { error: 'Room simulation not active' };
+    return room.simulation.handleAttackMonster(player.id, monsterId, damage);
   }
 }
