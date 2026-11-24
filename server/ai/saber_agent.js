@@ -739,6 +739,8 @@ export class SaberAgent extends YUKA.Vehicle {
     this.name = name;
     this.isSaber = true;
     this.isPersistent = true;
+    this.neighbors = this.neighbors || [];
+    this.isMutuallyObstructed = false;
 
     // Difficulty Setting: 'NORMAL' (default) vs 'HARD'
     this.difficulty = (options.difficulty && options.difficulty.toUpperCase() === 'HARD') ? 'HARD' : 'NORMAL';
@@ -1258,6 +1260,37 @@ export class SaberAgent extends YUKA.Vehicle {
   }
 
   /**
+   * Evaluates if a neighbor Saber obstructs the direct line segment to targetPos.
+   * @param {YUKA.Vector3} targetPos
+   * @returns {Object|null}
+   */
+  isDirectPathBlockedByNeighbor(targetPos) {
+    if (!this.neighbors || this.neighbors.length === 0) return null;
+    const ax = this.position.x, az = this.position.z;
+    const bx = targetPos.x, bz = targetPos.z;
+    const abx = bx - ax, abz = bz - az;
+    const abLen = Math.hypot(abx, abz);
+    if (abLen < 0.6) return null;
+
+    for (const neighbor of this.neighbors) {
+      if (!neighbor || neighbor.isDead) continue;
+      const cx = neighbor.position.x, cz = neighbor.position.z;
+      const acx = cx - ax, acz = cz - az;
+      const t = (acx * abx + acz * abz) / (abLen * abLen);
+      if (t > 0.05 && t < 0.95) {
+        const projX = ax + abx * t;
+        const projZ = az + abz * t;
+        const perpDist = Math.hypot(cx - projX, cz - projZ);
+        const clearanceNeeded = this.collisionRadius * 2 + 0.35; // ~0.99m
+        if (perpDist < clearanceNeeded) {
+          return { neighbor, perpDist, t, projX, projZ };
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
    * Intelligently steers toward targetPos, using direct line-of-sight when unobstructed,
    * or Dijkstra pathfinding around walls/pillars with string-pulling lookahead when line of sight is broken.
    */
@@ -1265,6 +1298,42 @@ export class SaberAgent extends YUKA.Vehicle {
     if (!this.env) {
       this.seekBehavior.active = true;
       this.seekBehavior.target.copy(targetPos);
+      return;
+    }
+
+    // Dynamic obstacle avoidance: route laterally around blocking neighbor Saber
+    const neighborBlock = this.isDirectPathBlockedByNeighbor(targetPos);
+    if (neighborBlock) {
+      const neighbor = neighborBlock.neighbor;
+      const dx = neighbor.position.x - this.position.x;
+      const dz = neighbor.position.z - this.position.z;
+      const dist = Math.hypot(dx, dz) || 0.001;
+
+      // Perpendicular vectors
+      const rightX = dz / dist, rightZ = -dx / dist;
+      const leftX = -dz / dist, leftZ = dx / dist;
+
+      // Right-hand rule by default; fall back to left if right hits a wall
+      const clearanceOffset = this.collisionRadius * 2 + 0.20; // 0.84m
+      let chosenX = rightX, chosenZ = rightZ;
+
+      if (this.env && typeof this.env.circleHitsWall === 'function') {
+        const rightHit = this.env.circleHitsWall(neighbor.position.x + rightX * clearanceOffset, neighbor.position.z + rightZ * clearanceOffset, this.collisionRadius);
+        const leftHit = this.env.circleHitsWall(neighbor.position.x + leftX * clearanceOffset, neighbor.position.z + leftZ * clearanceOffset, this.collisionRadius);
+        if (rightHit && !leftHit) {
+          chosenX = leftX;
+          chosenZ = leftZ;
+        }
+      }
+
+      this.seekBehavior.active = true;
+      this.seekBehavior.target.set(
+        neighbor.position.x + chosenX * clearanceOffset,
+        0,
+        neighbor.position.z + chosenZ * clearanceOffset
+      );
+      this.currentNavPath = [];
+      this.navPathIndex = 0;
       return;
     }
 
@@ -1326,8 +1395,222 @@ export class SaberAgent extends YUKA.Vehicle {
     }
   }
 
+  /**
+   * Applies predictive lateral steering when another Saber is in front of our travel path.
+   * Uses right-hand rule with wall clearance checks to ensure smooth passing.
+   */
+  applyDynamicAvoidance(delta) {
+    if (!this.neighbors || this.neighbors.length === 0) return;
+    for (const neighbor of this.neighbors) {
+      if (!neighbor || neighbor.isDead) continue;
+      const dx = neighbor.position.x - this.position.x;
+      const dz = neighbor.position.z - this.position.z;
+      const dist = Math.hypot(dx, dz);
+
+      if (dist < 3.0 && dist > 0.001) {
+        const spd = Math.hypot(this.velocity.x, this.velocity.z);
+        let fx = 1, fz = 0;
+        if (spd > 0.1) {
+          fx = this.velocity.x / spd;
+          fz = this.velocity.z / spd;
+        } else if (this.seekBehavior.active) {
+          const sx = this.seekBehavior.target.x - this.position.x;
+          const sz = this.seekBehavior.target.z - this.position.z;
+          const sLen = Math.hypot(sx, sz) || 1;
+          fx = sx / sLen;
+          fz = sz / sLen;
+        }
+
+        const dot = fx * (dx / dist) + fz * (dz / dist);
+        // Only steer away if neighbor is in front of our travel vector
+        if (dot > 0.05) {
+          const rightX = fz;
+          const rightZ = -fx;
+          const leftX = -fz;
+          const leftZ = fx;
+
+          let steerX = rightX, steerZ = rightZ;
+          if (this.env && typeof this.env.circleHitsWall === 'function') {
+            const probeDist = 0.4;
+            const rightHit = this.env.circleHitsWall(this.position.x + rightX * probeDist, this.position.z + rightZ * probeDist, this.collisionRadius);
+            const leftHit = this.env.circleHitsWall(this.position.x + leftX * probeDist, this.position.z + leftZ * probeDist, this.collisionRadius);
+            if (rightHit && !leftHit) {
+              steerX = leftX;
+              steerZ = leftZ;
+            }
+          }
+
+          const factor = (3.0 - dist) / 3.0;
+          const strength = 35.0;
+          this.velocity.x += steerX * strength * factor * delta;
+          this.velocity.z += steerZ * strength * factor * delta;
+        }
+      }
+    }
+  }
+
+  /**
+   * Enforces physical circle-circle collision resolution between Sabers.
+   * Prevents overlap (minDist = 2 * collisionRadius = 0.64m) and applies tangential sliding.
+   */
+  resolveNeighborCollisions(delta) {
+    if (!this.neighbors || this.neighbors.length === 0) return;
+    const minDist = this.collisionRadius * 2; // 0.64m
+
+    for (const neighbor of this.neighbors) {
+      if (!neighbor || neighbor.isDead) continue;
+      const dx = this.position.x - neighbor.position.x;
+      const dz = this.position.z - neighbor.position.z;
+      const dist = Math.hypot(dx, dz);
+
+      if (dist < minDist) {
+        const overlap = minDist - dist;
+        let nx = 0, nz = 0;
+        if (dist > 0.0001) {
+          nx = dx / dist;
+          nz = dz / dist;
+        } else {
+          nx = (this.name < neighbor.name) ? 1 : -1;
+          nz = 0;
+        }
+
+        const isNeighborStationary = (
+          neighbor.stateMachine &&
+          (neighbor.stateMachine.currentState === neighbor.states.STAGGERED ||
+           neighbor.stateMachine.currentState === neighbor.states.RECOVER ||
+           neighbor.stateMachine.currentState === neighbor.states.ATTACK)
+        );
+
+        const isSelfStationary = (
+          this.stateMachine &&
+          (this.stateMachine.currentState === this.states.STAGGERED ||
+           this.stateMachine.currentState === this.states.RECOVER ||
+           this.stateMachine.currentState === this.states.ATTACK)
+        );
+
+        let selfShare = 0.5;
+        let neighborShare = 0.5;
+        if (isNeighborStationary && !isSelfStationary) {
+          selfShare = 1.0;
+          neighborShare = 0.0;
+        } else if (isSelfStationary && !isNeighborStationary) {
+          selfShare = 0.0;
+          neighborShare = 1.0;
+        }
+
+        const pushAmount = overlap + 0.004;
+        const selfPushX = nx * (pushAmount * selfShare);
+        const selfPushZ = nz * (pushAmount * selfShare);
+        const nbPushX = -nx * (pushAmount * neighborShare);
+        const nbPushZ = -nz * (pushAmount * neighborShare);
+
+        if (selfShare > 0) {
+          if (this.env && typeof this.env.circleHitsWall === 'function') {
+            if (!this.env.circleHitsWall(this.position.x + selfPushX, this.position.z, this.collisionRadius)) {
+              this.position.x += selfPushX;
+            }
+            if (!this.env.circleHitsWall(this.position.x, this.position.z + selfPushZ, this.collisionRadius)) {
+              this.position.z += selfPushZ;
+            }
+          } else {
+            this.position.x += selfPushX;
+            this.position.z += selfPushZ;
+          }
+        }
+
+        if (neighborShare > 0) {
+          if (this.env && typeof this.env.circleHitsWall === 'function') {
+            if (!this.env.circleHitsWall(neighbor.position.x + nbPushX, neighbor.position.z, neighbor.collisionRadius)) {
+              neighbor.position.x += nbPushX;
+            }
+            if (!this.env.circleHitsWall(neighbor.position.x, neighbor.position.z + nbPushZ, neighbor.collisionRadius)) {
+              neighbor.position.z += nbPushZ;
+            }
+          } else {
+            neighbor.position.x += nbPushX;
+            neighbor.position.z += nbPushZ;
+          }
+        }
+
+        // Tangential impulse along tangent vector (-nz, nx) to convert head-on contact into mutual slide
+        const tangentX = -nz;
+        const tangentZ = nx;
+        if (!isSelfStationary) {
+          this.velocity.x += tangentX * 2.0;
+          this.velocity.z += tangentZ * 2.0;
+        }
+        if (!isNeighborStationary) {
+          neighbor.velocity.x -= tangentX * 2.0;
+          neighbor.velocity.z -= tangentZ * 2.0;
+        }
+      }
+    }
+  }
+
   handleStuckRecovery(delta) {
     this.pathRecalculationCount = (this.pathRecalculationCount || 0) + 1;
+
+    let nearNeighbor = null;
+    if (this.neighbors && this.neighbors.length > 0) {
+      for (const nb of this.neighbors) {
+        if (nb && !nb.isDead && this.position.distanceTo(nb.position) <= 1.2) {
+          nearNeighbor = nb;
+          break;
+        }
+      }
+    }
+
+    if (nearNeighbor) {
+      this.slowdownReason = 'STUCK_MUTUAL_SABER';
+      this.isMutuallyObstructed = true;
+      this.logState(`Mutually obstructed by ${nearNeighbor.name} (${this.position.distanceTo(nearNeighbor.position).toFixed(2)}m). Executing lateral evasion.`);
+
+      // Clear Dijkstra / nav path to force recalculation around neighbor
+      this.lastNavCalcTime = -999;
+      this.currentNavPath = [];
+      this.navPathIndex = 0;
+
+      // Find lateral evasion direction perpendicular to vector between Sabers
+      const dx = nearNeighbor.position.x - this.position.x;
+      const dz = nearNeighbor.position.z - this.position.z;
+      const dist = Math.hypot(dx, dz) || 0.001;
+
+      // Perpendiculars
+      const rightX = dz / dist, rightZ = -dx / dist;
+      const leftX = -dz / dist, leftZ = dx / dist;
+
+      // Use consistent side based on name comparison so they don't both evade in the same direction
+      const preferRight = (this.name < nearNeighbor.name);
+      let evadeX = preferRight ? rightX : leftX;
+      let evadeZ = preferRight ? rightZ : leftZ;
+
+      if (this.env && typeof this.env.circleHitsWall === 'function') {
+        const probeDist = 0.6;
+        const preferHit = this.env.circleHitsWall(this.position.x + evadeX * probeDist, this.position.z + evadeZ * probeDist, this.collisionRadius);
+        if (preferHit) {
+          // Try opposite side
+          const altX = preferRight ? leftX : rightX;
+          const altZ = preferRight ? leftZ : rightZ;
+          const altHit = this.env.circleHitsWall(this.position.x + altX * probeDist, this.position.z + altZ * probeDist, this.collisionRadius);
+          if (!altHit) {
+            evadeX = altX;
+            evadeZ = altZ;
+          } else {
+            // Both sides blocked! Back up away from neighbor
+            evadeX = -dx / dist;
+            evadeZ = -dz / dist;
+          }
+        }
+      }
+
+      // Apply strong lateral impulse to break deadlock
+      this.velocity.x = evadeX * 5.0;
+      this.velocity.z = evadeZ * 5.0;
+      this.stuckTimer = 0;
+      return;
+    }
+
+    this.isMutuallyObstructed = false;
     this.slowdownReason = 'STUCK_GEOMETRY';
     this.logState(`Stuck against obstruction for ${this.stuckTimer.toFixed(1)}s. Triggering recovery recalculation #${this.pathRecalculationCount}.`);
 
@@ -1378,7 +1661,7 @@ export class SaberAgent extends YUKA.Vehicle {
     this.stateMachine.update();
     this._tickedCooldownInUpdate = false;
 
-    // 3. Advance vehicle locomotion (steering, displacement, velocity)
+    // 3. Dynamic Avoidance & Advance vehicle locomotion
     const isStationaryState = (
       this.stateMachine.currentState === this.states.STAGGERED ||
       this.stateMachine.currentState === this.states.RECOVER ||
@@ -1391,6 +1674,7 @@ export class SaberAgent extends YUKA.Vehicle {
     this.desiredSpeed = isStationaryState ? 0 : this.maxSpeed;
 
     if (!isStationaryState) {
+      this.applyDynamicAvoidance(delta);
       super.update(delta);
     } else {
       // In stationary states, stop all linear momentum
@@ -1426,26 +1710,47 @@ export class SaberAgent extends YUKA.Vehicle {
       this.position.z = finalZ;
     }
 
-    // 5. Measure actual displacement speed
+    // 5. Enforce mutual Saber-on-Saber physical collision separation
+    this.resolveNeighborCollisions(delta);
+
+    // 6. Measure actual displacement speed
     const movedDist = Math.hypot(this.position.x - prevX, this.position.z - prevZ);
     const instantSpeed = delta > 0 ? (movedDist / delta) : 0;
     this.actualSpeed = instantSpeed;
 
-    // 6. Stuck Detection & Diagnostic Reason Tracking
+    // 7. Stuck Detection & Diagnostic Reason Tracking
+    let nearNeighbor = null;
+    if (this.neighbors && this.neighbors.length > 0) {
+      for (const nb of this.neighbors) {
+        if (nb && !nb.isDead && this.position.distanceTo(nb.position) <= 1.2) {
+          nearNeighbor = nb;
+          break;
+        }
+      }
+    }
+
     if (isStationaryState) {
       this.stuckTimer = 0;
       this.slowdownReason = 'STATIONARY_STATE';
+      this.isMutuallyObstructed = false;
     } else if (this.desiredSpeed > 1.0) {
       if (instantSpeed < 0.25) {
         this.stuckTimer = (this.stuckTimer || 0) + delta;
         this.timeSpentStuck = (this.timeSpentStuck || 0) + delta;
-        this.slowdownReason = (collisionOccurredX && collisionOccurredZ) ? 'STUCK_GEOMETRY' : 'WALL_SLIDING';
+        if (nearNeighbor) {
+          this.slowdownReason = 'STUCK_MUTUAL_SABER';
+          this.isMutuallyObstructed = true;
+        } else {
+          this.slowdownReason = (collisionOccurredX && collisionOccurredZ) ? 'STUCK_GEOMETRY' : 'WALL_SLIDING';
+          this.isMutuallyObstructed = false;
+        }
 
         if (this.stuckTimer >= 0.4) {
           this.handleStuckRecovery(delta);
         }
       } else {
         this.stuckTimer = Math.max(0, (this.stuckTimer || 0) - delta * 2.0);
+        this.isMutuallyObstructed = false;
         if (collisionOccurredX || collisionOccurredZ) {
           this.slowdownReason = 'WALL_SLIDING';
         } else if (instantSpeed < this.desiredSpeed * 0.7) {
@@ -1457,6 +1762,7 @@ export class SaberAgent extends YUKA.Vehicle {
     } else {
       this.stuckTimer = 0;
       this.slowdownReason = 'NONE_AT_SPEED';
+      this.isMutuallyObstructed = false;
     }
 
     return this;

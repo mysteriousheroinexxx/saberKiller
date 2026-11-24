@@ -148,6 +148,14 @@ export class PlayerEntity extends YUKA.GameEntity {
    * @returns {Object|null} Emitted footstep sound event or null
    */
   stepMovement(newX, newZ, delta, isSprinting = false, isGrounded = true) {
+    const dx = newX - this.position.x;
+    const dz = newZ - this.position.z;
+    const distMoved = Math.hypot(dx, dz);
+
+    // Authoritatively synchronize real world coordinates unconditionally
+    this.position.x = newX;
+    this.position.z = newZ;
+
     if (this.isDead || this.isStaggered || this.isSanityCollapsed) {
       this.isMoving = false;
       this.distanceTraveledSinceStep = 0;
@@ -155,13 +163,6 @@ export class PlayerEntity extends YUKA.GameEntity {
     }
 
     this.isGrounded = isGrounded;
-
-    const dx = newX - this.position.x;
-    const dz = newZ - this.position.z;
-    const distMoved = Math.hypot(dx, dz);
-
-    this.position.x = newX;
-    this.position.z = newZ;
 
     // Stamina drain and regeneration dynamics
     if (isSprinting && distMoved > 0.0001) {
@@ -315,6 +316,8 @@ export class SaberSimulation {
     // Cross-configure separation behavior so they avoid clumping together
     this.saberAlpha.neighbors.push(this.saberBeta);
     this.saberBeta.neighbors.push(this.saberAlpha);
+    if (this.saberAlpha.separationBehavior) this.saberAlpha.separationBehavior.weight = 20.0;
+    if (this.saberBeta.separationBehavior) this.saberBeta.separationBehavior.weight = 20.0;
 
     this.entityManager.add(this.saberAlpha);
     this.entityManager.add(this.saberBeta);

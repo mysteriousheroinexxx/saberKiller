@@ -58,10 +58,31 @@ export class RoomSimulation {
     // Player entities registry: playerId -> PlayerEntity
     this.playerEntities = new Map();
 
-    // Hook Saber attack strikes to server damage authority
+    // Hook Saber attack strikes to server damage authority with strict distance validation
     const handleSaberAttack = (saber, targetEntity, damage) => {
       if (!targetEntity) return;
       const targetId = targetEntity.id || targetEntity.name;
+
+      // Authoritative physical contact validation against current room player position
+      const roomPlayer = this.room?.players?.get(targetId);
+      const playerPos = (roomPlayer && roomPlayer.position)
+        ? new YUKA.Vector3(roomPlayer.position.x, roomPlayer.position.y || 0, roomPlayer.position.z)
+        : targetEntity.position;
+
+      const dist = saber.position.distanceTo(playerPos);
+      const contactDist = saber.getContactDistance ? saber.getContactDistance(targetEntity) : 0.64;
+      const inRange = (this.difficulty === 'HARD')
+        ? (dist <= saber.attackRange)
+        : (dist <= contactDist + 0.001);
+
+      if (!inRange) {
+        saber.logState(`Attack strike rejected by server authority: target ${targetId} is out of physical contact range (${dist.toFixed(2)}m > ${contactDist.toFixed(2)}m)`);
+        saber.attackPending = false;
+        saber.attackPhase = 'IDLE';
+        saber.stateMachine.changeTo(SABER_STATES.CHASE);
+        return;
+      }
+
       if (this.onPlayerDamaged) {
         this.onPlayerDamaged(targetId, damage, 'SABER_ATTACK');
       }
@@ -396,6 +417,7 @@ export class RoomSimulation {
         desiredSpeed: alpha.desiredSpeed ?? alpha.maxSpeed,
         actualSpeed: +(alpha.actualSpeed ?? alpha.getSpeed()).toFixed(2),
         slowdownReason: alpha.slowdownReason || 'NONE_AT_SPEED',
+        isMutuallyObstructed: alpha.isMutuallyObstructed || false,
         timeSpentStuck: +(alpha.timeSpentStuck || 0).toFixed(1),
         pathRecalculationCount: alpha.pathRecalculationCount || 0,
         position: { x: alpha.position.x, y: alpha.position.y, z: alpha.position.z },
@@ -432,6 +454,7 @@ export class RoomSimulation {
         desiredSpeed: beta.desiredSpeed ?? beta.maxSpeed,
         actualSpeed: +(beta.actualSpeed ?? beta.getSpeed()).toFixed(2),
         slowdownReason: beta.slowdownReason || 'NONE_AT_SPEED',
+        isMutuallyObstructed: beta.isMutuallyObstructed || false,
         timeSpentStuck: +(beta.timeSpentStuck || 0).toFixed(1),
         pathRecalculationCount: beta.pathRecalculationCount || 0,
         position: { x: beta.position.x, y: beta.position.y, z: beta.position.z },
