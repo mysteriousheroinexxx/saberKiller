@@ -119,7 +119,7 @@ export const ITEM_DEFINITIONS = {
     isPickup: true,
     stackable: true,
     maxStack: 5,
-    consumable: false,
+    consumable: true,
     equippable: false,
     droppable: true,
     metadata: {
@@ -139,7 +139,7 @@ export const ITEM_DEFINITIONS = {
     isPickup: true,
     stackable: true,
     maxStack: 24,
-    consumable: false,
+    consumable: true,
     equippable: false,
     droppable: true,
     metadata: {
@@ -160,7 +160,7 @@ export const ITEM_DEFINITIONS = {
     isPickup: true,
     stackable: true,
     maxStack: 10,
-    consumable: false,
+    consumable: true,
     equippable: false,
     droppable: true,
     metadata: {
@@ -322,24 +322,26 @@ export const ITEM_EFFECTS_CONFIG = {
   ammo_box: {
     rounds: 2,
     weapon: 'pistol',
+    ammoKey: 'bullets',
     ammoType: 'bullets',
     maxReserve: 48,
-    requiresMissingAmmo: true,
-    description: 'Adds 2 rounds of .45 ACP pistol ammunition'
+    description: 'Consumes box to add 2 rounds of .45 ACP pistol ammunition'
   },
   pistol_ammo: {
     rounds: 2,
     weapon: 'pistol',
+    ammoKey: 'bullets',
     ammoType: 'bullets',
     maxReserve: 48,
-    description: 'Adds 2 rounds of .45 ACP pistol ammunition'
+    description: 'Consumes box to add 2 rounds of .45 ACP pistol ammunition'
   },
   shotgun_ammo: {
     rounds: 2,
     weapon: 'shotgun',
+    ammoKey: 'shells',
     ammoType: 'shells',
     maxReserve: 12,
-    description: 'Adds 2 rounds of 12-gauge shotgun ammunition'
+    description: 'Consumes box to add 2 rounds of 12-gauge shotgun ammunition'
   }
 };
 

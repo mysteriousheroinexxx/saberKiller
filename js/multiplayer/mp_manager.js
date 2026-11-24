@@ -175,10 +175,6 @@ export class MPManager {
           if (typeof payload.ammoUpdate.bullets === 'number') this.localPlayer.bullets = payload.ammoUpdate.bullets;
           if (typeof payload.ammoUpdate.shells === 'number') this.localPlayer.shells = payload.ammoUpdate.shells;
           this.localPlayer._notifyStateChange();
-        } else if (payload.itemType === 'pistol_ammo') {
-          this.localPlayer.addReserveAmmo('bullets', 2);
-        } else if (payload.itemType === 'shotgun_ammo') {
-          this.localPlayer.addReserveAmmo('shells', 2);
         }
       }
       if (window.interactionManager) {
@@ -236,7 +232,11 @@ export class MPManager {
 
     this.network.onItemUseResponse = (payload) => {
       if (payload && payload.success) {
-        if (payload.effect && this.localPlayer) {
+        if (payload.ammoUpdate && this.localPlayer) {
+          if (typeof payload.ammoUpdate.bullets === 'number') this.localPlayer.bullets = payload.ammoUpdate.bullets;
+          if (typeof payload.ammoUpdate.shells === 'number') this.localPlayer.shells = payload.ammoUpdate.shells;
+          this.localPlayer._notifyStateChange();
+        } else if (payload.effect && this.localPlayer) {
           this.localPlayer.applyItemEffect(payload.effect);
         }
         if (this.localPlayer) {

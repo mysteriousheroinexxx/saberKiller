@@ -473,7 +473,12 @@ export class LocalPlayerController {
       this.battery = Math.min(this.maxBattery, this.battery + effect.batteryCharge);
     }
     if (typeof effect.rounds === 'number') {
-      this.bullets = Math.min(120, this.bullets + effect.rounds);
+      if (effect.ammoKey === 'shells' || effect.ammoType === 'shells' || effect.weapon === 'shotgun') {
+        this.shells = Math.min(12, (this.shells || 0) + effect.rounds);
+      } else {
+        this.bullets = Math.min(48, (this.bullets || 0) + effect.rounds);
+      }
+      this._notifyStateChange();
     }
     if (typeof effect.staminaBoost === 'number') {
       this.stamina = Math.min(this.maxStamina, this.stamina + effect.staminaBoost);

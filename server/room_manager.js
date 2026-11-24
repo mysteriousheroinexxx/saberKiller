@@ -141,6 +141,7 @@ export class RoomManager {
       players: new Map([[playerId, player]]),
       worldItems: new Map(),
       pickupRequests: new Map(),
+      useRequests: new Map(),
       runState: (options && (options.directStart || typeof options.startingPlayers === 'number')) ? 'IN_PROGRESS' : 'LOBBY', // 'LOBBY', 'IN_PROGRESS', 'GAME_OVER'
       healthPacksFrozen: false,
       startingPlayerCount: 0,
@@ -381,39 +382,62 @@ export class RoomManager {
       }
     }
 
-    let unclaimedPistolBoxes = 0;
-    let unclaimedShotgunBoxes = 0;
+    let worldPistolBoxes = 0;
+    let worldShotgunBoxes = 0;
 
     for (const [_, item] of room.worldItems) {
       if (item.available) {
         if (item.type === 'pistol_ammo' || item.type === 'ammo_box') {
-          unclaimedPistolBoxes++;
+          worldPistolBoxes += (item.quantity || 1);
         } else if (item.type === 'shotgun_ammo') {
-          unclaimedShotgunBoxes++;
+          worldShotgunBoxes += (item.quantity || 1);
         }
       }
     }
 
-    const unclaimedPistolRounds = unclaimedPistolBoxes * AMMO_CONFIG.pistol.roundsPerBox;
-    const unclaimedShotgunRounds = unclaimedShotgunBoxes * AMMO_CONFIG.shotgun.roundsPerBox;
+    let inventoryPistolBoxes = 0;
+    let inventoryShotgunBoxes = 0;
 
-    const totalPistol = pistolLoaded + pistolReserve + unclaimedPistolRounds;
-    const totalShotgun = shotgunLoaded + shotgunReserve + unclaimedShotgunRounds;
+    for (const [_, p] of room.players) {
+      if (p.inventory) {
+        inventoryPistolBoxes += (p.inventory.getCount('pistol_ammo') + p.inventory.getCount('ammo_box'));
+        inventoryShotgunBoxes += p.inventory.getCount('shotgun_ammo');
+      }
+    }
+
+    const totalUnusedPistolBoxes = worldPistolBoxes + inventoryPistolBoxes;
+    const totalUnusedShotgunBoxes = worldShotgunBoxes + inventoryShotgunBoxes;
+
+    const unclaimedPistolRounds = worldPistolBoxes * AMMO_CONFIG.pistol.roundsPerBox;
+    const unclaimedShotgunRounds = worldShotgunBoxes * AMMO_CONFIG.shotgun.roundsPerBox;
+    const unusedPistolRounds = totalUnusedPistolBoxes * AMMO_CONFIG.pistol.roundsPerBox;
+    const unusedShotgunRounds = totalUnusedShotgunBoxes * AMMO_CONFIG.shotgun.roundsPerBox;
+
+    const totalPistol = pistolLoaded + pistolReserve + unusedPistolRounds;
+    const totalShotgun = shotgunLoaded + shotgunReserve + unusedShotgunRounds;
 
     return {
       pistol: {
         loaded: pistolLoaded,
         reserve: pistolReserve,
-        unclaimedBoxes: unclaimedPistolBoxes,
+        worldBoxes: worldPistolBoxes,
+        inventoryBoxes: inventoryPistolBoxes,
+        unclaimedBoxes: worldPistolBoxes,
+        unusedBoxes: totalUnusedPistolBoxes,
         unclaimedRounds: unclaimedPistolRounds,
+        unusedRounds: unusedPistolRounds,
         total: totalPistol,
         max: AMMO_CONFIG.pistol.maxTotal
       },
       shotgun: {
         loaded: shotgunLoaded,
         reserve: shotgunReserve,
-        unclaimedBoxes: unclaimedShotgunBoxes,
+        worldBoxes: worldShotgunBoxes,
+        inventoryBoxes: inventoryShotgunBoxes,
+        unclaimedBoxes: worldShotgunBoxes,
+        unusedBoxes: totalUnusedShotgunBoxes,
         unclaimedRounds: unclaimedShotgunRounds,
+        unusedRounds: unusedShotgunRounds,
         total: totalShotgun,
         max: AMMO_CONFIG.shotgun.maxTotal
       },
@@ -599,27 +623,9 @@ export class RoomManager {
       }
     }
 
-    // Ammunition box pickups: exactly 2 rounds added to compatible weapon reserve
+    // Ammunition box pickups: do NOT grant reserve ammunition on pickup.
+    // Boxes are consumable inventory items that must be used from inventory to gain reserve rounds.
     let ammoUpdate = null;
-    if (item.type === 'pistol_ammo' || item.type === 'ammo_box') {
-      player.bullets = (player.bullets || 0) + AMMO_CONFIG.pistol.roundsPerBox;
-      ammoUpdate = {
-        type: 'pistol_ammo',
-        ammoKey: 'bullets',
-        rounds: AMMO_CONFIG.pistol.roundsPerBox,
-        bullets: player.bullets,
-        shells: player.shells
-      };
-    } else if (item.type === 'shotgun_ammo') {
-      player.shells = (player.shells || 0) + AMMO_CONFIG.shotgun.roundsPerBox;
-      ammoUpdate = {
-        type: 'shotgun_ammo',
-        ammoKey: 'shells',
-        rounds: AMMO_CONFIG.shotgun.roundsPerBox,
-        bullets: player.bullets,
-        shells: player.shells
-      };
-    }
 
     // Add item to player's authoritative inventory
     const addResult = player.inventory.addItem(item.type, 1);
@@ -647,16 +653,16 @@ export class RoomManager {
    */
   handleUseItem(ws, slotIndex, instanceId = null) {
     const meta = this.clientToRoom.get(ws);
-    if (!meta) return { error: 'Client not associated with any active room session' };
+    if (!meta) return { success: false, error: 'Client not associated with any active room session' };
 
     const room = this.rooms.get(meta.roomCode);
-    if (!room) return { error: `Room ${meta.roomCode} does not exist` };
+    if (!room) return { success: false, error: `Room ${meta.roomCode} does not exist` };
 
     const player = room.players.get(meta.playerId);
-    if (!player) return { error: `Player ${meta.playerId} not found in room` };
+    if (!player) return { success: false, error: `Player ${meta.playerId} not found in room` };
 
     if (player.state === 'DOWNED' || player.state === 'ELIMINATED') {
-      return { error: `Player is ${player.state.toLowerCase()} and cannot use items`, room, player };
+      return { success: false, error: `Player is ${player.state.toLowerCase()} and cannot use items`, room, player };
     }
 
     let item = null;
@@ -673,12 +679,12 @@ export class RoomManager {
     }
 
     if (!item) {
-      return { error: 'Item not found in player inventory', room, player };
+      return { success: false, error: 'Item not found in player inventory', room, player };
     }
 
     const def = getItemDefinition(item.typeId);
     if (!def || !def.consumable) {
-      return { error: `Item '${item.name}' cannot be consumed`, room, player };
+      return { success: false, error: `Item '${item.name}' cannot be consumed`, room, player };
     }
 
     const effectConfig = ITEM_EFFECTS_CONFIG[item.typeId] || def.metadata || {};
@@ -686,11 +692,33 @@ export class RoomManager {
     // Remove exactly 1 unit from inventory
     const removeRes = player.inventory.removeItem(targetSlot, 1);
     if (!removeRes.success) {
-      return { error: 'Failed to consume item from slot', room, player };
+      return { success: false, error: 'Failed to consume item from slot', room, player };
     }
 
     const remainingItem = player.inventory.getItem(targetSlot);
     const remainingQuantity = remainingItem ? remainingItem.quantity : 0;
+
+    // Ammunition box consumption: atomically grants exactly 2 rounds to compatible weapon reserve
+    let ammoUpdate = null;
+    if (item.typeId === 'pistol_ammo' || item.typeId === 'ammo_box') {
+      player.bullets = (player.bullets || 0) + AMMO_CONFIG.pistol.roundsPerBox;
+      ammoUpdate = {
+        type: item.typeId,
+        ammoKey: 'bullets',
+        rounds: AMMO_CONFIG.pistol.roundsPerBox,
+        bullets: player.bullets,
+        shells: player.shells
+      };
+    } else if (item.typeId === 'shotgun_ammo') {
+      player.shells = (player.shells || 0) + AMMO_CONFIG.shotgun.roundsPerBox;
+      ammoUpdate = {
+        type: item.typeId,
+        ammoKey: 'shells',
+        rounds: AMMO_CONFIG.shotgun.roundsPerBox,
+        bullets: player.bullets,
+        shells: player.shells
+      };
+    }
 
     return {
       success: true,
@@ -700,6 +728,7 @@ export class RoomManager {
       itemName: item.name,
       slotIndex: targetSlot,
       effect: effectConfig,
+      ammoUpdate,
       remainingQuantity,
       inventory: player.inventory.serialize()
     };

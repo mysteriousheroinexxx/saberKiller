@@ -992,31 +992,49 @@ wss.on('connection', (ws, req) => {
 
         console.log(`[ITEM USE ${requestId}] Received from player=${playerId}, room=${roomCode}, slot=${slotIndex}`);
 
+        const requestKey = `${playerId}:${requestId}`;
+        const activeRoom = session?.room;
+        const cached = activeRoom?.useRequests?.get(requestKey);
+        if (cached) {
+          console.log(`[ITEM USE ${requestId}] Duplicate request; replaying prior acknowledgement`);
+          send(ws, MSG_TYPES.ITEM_USE_RESPONSE, cached);
+          break;
+        }
+
         const res = roomManager.handleUseItem(ws, slotIndex, instanceId);
         if (res.error) {
           console.log(`[ITEM USE ${requestId}] Rejected: ${res.error}`);
-          send(ws, MSG_TYPES.ITEM_USE_RESPONSE, {
+          const rejectPayload = {
             requestId,
             success: false,
             slotIndex,
             reason: res.error
-          });
+          };
+          if (activeRoom?.useRequests) activeRoom.useRequests.set(requestKey, rejectPayload);
+          send(ws, MSG_TYPES.ITEM_USE_RESPONSE, rejectPayload);
         } else {
           console.log(`[ITEM USE ${requestId}] Accepted for player=${res.player.id}, item=${res.itemType}`);
-          send(ws, MSG_TYPES.ITEM_USE_RESPONSE, {
+          const acceptPayload = {
             requestId,
             success: true,
             slotIndex: res.slotIndex,
             itemType: res.itemType,
             itemName: res.itemName,
             effect: res.effect,
+            ammoUpdate: res.ammoUpdate,
             remainingQuantity: res.remainingQuantity
-          });
+          };
+          if (res.room?.useRequests) {
+            res.room.useRequests.set(requestKey, acceptPayload);
+            if (res.room.useRequests.size > 500) res.room.useRequests.delete(res.room.useRequests.keys().next().value);
+          }
+          send(ws, MSG_TYPES.ITEM_USE_RESPONSE, acceptPayload);
 
           send(ws, MSG_TYPES.INVENTORY_UPDATE, {
             requestId,
             inventory: res.inventory,
-            usedItem: { type: res.itemType }
+            usedItem: { type: res.itemType },
+            ammoUpdate: res.ammoUpdate
           });
         }
         break;
