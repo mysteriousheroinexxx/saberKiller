@@ -27,9 +27,9 @@ export const APPROVED_CONSUMABLE_TYPES = new Set([
 
 export const DEFAULT_LOOT_CONFIG = {
   enabled: true,
-  consumableSlotSpawnChance: 0.62,
-  minConsumables: 16,
-  maxConsumables: 30,
+  consumableSlotSpawnChance: 0.45,
+  minConsumables: 45,
+  maxConsumables: 70,
   consumableWeights: {
     aa_battery: 28,
     almond_can: 28,
@@ -37,10 +37,10 @@ export const DEFAULT_LOOT_CONFIG = {
     sanity_pill: 20
   },
   maxPerType: {
-    aa_battery: 10,
-    almond_can: 10,
-    energy_drink: 8,
-    sanity_pill: 8
+    aa_battery: 22,
+    almond_can: 22,
+    energy_drink: 18,
+    sanity_pill: 18
   },
   keyRules: {
     enforceSurfaceRestriction: true,
@@ -162,7 +162,8 @@ export function shuffleWithRng(items, rng = Math.random) {
 }
 
 /**
- * Selects `count` slots while spreading picks across distinct support hubs when possible.
+ * Selects `count` slots while spreading picks across distinct spatial sectors
+ * and distinct support hubs across Level 0 when possible.
  */
 export function selectDistinctHubSlots(slots, count, rng = Math.random, preferDistinct = true) {
   if (!Array.isArray(slots) || slots.length === 0 || count <= 0) return [];
@@ -174,9 +175,26 @@ export function selectDistinctHubSlots(slots, count, rng = Math.random, preferDi
   const chosen = [];
   const chosenIds = new Set();
   const usedHubs = new Set();
+  const usedZones = new Set();
 
+  // Pass 1: maximize geographic & furniture diversity (unique 40m zone + unique furniture prop)
   for (const s of pool) {
     if (chosen.length >= count) break;
+    const hub = s.supportProp || s.anchor?.supportProp || s.id;
+    const pos = s.position || [0, 0, 0];
+    const zone = `${Math.floor(pos[0] / 40)},${Math.floor(pos[2] / 40)}`;
+    if (!usedZones.has(zone) && !usedHubs.has(hub)) {
+      usedZones.add(zone);
+      usedHubs.add(hub);
+      chosen.push(s);
+      chosenIds.add(s.id);
+    }
+  }
+
+  // Pass 2: unique furniture hubs in already-visited zones
+  for (const s of pool) {
+    if (chosen.length >= count) break;
+    if (chosenIds.has(s.id)) continue;
     const hub = s.supportProp || s.anchor?.supportProp || s.id;
     if (!usedHubs.has(hub)) {
       usedHubs.add(hub);
@@ -185,6 +203,7 @@ export function selectDistinctHubSlots(slots, count, rng = Math.random, preferDi
     }
   }
 
+  // Pass 3: fill any remainder
   for (const s of pool) {
     if (chosen.length >= count) break;
     if (!chosenIds.has(s.id)) {

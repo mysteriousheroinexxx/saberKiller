@@ -515,6 +515,14 @@ export class WorldItemManager {
     if (surfaceType === 'floor') {
       return { status: 'valid', isSupported: true, reason: null, overhang: 0 };
     }
+    if (surfaceType === 'vending_around' || surfaceType === 'vending' || surfaceType === 'vending_top') {
+      const supportPropId = item.anchor?.supportProp || item.supportProp;
+      const parentProp = supportPropId ? this.propMap.get(supportPropId) : null;
+      if (!parentProp && supportPropId && !String(supportPropId).startsWith('map_vending')) {
+        return { status: 'invalid', isSupported: false, reason: `Missing Vending Support (${supportPropId})`, overhang: 0 };
+      }
+      return { status: 'valid', isSupported: true, reason: null, overhang: 0 };
+    }
 
     let surf = null;
     if (surfaceType === 'table') {
@@ -932,6 +940,44 @@ export class WorldItemManager {
   getItemById(id) {
     if (!id) return null;
     return this.items.find(i => i.id === id) || null;
+  }
+
+  /**
+   * 2D circle-vs-OBB physical collision check against placed solid furniture props
+   * (tables, metal shelves, vending machines, crates).
+   */
+  collidesWithProps(px, pz, radius = 0.35) {
+    if (!this.propMap || this.propMap.size === 0) return false;
+    const rSq = radius * radius;
+    for (const prop of this.propMap.values()) {
+      const obj = prop?.object;
+      if (!obj || obj.visible === false) continue;
+      const modelSize = obj.userData?.modelSize;
+      if (!modelSize) continue;
+
+      const scale = obj.scale || { x: 1, y: 1, z: 1 };
+      const hx = (modelSize.x * scale.x) * 0.5;
+      const hz = (modelSize.z * scale.z) * 0.5;
+      const dx = px - obj.position.x;
+      const dz = pz - obj.position.z;
+      const maxReach = Math.hypot(hx, hz) + radius;
+      if (dx * dx + dz * dz > maxReach * maxReach) continue;
+
+      const rotY = obj.rotation?.y || 0;
+      const cos = Math.cos(rotY);
+      const sin = Math.sin(rotY);
+      // Transform world delta into prop local XZ frame (inverse of Matrix4.makeRotationY)
+      const lx = dx * cos - dz * sin;
+      const lz = dx * sin + dz * cos;
+
+      const cx = Math.max(-hx, Math.min(lx, hx));
+      const cz = Math.max(-hz, Math.min(lz, hz));
+      const distSq = (lx - cx) * (lx - cx) + (lz - cz) * (lz - cz);
+      if (distSq < rSq) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

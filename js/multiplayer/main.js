@@ -531,6 +531,9 @@ async function init() {
         if (exitDoorManager && exitDoorManager.collidesWithDoor(px, pz, radius)) {
           return true;
         }
+        if (itemManager && typeof itemManager.collidesWithProps === 'function' && itemManager.collidesWithProps(px, pz, radius)) {
+          return true;
+        }
         return origCircleHitsWall(px, pz, radius);
       };
       mpManager.setCollisionHandler(ch);

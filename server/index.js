@@ -480,7 +480,8 @@ const server = http.createServer((req, res) => {
                 probability: 1.0,
                 tags: ['high_tier_loot', 'loot_surface']
               }
-            ]
+            ],
+            environmentalLoot: payload.environmentalLoot || activeDevLayout?.data?.environmentalLoot || getLayoutDataForRevision('default')?.environmentalLoot || undefined
           };
 
           const jsonStr = JSON.stringify(layoutDoc, null, 2);

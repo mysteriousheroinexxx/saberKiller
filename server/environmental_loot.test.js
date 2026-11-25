@@ -24,16 +24,51 @@ function loadDefaultWorldItems() {
   return JSON.parse(fs.readFileSync(layoutPath, 'utf8'));
 }
 
-test('1. Environmental loot layout audit: strict key surface rules, valid furniture/vending slots, and walkable clearance', () => {
+test('1. Environmental loot layout audit: furniture density, strict key surface rules, valid furniture/vending slots, and walkable clearance', () => {
   const layout = loadDefaultWorldItems();
+  const map = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'assets/level0/level0_map.json'), 'utf8'));
   const env = new Level0Environment();
+
+  // Build exact Level 0 obstacle OBBs matching WorldItemManager
+  const obstacles = [];
+  for (const w of (map.walls || [])) {
+    obstacles.push({ cx: w[0], cz: w[2], hx: 5.0, hz: 0.4, cos: Math.cos(w[3] || 0), sin: Math.sin(w[3] || 0) });
+  }
+  for (const p of (map.pillars || [])) {
+    obstacles.push({ cx: p[0], cz: p[2], hx: 1.0, hz: 1.0, cos: 1, sin: 0 });
+  }
+  const minObsDist = (x, z) => {
+    let m = Infinity;
+    for (const o of obstacles) {
+      const dx = x - o.cx;
+      const dz = z - o.cz;
+      const lx = dx * o.cos + dz * o.sin;
+      const lz = -dx * o.sin + dz * o.cos;
+      const d = Math.hypot(Math.max(0, Math.abs(lx) - o.hx), Math.max(0, Math.abs(lz) - o.hz));
+      if (d < m) m = d;
+    }
+    return m;
+  };
+
+  // Verify dense distributed Level 0 furniture targets
+  const vendingProps = layout.placements.filter(p => p.type === 'vending_almond');
+  const tableProps = layout.placements.filter(p => p.type === 'table');
+  const shelfProps = layout.placements.filter(p => p.type === 'metal_shelf');
+  assert.equal(vendingProps.length, 10, 'Level 0 contains 10 vending machines');
+  assert.equal(tableProps.length, 50, 'Level 0 contains 50 tables/desks');
+  assert.equal(shelfProps.length, 60, 'Level 0 contains 60 metal shelves');
+
+  const sectors = new Set([...vendingProps, ...tableProps, ...shelfProps].map(
+    p => `${Math.floor(p.position[0] / 30)},${Math.floor(p.position[2] / 30)}`
+  ));
+  assert.ok(sectors.size >= 40, `Furniture spans at least 40 Level 0 spatial sectors (got ${sectors.size})`);
 
   assert.ok(layout.environmentalLoot, 'world_items.json must define environmentalLoot');
   const { consumableSlots, healthPackSlots, keySlots } = layout.environmentalLoot;
 
-  assert.ok(Array.isArray(consumableSlots) && consumableSlots.length >= 30, 'Sufficient Level 0 consumable slots');
-  assert.ok(Array.isArray(healthPackSlots) && healthPackSlots.length >= 15, 'Sufficient Health Pack slots');
-  assert.ok(Array.isArray(keySlots) && keySlots.length >= 10, 'Sufficient key slots');
+  assert.ok(Array.isArray(consumableSlots) && consumableSlots.length >= 150, 'Map-wide consumable slots across furniture');
+  assert.ok(Array.isArray(healthPackSlots) && healthPackSlots.length >= 50, 'Map-wide Health Pack slots across furniture');
+  assert.ok(Array.isArray(keySlots) && keySlots.length >= 50, 'Map-wide key slots across furniture');
 
   // Ensure ZERO static doorKey or floor_door_key_01 remains in base placements
   const staticKeys = layout.placements.filter(p => p.type === 'doorKey');
@@ -56,18 +91,20 @@ test('1. Environmental loot layout audit: strict key surface rules, valid furnit
     anchor: { surface: 'floor' }
   }), false, 'Generic floor key slot must be strictly rejected');
 
-  // Verify every slot is outside walls/solid cells and does not overlap sibling slots on the same prop/tier
+  // Verify every slot clears physical walls/pillars and vending ground slots sit on walkable non-wall grid cells
   const allSlots = [...consumableSlots, ...healthPackSlots, ...keySlots];
   for (const slot of allSlots) {
-    const c = env.cellOfX(slot.position[0]);
-    const r = env.cellOfZ(slot.position[2]);
-    assert.equal(env.isWall(c, r), false, `Slot '${slot.id}' must not sit inside a wall grid cell`);
+    const obsDist = minObsDist(slot.position[0], slot.position[2]);
+    assert.ok(obsDist >= 0.10, `Slot '${slot.id}' clears physical wall/pillar OBBs (dist=${obsDist.toFixed(3)})`);
     if (slot.supportType === 'table') {
       assert.equal(slot.position[1], 0.936, `Table slot '${slot.id}' height must match table top`);
     } else if (slot.supportType === 'metal_shelf') {
       assert.ok([0.243, 0.715, 1.188, 1.643, 2.097].includes(slot.position[1]), `Shelf slot '${slot.id}' height must match valid shelf tier`);
     } else {
       assert.equal(slot.position[1], 0.02, `Vending-adjacent slot '${slot.id}' rests cleanly beside unit at y=0.02`);
+      const c = env.cellOfX(slot.position[0]);
+      const r = env.cellOfZ(slot.position[2]);
+      assert.equal(env.isWall(c, r), false, `Vending ground slot '${slot.id}' must not sit on a wall grid cell`);
     }
   }
 });
@@ -153,7 +190,7 @@ test('3. Randomized distribution & economy preservation across runs (keys only o
     assert.equal(ammo.pistol.max, 48);
     assert.equal(ammo.shotgun.max, 12);
 
-    // Consumables within configured bounds
+    // Consumables within configured bounds & distributed widely across Level 0
     const activeConsumables = [...room.worldItems.values()].filter(
       i => i.isPickup && i.available && APPROVED_CONSUMABLE_TYPES.has(i.type)
     );
@@ -161,6 +198,8 @@ test('3. Randomized distribution & economy preservation across runs (keys only o
       activeConsumables.length >= LOOT_CONFIG.minConsumables && activeConsumables.length <= LOOT_CONFIG.maxConsumables,
       `Consumable count ${activeConsumables.length} within [${LOOT_CONFIG.minConsumables}, ${LOOT_CONFIG.maxConsumables}]`
     );
+    const consumableZones = new Set(activeConsumables.map(i => `${Math.floor(i.position[0] / 35)},${Math.floor(i.position[2] / 35)}`));
+    assert.ok(consumableZones.size >= 15, `Consumables distributed widely across Level 0 zones (got ${consumableZones.size})`);
   }
 
   assert.ok(observedKeySlotIds.size >= 3, `Expected randomized key locations across 8 runs, saw ${observedKeySlotIds.size}`);
