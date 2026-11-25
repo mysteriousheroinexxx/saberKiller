@@ -352,6 +352,7 @@ async function init() {
 
   window.mpManager = mpManager;
   window.localPlayer = mpManager.localPlayer;
+  window.audioManager = mpManager.audioManager;
   window.ambientAudio = mpManager.ambientAudio;
 
   if (sanityHUD && mpManager.localPlayer) {
@@ -765,6 +766,7 @@ async function init() {
   // Expose additional multiplayer state to window
   window.mpManager = mpManager;
   window.localPlayer = mpManager.localPlayer;
+  window.audioManager = mpManager.audioManager;
   window.ambientAudio = mpManager.ambientAudio;
   window.teleportLocalPlayer = (x, y, z, yaw, pitch) => mpManager?.localPlayer?.teleport(x, y, z, yaw, pitch);
   Object.defineProperty(window, 'isGameActive', { get: () => isGameActive });

@@ -7,6 +7,7 @@ import { LocalPlayerController } from './player_controller.js';
 import { InventoryController } from './inventory_controller.js';
 import { StagingLobby } from './staging_lobby.js';
 import { SaberManager } from './saber_manager.js';
+import { MultiplayerAudioManager } from './audio_manager.js';
 import { MultiplayerAmbientAudio } from './ambient_audio.js';
 
 export class MPManager {
@@ -18,8 +19,10 @@ export class MPManager {
     this.network = new NetworkClient();
     this.remotePlayers = new Map(); // playerId -> RemotePlayer
     this.saberManager = new SaberManager(this.scene);
+    this.audioManager = new MultiplayerAudioManager({ camera });
     this.localPlayer = new LocalPlayerController(camera, scene, this.network, null);
     this.localPlayer.setSaberManager(this.saberManager);
+    this.localPlayer.setAudioManager(this.audioManager);
     this.inventory = new InventoryController(30);
     this.inventory.initDefaultLoadout();
     this.localPlayer.inventory = this.inventory;
@@ -32,7 +35,7 @@ export class MPManager {
     this.itemManager = null;
 
     this.stagingLobby = new StagingLobby(scene, camera, this.network);
-    this.ambientAudio = new MultiplayerAmbientAudio();
+    this.ambientAudio = new MultiplayerAmbientAudio({ audioManager: this.audioManager });
     this.isInStagingLobby = false;
     this.mySpawn = null;
     this.isLeader = false;
@@ -76,6 +79,9 @@ export class MPManager {
         if (this.ambientAudio) {
           this.ambientAudio.stop();
         }
+        if (this.audioManager) {
+          this.audioManager.stopAllMovementAudio();
+        }
         if (window.interactionManager) {
           window.interactionManager.handleDisconnect();
         }
@@ -111,6 +117,9 @@ export class MPManager {
         if (this.ambientAudio) {
           this.ambientAudio.stop();
         }
+        if (this.audioManager) {
+          this.audioManager.stopAllMovementAudio();
+        }
         if (this.localPlayer && this.localPlayer.gunGroup) {
           this.localPlayer.gunGroup.visible = false;
         }
@@ -119,6 +128,10 @@ export class MPManager {
         }
       } else {
         this.isInStagingLobby = false;
+        if (this.audioManager) {
+          this.audioManager.stopAllMovementAudio();
+          this.audioManager.preloadMovementAudio();
+        }
         if (this.ambientAudio) {
           this.ambientAudio.start();
         }
@@ -180,6 +193,9 @@ export class MPManager {
     };
 
     this.network.onPlayerLeft = (payload) => {
+      if (this.audioManager && payload?.playerId) {
+        this.audioManager.stopEmitter(payload.playerId);
+      }
       const rp = this.remotePlayers.get(payload.playerId);
       if (rp) {
         rp.destroy();
@@ -356,11 +372,13 @@ export class MPManager {
     this.network.onPlayerDowned = (payload) => {
       if (payload && payload.playerId === this.myPlayerId) {
         this.localPlayer.setState('DOWNED');
+        if (this.audioManager) this.audioManager.stopEmitter('local');
         const downedOverlay = document.getElementById('bb-downed-overlay');
         if (downedOverlay) downedOverlay.style.display = 'flex';
       } else if (payload) {
         const rp = this.remotePlayers.get(payload.playerId);
         if (rp) rp.setState('DOWNED');
+        if (this.audioManager && payload.playerId) this.audioManager.stopEmitter(payload.playerId);
       }
       if (this.ui.onPlayerDowned) this.ui.onPlayerDowned(payload);
     };
@@ -368,6 +386,7 @@ export class MPManager {
     this.network.onPlayerEliminated = (payload) => {
       if (payload && payload.playerId === this.myPlayerId) {
         this.localPlayer.setState('ELIMINATED');
+        if (this.audioManager) this.audioManager.stopEmitter('local');
         const downedOverlay = document.getElementById('bb-downed-overlay');
         if (downedOverlay) downedOverlay.style.display = 'none';
         const elimOverlay = document.getElementById('bb-eliminated-overlay');
@@ -375,6 +394,7 @@ export class MPManager {
       } else if (payload) {
         const rp = this.remotePlayers.get(payload.playerId);
         if (rp) rp.setState('ELIMINATED');
+        if (this.audioManager && payload.playerId) this.audioManager.stopEmitter(payload.playerId);
       }
       if (this.ui.onPlayerEliminated) this.ui.onPlayerEliminated(payload);
     };
@@ -405,6 +425,9 @@ export class MPManager {
     this.network.onGameOver = (payload) => {
       if (this.ambientAudio) {
         this.ambientAudio.stop();
+      }
+      if (this.audioManager) {
+        this.audioManager.stopAllMovementAudio();
       }
       const isVictory = (payload?.status === 'ESCAPED' || payload?.reason === 'LEVEL_COMPLETED');
       if (!isVictory) {
@@ -451,6 +474,10 @@ export class MPManager {
     this.network.onMatchStarted = (payload) => {
       this.isInStagingLobby = false;
       this.roomRunState = 'IN_PROGRESS';
+      if (this.audioManager) {
+        this.audioManager.stopAllMovementAudio();
+        this.audioManager.preloadMovementAudio();
+      }
       if (this.ambientAudio) {
         this.ambientAudio.start();
       }
@@ -602,6 +629,19 @@ export class MPManager {
       if (this.saberManager) {
         this.saberManager.handleSoundEvent(payload);
       }
+      if (this.audioManager && payload && (payload.soundType === 'FOOTSTEP_WALK' || payload.soundType === 'FOOTSTEP_SPRINT')) {
+        // Skip our own player ID because local prediction already drives local footsteps
+        if (payload.sourceEntityId && payload.sourceEntityId !== this.myPlayerId) {
+          const rp = this.remotePlayers.get(payload.sourceEntityId);
+          if (!rp || rp.state === 'ACTIVE') {
+            const mode = payload.soundType === 'FOOTSTEP_SPRINT' ? 'run' : 'walk';
+            this.audioManager.playFootstep(payload.sourceEntityId, mode, {
+              positional: true,
+              position: payload.position
+            });
+          }
+        }
+      }
       if (this.ui.onSoundEventBroadcast) this.ui.onSoundEventBroadcast(payload);
     };
 
@@ -644,6 +684,9 @@ export class MPManager {
     if (this.ambientAudio) {
       this.ambientAudio.stop();
     }
+    if (this.audioManager) {
+      this.audioManager.stopAllMovementAudio();
+    }
     if (this.stagingLobby) {
       this.stagingLobby.leaveLobby();
     }
@@ -666,6 +709,9 @@ export class MPManager {
   disconnect() {
     if (this.ambientAudio) {
       this.ambientAudio.stop();
+    }
+    if (this.audioManager) {
+      this.audioManager.stopAllMovementAudio();
     }
     if (this.stagingLobby) {
       this.stagingLobby.leaveLobby();
@@ -690,6 +736,9 @@ export class MPManager {
   update(dt) {
     // 1. Update local player
     this.localPlayer.update(dt);
+    if (this.audioManager && this.camera) {
+      this.audioManager.updateListener(this.camera);
+    }
 
     // 2. Update remote players (interpolation)
     for (const rp of this.remotePlayers.values()) {

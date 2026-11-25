@@ -82,13 +82,34 @@ export function buildSeamlessLoopBuffer(ctx, rawBuffer, crossfadeSeconds = 0.25)
 
 export class MultiplayerAmbientAudio {
   constructor(options = {}) {
+    this.audioManager = options.audioManager || null;
+    this.soundId = options.soundId || 'level0_hum';
+    this.category = options.category || 'environment';
+
     this.config = {
       ...DEFAULT_AMBIENT_AUDIO_CONFIG,
       ...options,
       volume: clampVolume(options.volume, DEFAULT_AMBIENT_AUDIO_CONFIG.volume)
     };
 
-    this.ctx = options.audioContext || null;
+    if (this.audioManager && typeof this.audioManager.setSoundVolume === 'function') {
+      this.audioManager.setSoundVolume(this.soundId, this.config.volume);
+      if (typeof this.audioManager.onSoundVolumeChange === 'function') {
+        this.audioManager.onSoundVolumeChange(this.soundId, (v) => {
+          this.config.volume = v;
+          if (this.masterGain && this.ctx) {
+            const now = this.ctx.currentTime || 0;
+            if (typeof this.masterGain.gain?.setTargetAtTime === 'function') {
+              this.masterGain.gain.setTargetAtTime(v, now, 0.04);
+            } else if (this.masterGain.gain) {
+              this.masterGain.gain.value = v;
+            }
+          }
+        });
+      }
+    }
+
+    this.ctx = options.audioContext || (this.audioManager ? this.audioManager.getContext() : null);
     this.masterGain = null;
     this.loopBuffer = null;
     this._loadPromise = null;
@@ -104,12 +125,18 @@ export class MultiplayerAmbientAudio {
   }
 
   getVolume() {
+    if (this.audioManager && typeof this.audioManager.getSoundVolume === 'function') {
+      return this.audioManager.getSoundVolume(this.soundId);
+    }
     return this.config.volume;
   }
 
   setVolume(volume) {
     const next = clampVolume(volume, this.config.volume);
     this.config.volume = next;
+    if (this.audioManager && typeof this.audioManager.setSoundVolume === 'function') {
+      this.audioManager.setSoundVolume(this.soundId, next);
+    }
     if (this.masterGain && this.ctx) {
       const now = this.ctx.currentTime || 0;
       if (typeof this.masterGain.gain?.setTargetAtTime === 'function') {
@@ -144,16 +171,24 @@ export class MultiplayerAmbientAudio {
 
   _ensureContext() {
     if (!this.ctx) {
-      const AudioCtx = (typeof window !== 'undefined')
-        ? (window.AudioContext || window.webkitAudioContext)
-        : (globalThis.AudioContext || globalThis.webkitAudioContext);
-      if (!AudioCtx) return null;
-      this.ctx = new AudioCtx();
+      if (this.audioManager && typeof this.audioManager.getContext === 'function') {
+        this.ctx = this.audioManager.getContext();
+      } else {
+        const AudioCtx = (typeof window !== 'undefined')
+          ? (window.AudioContext || window.webkitAudioContext)
+          : (globalThis.AudioContext || globalThis.webkitAudioContext);
+        if (!AudioCtx) return null;
+        this.ctx = new AudioCtx();
+      }
     }
+    if (!this.ctx) return null;
     if (!this.masterGain && typeof this.ctx.createGain === 'function') {
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.value = this.config.volume;
-      this.masterGain.connect(this.ctx.destination);
+      this.masterGain.gain.value = this.getVolume();
+      const targetNode = (this.audioManager && typeof this.audioManager.getCategoryBus === 'function')
+        ? this.audioManager.getCategoryBus(this.category)
+        : this.ctx.destination;
+      this.masterGain.connect(targetNode);
     }
     return this.ctx;
   }
@@ -353,7 +388,7 @@ export class MultiplayerAmbientAudio {
       activeInstanceCount: this._activeEntry ? 1 : 0,
       retiredCount: this._retiredEntries.size,
       totalCreatedInstances: this._totalCreatedInstances,
-      volume: this.config.volume,
+      volume: this.getVolume(),
       contextState: this.ctx ? this.ctx.state : 'uninitialized',
       bufferLoaded: Boolean(this.loopBuffer),
       loopDurationSeconds: this.loopBuffer ? +(this.loopBuffer.duration || 0).toFixed(4) : 0,

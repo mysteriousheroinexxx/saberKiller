@@ -10,6 +10,10 @@ export class LocalPlayerController {
     this.networkClient = networkClient;
     this.collisionHandler = collisionHandler;
     this.saberManager = null;
+    this.audioManager = null;
+    this._stepDistAccum = 0.0;
+    this._wasMoving = false;
+    this._lastMoveMode = 'idle';
 
     this.pos = new THREE.Vector3(48.69, 0.0, -187.65);
     this.yaw = 0.0;
@@ -162,6 +166,19 @@ export class LocalPlayerController {
 
   setSaberManager(saberManager) {
     this.saberManager = saberManager;
+  }
+
+  setAudioManager(audioManager) {
+    this.audioManager = audioManager;
+  }
+
+  _resetMovementAudio() {
+    if (this._wasMoving && this.audioManager) {
+      this.audioManager.stopEmitter('local');
+    }
+    this._wasMoving = false;
+    this._lastMoveMode = 'idle';
+    this._stepDistAccum = 0.0;
   }
 
   _extractSurfaceNormal(hit, rayDir) {
@@ -998,10 +1015,12 @@ export class LocalPlayerController {
       this.isDowned = true;
       this.isDead = false;
       this.cameraTargetY = 0.42;
+      this._resetMovementAudio();
     } else if (state === 'ELIMINATED') {
       this.isDead = true;
       this.isDowned = false;
       this.cameraTargetY = 0.25;
+      this._resetMovementAudio();
     } else if (state === 'ACTIVE') {
       this.isDowned = false;
       this.isDead = false;
@@ -1014,6 +1033,7 @@ export class LocalPlayerController {
 
   resetCombatState() {
     this.setState('ACTIVE', 0);
+    this._resetMovementAudio();
     this.setHp(100);
     this.camera.position.y = 1.62;
     this.currentCameraY = 1.62;
@@ -1223,12 +1243,14 @@ export class LocalPlayerController {
   update(dt) {
     if (window.mpManager && window.mpManager.isInStagingLobby) {
       if (this.gunGroup) this.gunGroup.visible = false;
+      this._resetMovementAudio();
       return;
     }
 
     this._updateThrowAnimations(dt);
 
     if (this.isEditorActive || this.isInventoryOpen || this.isDowned || this.isDead || this.state !== 'ACTIVE') {
+      this._resetMovementAudio();
       // Suspend movement and firing, but maintain 20Hz network sync
       // If downed or dead, smoothly transition camera height to prone
       if (this.isDowned || this.isDead) {
@@ -1313,6 +1335,8 @@ export class LocalPlayerController {
     }
 
     const curSpeed = this.getEffectiveMoveSpeed();
+    const prevPosX = this.pos.x;
+    const prevPosZ = this.pos.z;
 
     if (len > 0) {
       fx /= len; fz /= len;
@@ -1331,6 +1355,32 @@ export class LocalPlayerController {
       }
 
       this.bob += dt * (this.isSprinting ? 11 : 8);
+    }
+
+    // 1b. Local movement footstep cadence tied to real horizontal displacement
+    const movedDist = Math.hypot(this.pos.x - prevPosX, this.pos.z - prevPosZ);
+    const isActuallyMoving = (len > 0 && movedDist > 0.0005);
+    if (!isActuallyMoving) {
+      this._resetMovementAudio();
+    } else {
+      const mode = this.isSprinting ? 'run' : 'walk';
+      const stride = this.isSprinting ? 2.2 : 2.4;
+      if (!this._wasMoving || mode !== this._lastMoveMode) {
+        const switchedMode = this._wasMoving && mode !== this._lastMoveMode;
+        this._stepDistAccum = 0.0;
+        this._wasMoving = true;
+        this._lastMoveMode = mode;
+        this.audioManager?.playFootstep('local', mode, {
+          positional: false,
+          immediateSwitch: switchedMode,
+          ignoreRateLimit: switchedMode
+        });
+      }
+      this._stepDistAccum += movedDist;
+      while (this._stepDistAccum >= stride) {
+        this._stepDistAccum -= stride;
+        this.audioManager?.playFootstep('local', mode, { positional: false });
+      }
     }
 
     // 2. Camera positioning & bobbing
