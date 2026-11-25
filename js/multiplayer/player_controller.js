@@ -181,6 +181,27 @@ export class LocalPlayerController {
     this._stepDistAccum = 0.0;
   }
 
+  getWeaponWorldPosition() {
+    const base = this.camera?.position || {
+      x: this.pos.x,
+      y: this.currentCameraY || ((this.pos.y || 0) + 1.62),
+      z: this.pos.z
+    };
+    const cosY = Math.cos(this.yaw || 0);
+    const sinY = Math.sin(this.yaw || 0);
+    const cosP = Math.cos(this.pitch || 0);
+    const sinP = Math.sin(this.pitch || 0);
+    // Weapon muzzle offset in camera frame: +0.25 right, -0.18 down, -0.85 forward
+    const rx = 0.25;
+    const ry = -0.18 * cosP - (-0.85) * sinP;
+    const rz = -0.18 * sinP + (-0.85) * cosP;
+    return {
+      x: (base.x || 0) + rx * cosY + rz * sinY,
+      y: (base.y || 0) + ry,
+      z: (base.z || 0) - rx * sinY + rz * cosY
+    };
+  }
+
   _extractSurfaceNormal(hit, rayDir) {
     let normal = null;
     if (hit.face && hit.face.normal) {
@@ -857,6 +878,10 @@ export class LocalPlayerController {
   fire() {
     this.firingDiagnostics.lastFiringInput = 'LMB at ' + new Date().toTimeString().split(' ')[0];
 
+    if (window.mpManager && window.mpManager.isInStagingLobby) {
+      this.firingDiagnostics.lastRejectionReason = 'STAGING_LOBBY';
+      return false;
+    }
     if (this.isEditorActive) {
       this.firingDiagnostics.lastRejectionReason = 'EDITOR_ACTIVE';
       return false;
@@ -865,7 +890,7 @@ export class LocalPlayerController {
       this.firingDiagnostics.lastRejectionReason = 'INVENTORY_OPEN';
       return false;
     }
-    if (this.isDowned || this.isDead || this.hp <= 0) {
+    if (this.isDowned || this.isDead || this.hp <= 0 || (this.state && this.state !== 'ACTIVE')) {
       this.firingDiagnostics.lastRejectionReason = 'PLAYER_DOWNED_OR_ELIMINATED';
       return false;
     }
@@ -896,6 +921,15 @@ export class LocalPlayerController {
       this._triggerMuzzleFlash(0);
 
       this._performWeaponHitscan('PISTOL');
+
+      if (this.audioManager && typeof this.audioManager.playWeaponFire === 'function') {
+        const attachTarget = () => this.getWeaponWorldPosition();
+        this.audioManager.playWeaponFire('local', 'weapon_pistol_fire', {
+          positional: true,
+          position: attachTarget(),
+          attachTarget
+        });
+      }
 
       this.firingDiagnostics.lastRejectionReason = 'NONE';
 

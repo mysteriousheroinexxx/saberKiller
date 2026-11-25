@@ -80,7 +80,7 @@ export class MPManager {
           this.ambientAudio.stop();
         }
         if (this.audioManager) {
-          this.audioManager.stopAllMovementAudio();
+          this.audioManager.stopAllAudio();
         }
         if (window.interactionManager) {
           window.interactionManager.handleDisconnect();
@@ -118,7 +118,7 @@ export class MPManager {
           this.ambientAudio.stop();
         }
         if (this.audioManager) {
-          this.audioManager.stopAllMovementAudio();
+          this.audioManager.stopAllAudio();
         }
         if (this.localPlayer && this.localPlayer.gunGroup) {
           this.localPlayer.gunGroup.visible = false;
@@ -129,8 +129,8 @@ export class MPManager {
       } else {
         this.isInStagingLobby = false;
         if (this.audioManager) {
-          this.audioManager.stopAllMovementAudio();
-          this.audioManager.preloadMovementAudio();
+          this.audioManager.stopAllAudio();
+          this.audioManager.preloadMatchAudio();
         }
         if (this.ambientAudio) {
           this.ambientAudio.start();
@@ -427,7 +427,7 @@ export class MPManager {
         this.ambientAudio.stop();
       }
       if (this.audioManager) {
-        this.audioManager.stopAllMovementAudio();
+        this.audioManager.stopAllAudio();
       }
       const isVictory = (payload?.status === 'ESCAPED' || payload?.reason === 'LEVEL_COMPLETED');
       if (!isVictory) {
@@ -475,8 +475,8 @@ export class MPManager {
       this.isInStagingLobby = false;
       this.roomRunState = 'IN_PROGRESS';
       if (this.audioManager) {
-        this.audioManager.stopAllMovementAudio();
-        this.audioManager.preloadMovementAudio();
+        this.audioManager.stopAllAudio();
+        this.audioManager.preloadMatchAudio();
       }
       if (this.ambientAudio) {
         this.ambientAudio.start();
@@ -641,6 +641,17 @@ export class MPManager {
             });
           }
         }
+      } else if (this.audioManager && payload && (payload.soundType === 'GUNSHOT' || payload.soundType === 'GUNSHOT_PRIMARY')) {
+        // Skip our own player ID because local weapon firing already plays attached audio immediately
+        if (payload.sourceEntityId && payload.sourceEntityId !== this.myPlayerId) {
+          const rp = this.remotePlayers.get(payload.sourceEntityId);
+          if (!rp || rp.state === 'ACTIVE') {
+            this.audioManager.playWeaponFire(payload.sourceEntityId, 'weapon_pistol_fire', {
+              positional: true,
+              position: payload.position
+            });
+          }
+        }
       }
       if (this.ui.onSoundEventBroadcast) this.ui.onSoundEventBroadcast(payload);
     };
@@ -685,7 +696,7 @@ export class MPManager {
       this.ambientAudio.stop();
     }
     if (this.audioManager) {
-      this.audioManager.stopAllMovementAudio();
+      this.audioManager.stopAllAudio();
     }
     if (this.stagingLobby) {
       this.stagingLobby.leaveLobby();
@@ -711,7 +722,7 @@ export class MPManager {
       this.ambientAudio.stop();
     }
     if (this.audioManager) {
-      this.audioManager.stopAllMovementAudio();
+      this.audioManager.stopAllAudio();
     }
     if (this.stagingLobby) {
       this.stagingLobby.leaveLobby();

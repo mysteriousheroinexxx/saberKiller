@@ -60,6 +60,15 @@ export const DEFAULT_SOUND_DEFINITIONS = Object.freeze({
     minIntervalSeconds: 0.22,
     fadeInSeconds: 0.006,
     fadeOutSeconds: 0.025
+  },
+  weapon_pistol_fire: {
+    id: 'weapon_pistol_fire',
+    category: AUDIO_CATEGORIES.WEAPONS,
+    url: 'assets/audio/pistolFire.wav',
+    defaultVolume: 0.62,
+    minIntervalSeconds: 0.04,
+    fadeInSeconds: 0.003,
+    fadeOutSeconds: 0.03
   }
 });
 
@@ -68,6 +77,49 @@ export const AUDIO_PREFERENCES_STORAGE_KEY = 'saberKiller_audioPreferences_v1';
 function clampGain(v, fallback = 1.0) {
   if (typeof v !== 'number' || !Number.isFinite(v)) return fallback;
   return Math.max(0, Math.min(1, v));
+}
+
+/**
+ * Finds the onset trim window [{ startSec, durationSec }] of a single-shot sound buffer
+ * so leading dead silence is skipped while preserving a short clean pre-roll ramp.
+ */
+export function extractSoundTrimBounds(audioBuffer, options = {}) {
+  if (!audioBuffer || typeof audioBuffer.getChannelData !== 'function' || audioBuffer.length <= 0) {
+    return { startSec: 0, durationSec: 0.5 };
+  }
+  const sampleRate = audioBuffer.sampleRate || 48000;
+  const ch0 = audioBuffer.getChannelData(0);
+  const totalSamples = audioBuffer.length;
+  const totalDuration = totalSamples / sampleRate;
+  const threshold = options.threshold ?? 0.004;
+  const preRollSec = options.preRollSeconds ?? 0.004;
+
+  let firstIdx = -1;
+  for (let i = 0; i < totalSamples; i++) {
+    if (Math.abs(ch0[i]) >= threshold) {
+      firstIdx = i;
+      break;
+    }
+  }
+  if (firstIdx < 0) {
+    return { startSec: 0, durationSec: totalDuration };
+  }
+
+  let lastIdx = firstIdx;
+  for (let i = totalSamples - 1; i > firstIdx; i--) {
+    if (Math.abs(ch0[i]) >= threshold * 0.25) {
+      lastIdx = i;
+      break;
+    }
+  }
+
+  const startSec = Math.max(0, (firstIdx / sampleRate) - preRollSec);
+  const endSec = Math.min(totalDuration, (lastIdx / sampleRate) + 0.05);
+  const durationSec = Math.max(0.1, endSec - startSec);
+  return {
+    startSec: +startSec.toFixed(4),
+    durationSec: +durationSec.toFixed(4)
+  };
 }
 
 /**
@@ -165,12 +217,16 @@ export class MultiplayerAudioManager {
     this.buffers = new Map(); // soundId -> AudioBuffer
     this.bufferLoads = new Map(); // soundId -> Promise<AudioBuffer|null>
     this.footstepSlices = new Map(); // soundId -> [{ startSec, durationSec }]
+    this.soundTrimBounds = new Map(); // soundId -> { startSec, durationSec }
 
     // Active single-voice slots per emitterId (prevents overlapping/duplicate footsteps)
     this.activeVoices = new Map(); // emitterId -> { source, gain, panner, soundId, stopTimer }
+    this.activeWeaponVoices = new Set(); // Set<{ emitterId, soundId, positional, position, attachTarget, source, gain, panner, stopTimer }>
     this.lastEmitterPlayTime = new Map(); // `${emitterId}:${soundId}` -> seconds
+    this.lastWeaponFireTime = new Map(); // `${emitterId}:${soundId}` -> seconds
     this.lastSliceIndex = new Map(); // soundId -> index
     this.totalVoicesCreated = 0;
+    this.totalWeaponVoicesCreated = 0;
     this._soundVolumeListeners = new Map();
 
     this._unlockBound = false;
@@ -414,6 +470,8 @@ export class MultiplayerAudioManager {
               maxSliceSeconds: soundId === 'player_run' ? 0.27 : 0.35
             })
           );
+        } else if (soundId === 'weapon_pistol_fire') {
+          this.soundTrimBounds.set(soundId, extractSoundTrimBounds(decoded));
         }
         return decoded;
       } catch (err) {
@@ -432,6 +490,28 @@ export class MultiplayerAudioManager {
       this.loadSound('player_walk'),
       this.loadSound('player_run')
     ]);
+  }
+
+  preloadMatchAudio() {
+    return Promise.all([
+      this.loadSound('player_walk'),
+      this.loadSound('player_run'),
+      this.loadSound('weapon_pistol_fire')
+    ]);
+  }
+
+  _setPannerPosition(panner, position, now = 0) {
+    if (!panner || !position) return;
+    const px = position.x || 0;
+    const py = position.y || 0;
+    const pz = position.z || 0;
+    if (panner.positionX && typeof panner.positionX.setValueAtTime === 'function') {
+      panner.positionX.setValueAtTime(px, now);
+      panner.positionY.setValueAtTime(py, now);
+      panner.positionZ.setValueAtTime(pz, now);
+    } else if (typeof panner.setPosition === 'function') {
+      panner.setPosition(px, py, pz);
+    }
   }
 
   updateListener(camera = this.camera) {
@@ -482,6 +562,16 @@ export class MultiplayerAudioManager {
       listener.setPosition(pos.x || 0, pos.y || 0, pos.z || 0);
       if (typeof listener.setOrientation === 'function') {
         listener.setOrientation(fwd.x, fwd.y, fwd.z, up.x, up.y, up.z);
+      }
+    }
+
+    for (const entry of this.activeWeaponVoices) {
+      if (entry.panner && typeof entry.attachTarget === 'function') {
+        const nextPos = entry.attachTarget();
+        if (nextPos) {
+          entry.position = { ...nextPos };
+          this._setPannerPosition(entry.panner, nextPos, now);
+        }
       }
     }
   }
@@ -667,11 +757,160 @@ export class MultiplayerAudioManager {
     }
   }
 
+  /**
+   * Plays a one-shot weapon discharge sound (e.g. 'weapon_pistol_fire') routed through the
+   * 'weapons' category bus -> Master bus. Allows overlapping tails during rapid semi-auto fire
+   * while enforcing a brief dedupe window and polyphony cap.
+   */
+  playWeaponFire(emitterId, soundId = 'weapon_pistol_fire', options = {}) {
+    const def = this.soundDefs.get(soundId);
+    if (!def) return false;
+
+    const ctx = this.getContext();
+    if (!ctx) return false;
+    this.resumeIfSuspended();
+
+    const buffer = this.buffers.get(soundId);
+    if (!buffer) {
+      // Trigger async preload for upcoming shots without playing delayed gunshots
+      this.loadSound(soundId);
+      return false;
+    }
+
+    const now = ctx.currentTime || 0;
+    const minInterval = (typeof options.minIntervalSeconds === 'number')
+      ? options.minIntervalSeconds
+      : (def.minIntervalSeconds ?? 0.04);
+    const rateKey = `${emitterId}:${soundId}`;
+    const lastT = this.lastWeaponFireTime.get(rateKey) ?? -Infinity;
+    if (!options.ignoreRateLimit && (now - lastT) < minInterval) {
+      return false;
+    }
+
+    // Cap concurrent active weapon tails at 8 (gracefully retire oldest if exceeded)
+    if (this.activeWeaponVoices.size >= 8) {
+      const oldest = this.activeWeaponVoices.values().next().value;
+      if (oldest) this._stopWeaponVoiceEntry(oldest, { immediate: true });
+    }
+
+    const bounds = this.soundTrimBounds.get(soundId) || {
+      startSec: 0,
+      durationSec: buffer.duration || 1.0
+    };
+    const dur = Math.min(bounds.durationSec, Math.max(0.08, (buffer.duration || 1.0) - bounds.startSec));
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    if (source.playbackRate) {
+      source.playbackRate.value = 0.98 + Math.random() * 0.04;
+    }
+
+    const voiceGain = ctx.createGain();
+    const indVol = this.getSoundVolume(soundId) * (typeof options.volumeScale === 'number' ? options.volumeScale : 1.0);
+    const fadeIn = Math.max(0.002, def.fadeInSeconds ?? 0.003);
+    const fadeOut = Math.max(0.02, def.fadeOutSeconds ?? 0.03);
+
+    if (typeof voiceGain.gain?.setValueAtTime === 'function') {
+      voiceGain.gain.setValueAtTime(0.0001, now);
+      voiceGain.gain.linearRampToValueAtTime(Math.max(0.0001, indVol), now + fadeIn);
+      const fadeOutStart = now + Math.max(fadeIn, dur - fadeOut);
+      voiceGain.gain.setValueAtTime(Math.max(0.0001, indVol), fadeOutStart);
+      voiceGain.gain.linearRampToValueAtTime(0.0001, now + dur);
+    } else if (voiceGain.gain) {
+      voiceGain.gain.value = indVol;
+    }
+
+    let panner = null;
+    const categoryBus = this.getCategoryBus(def.category);
+    const initialPos = options.position || (typeof options.attachTarget === 'function' ? options.attachTarget() : null);
+
+    if (options.positional !== false && initialPos && typeof ctx.createPanner === 'function') {
+      panner = ctx.createPanner();
+      panner.panningModel = 'HRTF';
+      panner.distanceModel = 'inverse';
+      panner.refDistance = emitterId === 'local' ? 1.8 : 2.5;
+      panner.maxDistance = 55.0;
+      panner.rolloffFactor = 1.1;
+
+      this._setPannerPosition(panner, initialPos, now);
+      source.connect(voiceGain);
+      voiceGain.connect(panner);
+      panner.connect(categoryBus);
+    } else {
+      source.connect(voiceGain);
+      voiceGain.connect(categoryBus);
+    }
+
+    const entry = {
+      emitterId,
+      soundId,
+      positional: Boolean(panner),
+      position: initialPos ? { ...initialPos } : null,
+      attachTarget: typeof options.attachTarget === 'function' ? options.attachTarget : null,
+      source,
+      gain: voiceGain,
+      panner,
+      stopTimer: null
+    };
+
+    this.activeWeaponVoices.add(entry);
+    this.lastWeaponFireTime.set(rateKey, now);
+    this.totalWeaponVoicesCreated++;
+
+    const cleanup = () => {
+      if (entry.stopTimer) {
+        clearTimeout(entry.stopTimer);
+        entry.stopTimer = null;
+      }
+      this.activeWeaponVoices.delete(entry);
+      try { source.disconnect(); } catch {}
+      try { voiceGain.disconnect(); } catch {}
+      if (panner) {
+        try { panner.disconnect(); } catch {}
+      }
+    };
+
+    source.onended = cleanup;
+    source.start(now, bounds.startSec, dur);
+    entry.stopTimer = setTimeout(cleanup, Math.ceil((dur + 0.08) * 1000));
+    if (typeof entry.stopTimer.unref === 'function') {
+      entry.stopTimer.unref();
+    }
+    return true;
+  }
+
+  _stopWeaponVoiceEntry(entry, { immediate = true } = {}) {
+    if (!entry) return;
+    this.activeWeaponVoices.delete(entry);
+    if (entry.stopTimer) {
+      clearTimeout(entry.stopTimer);
+      entry.stopTimer = null;
+    }
+    try { entry.source.stop(); } catch {}
+    try { entry.source.disconnect(); } catch {}
+    try { entry.gain.disconnect(); } catch {}
+    if (entry.panner) {
+      try { entry.panner.disconnect(); } catch {}
+    }
+  }
+
+  stopAllWeaponAudio({ immediate = true } = {}) {
+    for (const entry of [...this.activeWeaponVoices]) {
+      this._stopWeaponVoiceEntry(entry, { immediate });
+    }
+    this.lastWeaponFireTime.clear();
+  }
+
   stopAllMovementAudio({ immediate = true } = {}) {
     for (const emitterId of [...this.activeVoices.keys()]) {
       this.stopEmitter(emitterId, { immediate });
     }
     this.lastEmitterPlayTime.clear();
+  }
+
+  stopAllAudio({ immediate = true } = {}) {
+    this.stopAllMovementAudio({ immediate });
+    this.stopAllWeaponAudio({ immediate });
   }
 
   getStatus() {
@@ -684,6 +923,12 @@ export class MultiplayerAudioManager {
         position: v.position
       };
     }
+    const activeWeaponEmitters = [...this.activeWeaponVoices].map((v) => ({
+      emitterId: v.emitterId,
+      soundId: v.soundId,
+      positional: v.positional,
+      position: v.position
+    }));
     return {
       contextState: this.ctx ? this.ctx.state : 'uninitialized',
       masterVolume: this.masterVolume,
@@ -693,6 +938,10 @@ export class MultiplayerAudioManager {
       activeVoiceCount: this.activeVoices.size,
       activeEmitters,
       totalVoicesCreated: this.totalVoicesCreated,
+      activeWeaponVoiceCount: this.activeWeaponVoices.size,
+      activeWeaponEmitters,
+      totalWeaponVoicesCreated: this.totalWeaponVoicesCreated,
+      pistolTrimBounds: this.soundTrimBounds.get('weapon_pistol_fire') || null,
       walkSlicesCount: this.footstepSlices.get('player_walk')?.length || 0,
       runSlicesCount: this.footstepSlices.get('player_run')?.length || 0
     };
@@ -700,7 +949,7 @@ export class MultiplayerAudioManager {
 
   dispose() {
     this._unbindAutoplayUnlock();
-    this.stopAllMovementAudio({ immediate: true });
+    this.stopAllAudio({ immediate: true });
     for (const g of this.categoryBuses.values()) {
       try { g.disconnect(); } catch {}
     }
