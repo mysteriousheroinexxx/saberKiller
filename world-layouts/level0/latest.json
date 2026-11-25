@@ -2,9 +2,9 @@
   "schemaVersion": "1.0.0",
   "level": "level0",
   "iteration": 8,
-  "createdAt": "2026-11-25T14:25:49.153Z",
+  "createdAt": "2026-11-25T14:38:06.165Z",
   "author": "developer",
-  "description": "Level 0 dense furniture distribution (10 vendings, 50 tables, 60 shelves) & environmental loot anchors",
+  "description": "Level 0 dense furniture (10 vendings front-oriented, 50 tables, 60 shelves), near-spawn desk pistol & exact environmental loot anchors",
   "catalog": {
     "table": {
       "name": "Office Table",
@@ -109,9 +109,9 @@
       "category": "consumable",
       "modelUrl": "assets/items/sanity_pill_bottle.glb",
       "scale": [
-        0.0008,
-        0.0008,
-        0.0008
+        0.001,
+        0.001,
+        0.001
       ]
     },
     "energy_drink": {
@@ -129,9 +129,9 @@
       "category": "battery",
       "modelUrl": "assets/items/aa_battery.glb",
       "scale": [
-        1,
-        1,
-        1
+        1.6,
+        1.6,
+        1.6
       ]
     },
     "doorKey": {
@@ -139,9 +139,9 @@
       "category": "key",
       "modelUrl": "assets/items/doorKey.glb",
       "scale": [
-        1,
-        1,
-        1
+        1.8,
+        1.8,
+        1.8
       ]
     },
     "exit_door": {
@@ -357,20 +357,22 @@
     {
       "id": "floor_weapon_pistol_01",
       "type": "weapon_pistol",
-      "surfaceType": "floor",
-      "surfaceName": "Carpet Floor",
+      "surfaceType": "table",
+      "surfaceName": "Office Table Top",
       "position": [
-        44.2,
-        0,
-        -187.5
+        60.594,
+        0.936,
+        -183.877
       ],
       "rotation": [
         0,
-        0.4,
+        0.5,
         0
       ],
       "anchor": {
-        "surface": "floor"
+        "surface": "table",
+        "supportProp": "prop_table_02",
+        "supportType": "table"
       }
     },
     {
@@ -735,6 +737,25 @@
       }
     },
     {
+      "id": "prop_table_02",
+      "type": "table",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [
+        60.594,
+        0,
+        -183.877
+      ],
+      "rotation": [
+        0,
+        -1.5708,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
       "id": "prop_vending_02",
       "type": "vending_almond",
       "surfaceType": "floor",
@@ -746,7 +767,7 @@
       ],
       "rotation": [
         0,
-        -1.5708,
+        1.5708,
         0
       ],
       "anchor": {
@@ -765,7 +786,7 @@
       ],
       "rotation": [
         0,
-        -3.1416,
+        0,
         0
       ],
       "anchor": {
@@ -784,7 +805,7 @@
       ],
       "rotation": [
         0,
-        -1.5708,
+        1.5708,
         0
       ],
       "anchor": {
@@ -803,7 +824,7 @@
       ],
       "rotation": [
         0,
-        -3.1416,
+        0,
         0
       ],
       "anchor": {
@@ -822,7 +843,7 @@
       ],
       "rotation": [
         0,
-        0,
+        -3.1416,
         0
       ],
       "anchor": {
@@ -841,7 +862,7 @@
       ],
       "rotation": [
         0,
-        -1.5708,
+        1.5708,
         0
       ],
       "anchor": {
@@ -860,7 +881,7 @@
       ],
       "rotation": [
         0,
-        0,
+        -3.1416,
         0
       ],
       "anchor": {
@@ -879,7 +900,7 @@
       ],
       "rotation": [
         0,
-        0,
+        -3.1416,
         0
       ],
       "anchor": {
@@ -898,7 +919,7 @@
       ],
       "rotation": [
         0,
-        0,
+        -3.1416,
         0
       ],
       "anchor": {
@@ -2027,7 +2048,7 @@
       }
     },
     {
-      "id": "prop_table_02",
+      "id": "prop_table_03",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2046,7 +2067,7 @@
       }
     },
     {
-      "id": "prop_table_03",
+      "id": "prop_table_04",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2065,7 +2086,7 @@
       }
     },
     {
-      "id": "prop_table_04",
+      "id": "prop_table_05",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2084,7 +2105,7 @@
       }
     },
     {
-      "id": "prop_table_05",
+      "id": "prop_table_06",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2103,7 +2124,7 @@
       }
     },
     {
-      "id": "prop_table_06",
+      "id": "prop_table_07",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2122,7 +2143,7 @@
       }
     },
     {
-      "id": "prop_table_07",
+      "id": "prop_table_08",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2141,7 +2162,7 @@
       }
     },
     {
-      "id": "prop_table_08",
+      "id": "prop_table_09",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2160,7 +2181,7 @@
       }
     },
     {
-      "id": "prop_table_09",
+      "id": "prop_table_10",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2179,7 +2200,7 @@
       }
     },
     {
-      "id": "prop_table_10",
+      "id": "prop_table_11",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2198,7 +2219,7 @@
       }
     },
     {
-      "id": "prop_table_11",
+      "id": "prop_table_12",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2217,7 +2238,7 @@
       }
     },
     {
-      "id": "prop_table_12",
+      "id": "prop_table_13",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2236,7 +2257,7 @@
       }
     },
     {
-      "id": "prop_table_13",
+      "id": "prop_table_14",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2255,7 +2276,7 @@
       }
     },
     {
-      "id": "prop_table_14",
+      "id": "prop_table_15",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2274,7 +2295,7 @@
       }
     },
     {
-      "id": "prop_table_15",
+      "id": "prop_table_16",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2293,7 +2314,7 @@
       }
     },
     {
-      "id": "prop_table_16",
+      "id": "prop_table_17",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2312,7 +2333,7 @@
       }
     },
     {
-      "id": "prop_table_17",
+      "id": "prop_table_18",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2331,7 +2352,7 @@
       }
     },
     {
-      "id": "prop_table_18",
+      "id": "prop_table_19",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2350,7 +2371,7 @@
       }
     },
     {
-      "id": "prop_table_19",
+      "id": "prop_table_20",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2369,7 +2390,7 @@
       }
     },
     {
-      "id": "prop_table_20",
+      "id": "prop_table_21",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2388,7 +2409,7 @@
       }
     },
     {
-      "id": "prop_table_21",
+      "id": "prop_table_22",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2407,7 +2428,7 @@
       }
     },
     {
-      "id": "prop_table_22",
+      "id": "prop_table_23",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2426,7 +2447,7 @@
       }
     },
     {
-      "id": "prop_table_23",
+      "id": "prop_table_24",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2445,7 +2466,7 @@
       }
     },
     {
-      "id": "prop_table_24",
+      "id": "prop_table_25",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2464,7 +2485,7 @@
       }
     },
     {
-      "id": "prop_table_25",
+      "id": "prop_table_26",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2483,7 +2504,7 @@
       }
     },
     {
-      "id": "prop_table_26",
+      "id": "prop_table_27",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2502,7 +2523,7 @@
       }
     },
     {
-      "id": "prop_table_27",
+      "id": "prop_table_28",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2521,7 +2542,7 @@
       }
     },
     {
-      "id": "prop_table_28",
+      "id": "prop_table_29",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2540,7 +2561,7 @@
       }
     },
     {
-      "id": "prop_table_29",
+      "id": "prop_table_30",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2559,7 +2580,7 @@
       }
     },
     {
-      "id": "prop_table_30",
+      "id": "prop_table_31",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2578,7 +2599,7 @@
       }
     },
     {
-      "id": "prop_table_31",
+      "id": "prop_table_32",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2597,7 +2618,7 @@
       }
     },
     {
-      "id": "prop_table_32",
+      "id": "prop_table_33",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2616,7 +2637,7 @@
       }
     },
     {
-      "id": "prop_table_33",
+      "id": "prop_table_34",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2635,7 +2656,7 @@
       }
     },
     {
-      "id": "prop_table_34",
+      "id": "prop_table_35",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2654,7 +2675,7 @@
       }
     },
     {
-      "id": "prop_table_35",
+      "id": "prop_table_36",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2673,7 +2694,7 @@
       }
     },
     {
-      "id": "prop_table_36",
+      "id": "prop_table_37",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2692,7 +2713,7 @@
       }
     },
     {
-      "id": "prop_table_37",
+      "id": "prop_table_38",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2711,7 +2732,7 @@
       }
     },
     {
-      "id": "prop_table_38",
+      "id": "prop_table_39",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2730,7 +2751,7 @@
       }
     },
     {
-      "id": "prop_table_39",
+      "id": "prop_table_40",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2749,7 +2770,7 @@
       }
     },
     {
-      "id": "prop_table_40",
+      "id": "prop_table_41",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2768,7 +2789,7 @@
       }
     },
     {
-      "id": "prop_table_41",
+      "id": "prop_table_42",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2787,7 +2808,7 @@
       }
     },
     {
-      "id": "prop_table_42",
+      "id": "prop_table_43",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2806,7 +2827,7 @@
       }
     },
     {
-      "id": "prop_table_43",
+      "id": "prop_table_44",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2825,7 +2846,7 @@
       }
     },
     {
-      "id": "prop_table_44",
+      "id": "prop_table_45",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2844,7 +2865,7 @@
       }
     },
     {
-      "id": "prop_table_45",
+      "id": "prop_table_46",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2863,7 +2884,7 @@
       }
     },
     {
-      "id": "prop_table_46",
+      "id": "prop_table_47",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2882,7 +2903,7 @@
       }
     },
     {
-      "id": "prop_table_47",
+      "id": "prop_table_48",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2901,7 +2922,7 @@
       }
     },
     {
-      "id": "prop_table_48",
+      "id": "prop_table_49",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2920,7 +2941,7 @@
       }
     },
     {
-      "id": "prop_table_49",
+      "id": "prop_table_50",
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
@@ -2932,25 +2953,6 @@
       "rotation": [
         0,
         -1.5708,
-        0
-      ],
-      "anchor": {
-        "surface": "floor"
-      }
-    },
-    {
-      "id": "prop_table_50",
-      "type": "table",
-      "surfaceType": "floor",
-      "surfaceName": "Carpet Floor",
-      "position": [
-        184.611,
-        0,
-        -169.86
-      ],
-      "rotation": [
-        0,
-        0,
         0
       ],
       "anchor": {
@@ -2978,7 +2980,7 @@
     }
   ],
   "environmentalLoot": {
-    "version": "2.0.0",
+    "version": "2.1.0",
     "consumableSlots": [
       {
         "id": "c_prop_table_01_west",
@@ -3025,14 +3027,14 @@
         }
       },
       {
-        "id": "c_prop_vending_01_front",
+        "id": "c_prop_vending_01_front_a",
         "supportProp": "prop_vending_01",
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          41.8,
+          41.18,
           0.02,
-          -184.73
+          -186.19
         ],
         "rotation": [
           0,
@@ -3040,9 +3042,7 @@
           0
         ],
         "allowedTypes": [
-          "almond_can",
-          "energy_drink",
-          "aa_battery"
+          "almond_can"
         ],
         "anchor": {
           "surface": "vending_around",
@@ -3051,24 +3051,88 @@
         }
       },
       {
-        "id": "c_prop_vending_02_front",
-        "supportProp": "prop_vending_02",
+        "id": "c_prop_vending_01_front_b",
+        "supportProp": "prop_vending_01",
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          33.824,
+          41.82,
           0.02,
-          -27.36
+          -186.19
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "allowedTypes": [
+          "almond_can"
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_01",
+          "supportType": "vending_almond"
+        }
+      },
+      {
+        "id": "c_prop_table_02_a",
+        "supportProp": "prop_table_02",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          61.214,
+          0.936,
+          -183.877
         ],
         "rotation": [
           0,
           -1.571,
           0
         ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_02",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "c_prop_table_02_b",
+        "supportProp": "prop_table_02",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          59.974,
+          0.936,
+          -183.877
+        ],
+        "rotation": [
+          0,
+          -1.571,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_02",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "c_prop_vending_02_front_a",
+        "supportProp": "prop_vending_02",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          33.804,
+          0.02,
+          -27.34
+        ],
+        "rotation": [
+          0,
+          1.571,
+          0
+        ],
         "allowedTypes": [
-          "almond_can",
-          "energy_drink",
-          "aa_battery"
+          "almond_can"
         ],
         "anchor": {
           "surface": "vending_around",
@@ -3077,24 +3141,46 @@
         }
       },
       {
-        "id": "c_prop_vending_03_front",
+        "id": "c_prop_vending_02_front_b",
+        "supportProp": "prop_vending_02",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          33.804,
+          0.02,
+          -27.98
+        ],
+        "rotation": [
+          0,
+          1.571,
+          0
+        ],
+        "allowedTypes": [
+          "almond_can"
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_02",
+          "supportType": "vending_almond"
+        }
+      },
+      {
+        "id": "c_prop_vending_03_front_a",
         "supportProp": "prop_vending_03",
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          81.9,
+          81.88,
           0.02,
-          233.232
+          233.212
         ],
         "rotation": [
           0,
-          -3.142,
+          0,
           0
         ],
         "allowedTypes": [
-          "almond_can",
-          "energy_drink",
-          "aa_battery"
+          "almond_can"
         ],
         "anchor": {
           "surface": "vending_around",
@@ -3103,24 +3189,46 @@
         }
       },
       {
-        "id": "c_prop_vending_04_front",
+        "id": "c_prop_vending_03_front_b",
+        "supportProp": "prop_vending_03",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          82.52,
+          0.02,
+          233.212
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "allowedTypes": [
+          "almond_can"
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_03",
+          "supportType": "vending_almond"
+        }
+      },
+      {
+        "id": "c_prop_vending_04_front_a",
         "supportProp": "prop_vending_04",
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          123.231,
+          123.211,
           0.02,
-          233.1
+          233.12
         ],
         "rotation": [
           0,
-          -1.571,
+          1.571,
           0
         ],
         "allowedTypes": [
-          "almond_can",
-          "energy_drink",
-          "aa_battery"
+          "almond_can"
         ],
         "anchor": {
           "surface": "vending_around",
@@ -3129,24 +3237,46 @@
         }
       },
       {
-        "id": "c_prop_vending_05_front",
+        "id": "c_prop_vending_04_front_b",
+        "supportProp": "prop_vending_04",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          123.211,
+          0.02,
+          232.48
+        ],
+        "rotation": [
+          0,
+          1.571,
+          0
+        ],
+        "allowedTypes": [
+          "almond_can"
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_04",
+          "supportType": "vending_almond"
+        }
+      },
+      {
+        "id": "c_prop_vending_05_front_a",
         "supportProp": "prop_vending_05",
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          51.9,
+          51.88,
           0.02,
-          233.232
+          233.212
         ],
         "rotation": [
           0,
-          -3.142,
+          0,
           0
         ],
         "allowedTypes": [
-          "almond_can",
-          "energy_drink",
-          "aa_battery"
+          "almond_can"
         ],
         "anchor": {
           "surface": "vending_around",
@@ -3155,14 +3285,14 @@
         }
       },
       {
-        "id": "c_prop_vending_06_front",
-        "supportProp": "prop_vending_06",
+        "id": "c_prop_vending_05_front_b",
+        "supportProp": "prop_vending_05",
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          110.894,
+          52.52,
           0.02,
-          -273.092
+          233.212
         ],
         "rotation": [
           0,
@@ -3170,9 +3300,31 @@
           0
         ],
         "allowedTypes": [
-          "almond_can",
-          "energy_drink",
-          "aa_battery"
+          "almond_can"
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_05",
+          "supportType": "vending_almond"
+        }
+      },
+      {
+        "id": "c_prop_vending_06_front_a",
+        "supportProp": "prop_vending_06",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          110.914,
+          0.02,
+          -273.072
+        ],
+        "rotation": [
+          0,
+          -3.142,
+          0
+        ],
+        "allowedTypes": [
+          "almond_can"
         ],
         "anchor": {
           "surface": "vending_around",
@@ -3181,24 +3333,46 @@
         }
       },
       {
-        "id": "c_prop_vending_07_front",
+        "id": "c_prop_vending_06_front_b",
+        "supportProp": "prop_vending_06",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          110.274,
+          0.02,
+          -273.072
+        ],
+        "rotation": [
+          0,
+          -3.142,
+          0
+        ],
+        "allowedTypes": [
+          "almond_can"
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_06",
+          "supportType": "vending_almond"
+        }
+      },
+      {
+        "id": "c_prop_vending_07_front_a",
         "supportProp": "prop_vending_07",
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          153.825,
+          153.805,
           0.02,
-          -97.36
+          -97.34
         ],
         "rotation": [
           0,
-          -1.571,
+          1.571,
           0
         ],
         "allowedTypes": [
-          "almond_can",
-          "energy_drink",
-          "aa_battery"
+          "almond_can"
         ],
         "anchor": {
           "surface": "vending_around",
@@ -3207,24 +3381,46 @@
         }
       },
       {
-        "id": "c_prop_vending_08_front",
+        "id": "c_prop_vending_07_front_b",
+        "supportProp": "prop_vending_07",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          153.805,
+          0.02,
+          -97.98
+        ],
+        "rotation": [
+          0,
+          1.571,
+          0
+        ],
+        "allowedTypes": [
+          "almond_can"
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_07",
+          "supportType": "vending_almond"
+        }
+      },
+      {
+        "id": "c_prop_vending_08_front_a",
         "supportProp": "prop_vending_08",
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          110.894,
+          110.914,
           0.02,
-          -173.092
+          -173.072
         ],
         "rotation": [
           0,
-          0,
+          -3.142,
           0
         ],
         "allowedTypes": [
-          "almond_can",
-          "energy_drink",
-          "aa_battery"
+          "almond_can"
         ],
         "anchor": {
           "surface": "vending_around",
@@ -3233,24 +3429,46 @@
         }
       },
       {
-        "id": "c_prop_vending_09_front",
+        "id": "c_prop_vending_08_front_b",
+        "supportProp": "prop_vending_08",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          110.274,
+          0.02,
+          -173.072
+        ],
+        "rotation": [
+          0,
+          -3.142,
+          0
+        ],
+        "allowedTypes": [
+          "almond_can"
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_08",
+          "supportType": "vending_almond"
+        }
+      },
+      {
+        "id": "c_prop_vending_09_front_a",
         "supportProp": "prop_vending_09",
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          130.3,
+          130.32,
           0.02,
-          46.768
+          46.788
         ],
         "rotation": [
           0,
-          0,
+          -3.142,
           0
         ],
         "allowedTypes": [
-          "almond_can",
-          "energy_drink",
-          "aa_battery"
+          "almond_can"
         ],
         "anchor": {
           "surface": "vending_around",
@@ -3259,24 +3477,70 @@
         }
       },
       {
-        "id": "c_prop_vending_10_front",
+        "id": "c_prop_vending_09_front_b",
+        "supportProp": "prop_vending_09",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          129.68,
+          0.02,
+          46.788
+        ],
+        "rotation": [
+          0,
+          -3.142,
+          0
+        ],
+        "allowedTypes": [
+          "almond_can"
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_09",
+          "supportType": "vending_almond"
+        }
+      },
+      {
+        "id": "c_prop_vending_10_front_a",
         "supportProp": "prop_vending_10",
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          152.5,
+          152.52,
           0.02,
-          126.769
+          126.789
         ],
         "rotation": [
           0,
-          0,
+          -3.142,
           0
         ],
         "allowedTypes": [
-          "almond_can",
-          "energy_drink",
-          "aa_battery"
+          "almond_can"
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_10",
+          "supportType": "vending_almond"
+        }
+      },
+      {
+        "id": "c_prop_vending_10_front_b",
+        "supportProp": "prop_vending_10",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          151.88,
+          0.02,
+          126.789
+        ],
+        "rotation": [
+          0,
+          -3.142,
+          0
+        ],
+        "allowedTypes": [
+          "almond_can"
         ],
         "anchor": {
           "surface": "vending_around",
@@ -5999,56 +6263,14 @@
         }
       },
       {
-        "id": "c_prop_table_02_a",
-        "supportProp": "prop_table_02",
+        "id": "c_prop_table_03_a",
+        "supportProp": "prop_table_03",
         "supportType": "table",
         "surfaceType": "table",
         "position": [
           114.611,
           0.936,
           -178.18
-        ],
-        "rotation": [
-          0,
-          0.3,
-          0
-        ],
-        "anchor": {
-          "surface": "table",
-          "supportProp": "prop_table_02",
-          "supportType": "table"
-        }
-      },
-      {
-        "id": "c_prop_table_02_b",
-        "supportProp": "prop_table_02",
-        "supportType": "table",
-        "surfaceType": "table",
-        "position": [
-          114.611,
-          0.936,
-          -177.14
-        ],
-        "rotation": [
-          0,
-          -0.4,
-          0
-        ],
-        "anchor": {
-          "surface": "table",
-          "supportProp": "prop_table_02",
-          "supportType": "table"
-        }
-      },
-      {
-        "id": "c_prop_table_03_a",
-        "supportProp": "prop_table_03",
-        "supportType": "table",
-        "surfaceType": "table",
-        "position": [
-          54.611,
-          0.936,
-          -60.38
         ],
         "rotation": [
           0,
@@ -6067,9 +6289,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          54.611,
+          114.611,
           0.936,
-          -59.34
+          -177.14
         ],
         "rotation": [
           0,
@@ -6088,13 +6310,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          51.114,
+          54.611,
           0.936,
-          -203.877
+          -60.38
         ],
         "rotation": [
           0,
-          -1.271,
+          0.3,
           0
         ],
         "anchor": {
@@ -6109,13 +6331,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          50.074,
+          54.611,
           0.936,
-          -203.877
+          -59.34
         ],
         "rotation": [
           0,
-          -1.971,
+          -0.4,
           0
         ],
         "anchor": {
@@ -6130,9 +6352,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          138.914,
+          51.114,
           0.936,
-          -133.877
+          -203.877
         ],
         "rotation": [
           0,
@@ -6151,9 +6373,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          137.874,
+          50.074,
           0.936,
-          -133.877
+          -203.877
         ],
         "rotation": [
           0,
@@ -6172,13 +6394,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          96.377,
+          138.914,
           0.936,
-          -142.58
+          -133.877
         ],
         "rotation": [
           0,
-          0.3,
+          -1.271,
           0
         ],
         "anchor": {
@@ -6193,13 +6415,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          96.377,
+          137.874,
           0.936,
-          -141.54
+          -133.877
         ],
         "rotation": [
           0,
-          -0.4,
+          -1.971,
           0
         ],
         "anchor": {
@@ -6214,13 +6436,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          173.314,
+          96.377,
           0.936,
-          -133.877
+          -142.58
         ],
         "rotation": [
           0,
-          -1.271,
+          0.3,
           0
         ],
         "anchor": {
@@ -6235,13 +6457,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          172.274,
+          96.377,
           0.936,
-          -133.877
+          -141.54
         ],
         "rotation": [
           0,
-          -1.971,
+          -0.4,
           0
         ],
         "anchor": {
@@ -6256,9 +6478,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          231.114,
+          173.314,
           0.936,
-          -273.877
+          -133.877
         ],
         "rotation": [
           0,
@@ -6277,9 +6499,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          230.074,
+          172.274,
           0.936,
-          -273.877
+          -133.877
         ],
         "rotation": [
           0,
@@ -6298,13 +6520,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          47.48,
+          231.114,
           0.936,
-          193.817
+          -273.877
         ],
         "rotation": [
           0,
-          1.871,
+          -1.271,
           0
         ],
         "anchor": {
@@ -6319,13 +6541,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          48.52,
+          230.074,
           0.936,
-          193.817
+          -273.877
         ],
         "rotation": [
           0,
-          1.171,
+          -1.971,
           0
         ],
         "anchor": {
@@ -6340,13 +6562,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          214.611,
+          47.48,
           0.936,
-          -228.18
+          193.817
         ],
         "rotation": [
           0,
-          0.3,
+          1.871,
           0
         ],
         "anchor": {
@@ -6361,13 +6583,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          214.611,
+          48.52,
           0.936,
-          -227.14
+          193.817
         ],
         "rotation": [
           0,
-          -0.4,
+          1.171,
           0
         ],
         "anchor": {
@@ -6382,9 +6604,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          184.611,
+          214.611,
           0.936,
-          -102.58
+          -228.18
         ],
         "rotation": [
           0,
@@ -6403,9 +6625,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          184.611,
+          214.611,
           0.936,
-          -101.54
+          -227.14
         ],
         "rotation": [
           0,
@@ -6424,9 +6646,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          16.176,
+          184.611,
           0.936,
-          -22.38
+          -102.58
         ],
         "rotation": [
           0,
@@ -6445,9 +6667,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          16.176,
+          184.611,
           0.936,
-          -21.34
+          -101.54
         ],
         "rotation": [
           0,
@@ -6466,9 +6688,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          24.611,
+          16.176,
           0.936,
-          -168.18
+          -22.38
         ],
         "rotation": [
           0,
@@ -6487,9 +6709,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          24.611,
+          16.176,
           0.936,
-          -167.14
+          -21.34
         ],
         "rotation": [
           0,
@@ -6508,13 +6730,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          21.114,
+          24.611,
           0.936,
-          -273.878
+          -168.18
         ],
         "rotation": [
           0,
-          -1.271,
+          0.3,
           0
         ],
         "anchor": {
@@ -6529,13 +6751,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          20.074,
+          24.611,
           0.936,
-          -273.878
+          -167.14
         ],
         "rotation": [
           0,
-          -1.971,
+          -0.4,
           0
         ],
         "anchor": {
@@ -6550,9 +6772,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          -0.886,
+          21.114,
           0.936,
-          -123.878
+          -273.878
         ],
         "rotation": [
           0,
@@ -6571,9 +6793,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          -1.926,
+          20.074,
           0.936,
-          -123.878
+          -273.878
         ],
         "rotation": [
           0,
@@ -6592,13 +6814,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          104.611,
+          -0.886,
           0.936,
-          -148.18
+          -123.878
         ],
         "rotation": [
           0,
-          0.3,
+          -1.271,
           0
         ],
         "anchor": {
@@ -6613,13 +6835,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          104.611,
+          -1.926,
           0.936,
-          -147.14
+          -123.878
         ],
         "rotation": [
           0,
-          -0.4,
+          -1.971,
           0
         ],
         "anchor": {
@@ -6634,13 +6856,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          61.114,
+          104.611,
           0.936,
-          -263.877
+          -148.18
         ],
         "rotation": [
           0,
-          -1.271,
+          0.3,
           0
         ],
         "anchor": {
@@ -6655,13 +6877,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          60.074,
+          104.611,
           0.936,
-          -263.877
+          -147.14
         ],
         "rotation": [
           0,
-          -1.971,
+          -0.4,
           0
         ],
         "anchor": {
@@ -6676,13 +6898,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          136.377,
+          61.114,
           0.936,
-          -190.38
+          -263.877
         ],
         "rotation": [
           0,
-          0.3,
+          -1.271,
           0
         ],
         "anchor": {
@@ -6697,13 +6919,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          136.377,
+          60.074,
           0.936,
-          -189.34
+          -263.877
         ],
         "rotation": [
           0,
-          -0.4,
+          -1.971,
           0
         ],
         "anchor": {
@@ -6718,9 +6940,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          34.61,
+          136.377,
           0.936,
-          -32.58
+          -190.38
         ],
         "rotation": [
           0,
@@ -6739,9 +6961,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          34.61,
+          136.377,
           0.936,
-          -31.54
+          -189.34
         ],
         "rotation": [
           0,
@@ -6760,9 +6982,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          124.611,
+          34.61,
           0.936,
-          -102.58
+          -32.58
         ],
         "rotation": [
           0,
@@ -6781,9 +7003,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          124.611,
+          34.61,
           0.936,
-          -101.54
+          -31.54
         ],
         "rotation": [
           0,
@@ -6802,13 +7024,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          131.114,
+          124.611,
           0.936,
-          -73.877
+          -102.58
         ],
         "rotation": [
           0,
-          -1.271,
+          0.3,
           0
         ],
         "anchor": {
@@ -6823,13 +7045,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          130.074,
+          124.611,
           0.936,
-          -73.877
+          -101.54
         ],
         "rotation": [
           0,
-          -1.971,
+          -0.4,
           0
         ],
         "anchor": {
@@ -6844,13 +7066,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          144.611,
+          131.114,
           0.936,
-          -42.58
+          -73.877
         ],
         "rotation": [
           0,
-          0.3,
+          -1.271,
           0
         ],
         "anchor": {
@@ -6865,13 +7087,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          144.611,
+          130.074,
           0.936,
-          -41.54
+          -73.877
         ],
         "rotation": [
           0,
-          -0.4,
+          -1.971,
           0
         ],
         "anchor": {
@@ -6886,13 +7108,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          51.88,
+          144.611,
           0.936,
-          196.183
+          -42.58
         ],
         "rotation": [
           0,
-          1.871,
+          0.3,
           0
         ],
         "anchor": {
@@ -6907,13 +7129,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          52.92,
+          144.611,
           0.936,
-          196.183
+          -41.54
         ],
         "rotation": [
           0,
-          1.171,
+          -0.4,
           0
         ],
         "anchor": {
@@ -6928,13 +7150,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          11.114,
+          51.88,
           0.936,
-          -53.877
+          196.183
         ],
         "rotation": [
           0,
-          -1.271,
+          1.871,
           0
         ],
         "anchor": {
@@ -6949,13 +7171,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          10.074,
+          52.92,
           0.936,
-          -53.877
+          196.183
         ],
         "rotation": [
           0,
-          -1.971,
+          1.171,
           0
         ],
         "anchor": {
@@ -6970,13 +7192,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          67.28,
+          11.114,
           0.936,
-          223.611
+          -53.877
         ],
         "rotation": [
           0,
-          1.871,
+          -1.271,
           0
         ],
         "anchor": {
@@ -6991,13 +7213,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          68.32,
+          10.074,
           0.936,
-          223.611
+          -53.877
         ],
         "rotation": [
           0,
-          1.171,
+          -1.971,
           0
         ],
         "anchor": {
@@ -7012,13 +7234,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          214.611,
+          67.28,
           0.936,
-          -172.58
+          223.611
         ],
         "rotation": [
           0,
-          0.3,
+          1.871,
           0
         ],
         "anchor": {
@@ -7033,13 +7255,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          214.611,
+          68.32,
           0.936,
-          -171.54
+          223.611
         ],
         "rotation": [
           0,
-          -0.4,
+          1.171,
           0
         ],
         "anchor": {
@@ -7054,9 +7276,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          94.611,
+          214.611,
           0.936,
-          -220.38
+          -172.58
         ],
         "rotation": [
           0,
@@ -7075,9 +7297,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          94.611,
+          214.611,
           0.936,
-          -219.34
+          -171.54
         ],
         "rotation": [
           0,
@@ -7096,13 +7318,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          1.314,
+          94.611,
           0.936,
-          -96.043
+          -220.38
         ],
         "rotation": [
           0,
-          -1.271,
+          0.3,
           0
         ],
         "anchor": {
@@ -7117,13 +7339,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          0.274,
+          94.611,
           0.936,
-          -96.043
+          -219.34
         ],
         "rotation": [
           0,
-          -1.971,
+          -0.4,
           0
         ],
         "anchor": {
@@ -7138,9 +7360,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          58.914,
+          1.314,
           0.936,
-          -155.444
+          -96.043
         ],
         "rotation": [
           0,
@@ -7159,9 +7381,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          57.874,
+          0.274,
           0.936,
-          -155.444
+          -96.043
         ],
         "rotation": [
           0,
@@ -7180,9 +7402,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          78.72,
+          58.914,
           0.936,
-          213.912
+          -155.444
         ],
         "rotation": [
           0,
@@ -7201,9 +7423,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          77.68,
+          57.874,
           0.936,
-          213.912
+          -155.444
         ],
         "rotation": [
           0,
@@ -7222,9 +7444,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          223.314,
+          78.72,
           0.936,
-          -83.877
+          213.912
         ],
         "rotation": [
           0,
@@ -7243,9 +7465,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          222.274,
+          77.68,
           0.936,
-          -83.877
+          213.912
         ],
         "rotation": [
           0,
@@ -7264,13 +7486,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          154.611,
+          223.314,
           0.936,
-          -70.38
+          -83.877
         ],
         "rotation": [
           0,
-          0.3,
+          -1.271,
           0
         ],
         "anchor": {
@@ -7285,13 +7507,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          154.611,
+          222.274,
           0.936,
-          -69.34
+          -83.877
         ],
         "rotation": [
           0,
-          -0.4,
+          -1.971,
           0
         ],
         "anchor": {
@@ -7306,13 +7528,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          58.914,
+          154.611,
           0.936,
-          -133.877
+          -70.38
         ],
         "rotation": [
           0,
-          -1.271,
+          0.3,
           0
         ],
         "anchor": {
@@ -7327,13 +7549,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          57.874,
+          154.611,
           0.936,
-          -133.877
+          -69.34
         ],
         "rotation": [
           0,
-          -1.971,
+          -0.4,
           0
         ],
         "anchor": {
@@ -7348,13 +7570,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          114.611,
+          58.914,
           0.936,
-          -232.58
+          -133.877
         ],
         "rotation": [
           0,
-          0.3,
+          -1.271,
           0
         ],
         "anchor": {
@@ -7369,13 +7591,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          114.611,
+          57.874,
           0.936,
-          -231.54
+          -133.877
         ],
         "rotation": [
           0,
-          -0.4,
+          -1.971,
           0
         ],
         "anchor": {
@@ -7390,13 +7612,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          127.914,
+          114.611,
           0.936,
-          -23.877
+          -232.58
         ],
         "rotation": [
           0,
-          -1.271,
+          0.3,
           0
         ],
         "anchor": {
@@ -7411,13 +7633,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          126.874,
+          114.611,
           0.936,
-          -23.877
+          -231.54
         ],
         "rotation": [
           0,
-          -1.971,
+          -0.4,
           0
         ],
         "anchor": {
@@ -7432,9 +7654,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          131.114,
+          127.914,
           0.936,
-          -83.877
+          -23.877
         ],
         "rotation": [
           0,
@@ -7453,9 +7675,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          130.074,
+          126.874,
           0.936,
-          -83.877
+          -23.877
         ],
         "rotation": [
           0,
@@ -7474,13 +7696,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          199.698,
+          131.114,
           0.936,
-          158.03
+          -83.877
         ],
         "rotation": [
           0,
-          2.743,
+          -1.271,
           0
         ],
         "anchor": {
@@ -7495,13 +7717,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          200.366,
+          130.074,
           0.936,
-          157.234
+          -83.877
         ],
         "rotation": [
           0,
-          2.043,
+          -1.971,
           0
         ],
         "anchor": {
@@ -7516,13 +7738,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          84.611,
+          199.698,
           0.936,
-          -112.58
+          158.03
         ],
         "rotation": [
           0,
-          0.3,
+          2.743,
           0
         ],
         "anchor": {
@@ -7537,13 +7759,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          84.611,
+          200.366,
           0.936,
-          -111.54
+          157.234
         ],
         "rotation": [
           0,
-          -0.4,
+          2.043,
           0
         ],
         "anchor": {
@@ -7558,13 +7780,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          108.914,
+          84.611,
           0.936,
-          -53.927
+          -112.58
         ],
         "rotation": [
           0,
-          -1.271,
+          0.3,
           0
         ],
         "anchor": {
@@ -7579,13 +7801,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          107.874,
+          84.611,
           0.936,
-          -53.927
+          -111.54
         ],
         "rotation": [
           0,
-          -1.971,
+          -0.4,
           0
         ],
         "anchor": {
@@ -7600,9 +7822,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          201.114,
+          108.914,
           0.936,
-          -183.877
+          -53.927
         ],
         "rotation": [
           0,
@@ -7621,9 +7843,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          200.074,
+          107.874,
           0.936,
-          -183.877
+          -53.927
         ],
         "rotation": [
           0,
@@ -7642,13 +7864,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          74.611,
+          201.114,
           0.936,
-          -230.38
+          -183.877
         ],
         "rotation": [
           0,
-          0.3,
+          -1.271,
           0
         ],
         "anchor": {
@@ -7663,13 +7885,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          74.611,
+          200.074,
           0.936,
-          -229.34
+          -183.877
         ],
         "rotation": [
           0,
-          -0.4,
+          -1.971,
           0
         ],
         "anchor": {
@@ -7684,9 +7906,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          234.611,
+          74.611,
           0.936,
-          -52.58
+          -230.38
         ],
         "rotation": [
           0,
@@ -7705,9 +7927,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          234.611,
+          74.611,
           0.936,
-          -51.54
+          -229.34
         ],
         "rotation": [
           0,
@@ -7726,13 +7948,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          101.114,
+          234.611,
           0.936,
-          -273.877
+          -52.58
         ],
         "rotation": [
           0,
-          -1.271,
+          0.3,
           0
         ],
         "anchor": {
@@ -7747,13 +7969,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          100.074,
+          234.611,
           0.936,
-          -273.877
+          -51.54
         ],
         "rotation": [
           0,
-          -1.971,
+          -0.4,
           0
         ],
         "anchor": {
@@ -7768,13 +7990,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          36.377,
+          101.114,
           0.936,
-          -140.38
+          -273.877
         ],
         "rotation": [
           0,
-          0.3,
+          -1.271,
           0
         ],
         "anchor": {
@@ -7789,13 +8011,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          36.377,
+          100.074,
           0.936,
-          -139.34
+          -273.877
         ],
         "rotation": [
           0,
-          -0.4,
+          -1.971,
           0
         ],
         "anchor": {
@@ -7810,9 +8032,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          214.611,
+          36.377,
           0.936,
-          -218.18
+          -140.38
         ],
         "rotation": [
           0,
@@ -7831,9 +8053,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          214.611,
+          36.377,
           0.936,
-          -217.14
+          -139.34
         ],
         "rotation": [
           0,
@@ -7852,9 +8074,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          184.611,
+          214.611,
           0.936,
-          -70.38
+          -218.18
         ],
         "rotation": [
           0,
@@ -7873,9 +8095,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          184.611,
+          214.611,
           0.936,
-          -69.34
+          -217.14
         ],
         "rotation": [
           0,
@@ -7894,13 +8116,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          63.314,
+          184.611,
           0.936,
-          -243.877
+          -70.38
         ],
         "rotation": [
           0,
-          -1.271,
+          0.3,
           0
         ],
         "anchor": {
@@ -7915,13 +8137,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          62.274,
+          184.611,
           0.936,
-          -243.877
+          -69.34
         ],
         "rotation": [
           0,
-          -1.971,
+          -0.4,
           0
         ],
         "anchor": {
@@ -7936,13 +8158,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          214.611,
+          63.314,
           0.936,
-          -142.58
+          -243.877
         ],
         "rotation": [
           0,
-          0.3,
+          -1.271,
           0
         ],
         "anchor": {
@@ -7957,13 +8179,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          214.611,
+          62.274,
           0.936,
-          -141.54
+          -243.877
         ],
         "rotation": [
           0,
-          -0.4,
+          -1.971,
           0
         ],
         "anchor": {
@@ -7978,13 +8200,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          101.114,
+          214.611,
           0.936,
-          -83.877
+          -142.58
         ],
         "rotation": [
           0,
-          -1.271,
+          0.3,
           0
         ],
         "anchor": {
@@ -7999,13 +8221,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          100.074,
+          214.611,
           0.936,
-          -83.877
+          -141.54
         ],
         "rotation": [
           0,
-          -1.971,
+          -0.4,
           0
         ],
         "anchor": {
@@ -8020,13 +8242,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          184.611,
+          101.114,
           0.936,
-          -170.38
+          -83.877
         ],
         "rotation": [
           0,
-          0.3,
+          -1.271,
           0
         ],
         "anchor": {
@@ -8041,13 +8263,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          184.611,
+          100.074,
           0.936,
-          -169.34
+          -83.877
         ],
         "rotation": [
           0,
-          -0.4,
+          -1.971,
           0
         ],
         "anchor": {
@@ -8110,7 +8332,7 @@
         "position": [
           41.5,
           0.02,
-          -184.73
+          -186.45
         ],
         "rotation": [
           0,
@@ -8129,13 +8351,13 @@
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          33.824,
+          33.544,
           0.02,
           -27.66
         ],
         "rotation": [
           0,
-          -1.571,
+          1.571,
           0
         ],
         "anchor": {
@@ -8152,11 +8374,11 @@
         "position": [
           82.2,
           0.02,
-          233.232
+          232.952
         ],
         "rotation": [
           0,
-          -3.142,
+          0,
           0
         ],
         "anchor": {
@@ -8171,13 +8393,13 @@
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          123.231,
+          122.951,
           0.02,
           232.8
         ],
         "rotation": [
           0,
-          -1.571,
+          1.571,
           0
         ],
         "anchor": {
@@ -8194,11 +8416,11 @@
         "position": [
           52.2,
           0.02,
-          233.232
+          232.952
         ],
         "rotation": [
           0,
-          -3.142,
+          0,
           0
         ],
         "anchor": {
@@ -8215,11 +8437,11 @@
         "position": [
           110.594,
           0.02,
-          -273.092
+          -272.812
         ],
         "rotation": [
           0,
-          0,
+          -3.142,
           0
         ],
         "anchor": {
@@ -8234,13 +8456,13 @@
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          153.825,
+          153.545,
           0.02,
           -97.66
         ],
         "rotation": [
           0,
-          -1.571,
+          1.571,
           0
         ],
         "anchor": {
@@ -8257,11 +8479,11 @@
         "position": [
           110.594,
           0.02,
-          -173.092
+          -172.812
         ],
         "rotation": [
           0,
-          0,
+          -3.142,
           0
         ],
         "anchor": {
@@ -8278,11 +8500,11 @@
         "position": [
           130,
           0.02,
-          46.768
+          47.048
         ],
         "rotation": [
           0,
-          0,
+          -3.142,
           0
         ],
         "anchor": {
@@ -8299,11 +8521,11 @@
         "position": [
           152.2,
           0.02,
-          126.769
+          127.049
         ],
         "rotation": [
           0,
-          0,
+          -3.142,
           0
         ],
         "anchor": {
@@ -9670,35 +9892,14 @@
         }
       },
       {
-        "id": "hp_prop_table_02",
-        "supportProp": "prop_table_02",
+        "id": "hp_prop_table_03",
+        "supportProp": "prop_table_03",
         "supportType": "table",
         "surfaceType": "table",
         "position": [
           114.671,
           0.936,
           -177.66
-        ],
-        "rotation": [
-          0,
-          0,
-          0
-        ],
-        "anchor": {
-          "surface": "table",
-          "supportProp": "prop_table_02",
-          "supportType": "table"
-        }
-      },
-      {
-        "id": "hp_prop_table_03",
-        "supportProp": "prop_table_03",
-        "supportType": "table",
-        "surfaceType": "table",
-        "position": [
-          54.671,
-          0.936,
-          -59.86
         ],
         "rotation": [
           0,
@@ -9717,13 +9918,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          50.594,
+          54.671,
           0.936,
-          -203.817
+          -59.86
         ],
         "rotation": [
           0,
-          -1.571,
+          0,
           0
         ],
         "anchor": {
@@ -9738,9 +9939,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          138.394,
+          50.594,
           0.936,
-          -133.817
+          -203.817
         ],
         "rotation": [
           0,
@@ -9759,13 +9960,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          96.437,
+          138.394,
           0.936,
-          -142.06
+          -133.817
         ],
         "rotation": [
           0,
-          0,
+          -1.571,
           0
         ],
         "anchor": {
@@ -9780,13 +9981,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          172.794,
+          96.437,
           0.936,
-          -133.817
+          -142.06
         ],
         "rotation": [
           0,
-          -1.571,
+          0,
           0
         ],
         "anchor": {
@@ -9801,9 +10002,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          230.594,
+          172.794,
           0.936,
-          -273.817
+          -133.817
         ],
         "rotation": [
           0,
@@ -9822,13 +10023,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          48,
+          230.594,
           0.936,
-          193.757
+          -273.817
         ],
         "rotation": [
           0,
-          1.571,
+          -1.571,
           0
         ],
         "anchor": {
@@ -9843,13 +10044,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          214.671,
+          48,
           0.936,
-          -227.66
+          193.757
         ],
         "rotation": [
           0,
-          0,
+          1.571,
           0
         ],
         "anchor": {
@@ -9864,9 +10065,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          184.671,
+          214.671,
           0.936,
-          -102.06
+          -227.66
         ],
         "rotation": [
           0,
@@ -9885,9 +10086,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          16.236,
+          184.671,
           0.936,
-          -21.86
+          -102.06
         ],
         "rotation": [
           0,
@@ -9906,9 +10107,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          24.671,
+          16.236,
           0.936,
-          -167.66
+          -21.86
         ],
         "rotation": [
           0,
@@ -9927,13 +10128,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          20.594,
+          24.671,
           0.936,
-          -273.818
+          -167.66
         ],
         "rotation": [
           0,
-          -1.571,
+          0,
           0
         ],
         "anchor": {
@@ -9948,9 +10149,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          -1.406,
+          20.594,
           0.936,
-          -123.818
+          -273.818
         ],
         "rotation": [
           0,
@@ -9969,13 +10170,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          104.671,
+          -1.406,
           0.936,
-          -147.66
+          -123.818
         ],
         "rotation": [
           0,
-          0,
+          -1.571,
           0
         ],
         "anchor": {
@@ -9990,13 +10191,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          60.594,
+          104.671,
           0.936,
-          -263.817
+          -147.66
         ],
         "rotation": [
           0,
-          -1.571,
+          0,
           0
         ],
         "anchor": {
@@ -10011,13 +10212,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          136.437,
+          60.594,
           0.936,
-          -189.86
+          -263.817
         ],
         "rotation": [
           0,
-          0,
+          -1.571,
           0
         ],
         "anchor": {
@@ -10032,9 +10233,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          34.67,
+          136.437,
           0.936,
-          -32.06
+          -189.86
         ],
         "rotation": [
           0,
@@ -10053,9 +10254,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          124.671,
+          34.67,
           0.936,
-          -102.06
+          -32.06
         ],
         "rotation": [
           0,
@@ -10074,13 +10275,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          130.594,
+          124.671,
           0.936,
-          -73.817
+          -102.06
         ],
         "rotation": [
           0,
-          -1.571,
+          0,
           0
         ],
         "anchor": {
@@ -10095,13 +10296,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          144.671,
+          130.594,
           0.936,
-          -42.06
+          -73.817
         ],
         "rotation": [
           0,
-          0,
+          -1.571,
           0
         ],
         "anchor": {
@@ -10116,13 +10317,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          52.4,
+          144.671,
           0.936,
-          196.123
+          -42.06
         ],
         "rotation": [
           0,
-          1.571,
+          0,
           0
         ],
         "anchor": {
@@ -10137,13 +10338,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          10.594,
+          52.4,
           0.936,
-          -53.817
+          196.123
         ],
         "rotation": [
           0,
-          -1.571,
+          1.571,
           0
         ],
         "anchor": {
@@ -10158,13 +10359,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          67.8,
+          10.594,
           0.936,
-          223.551
+          -53.817
         ],
         "rotation": [
           0,
-          1.571,
+          -1.571,
           0
         ],
         "anchor": {
@@ -10179,13 +10380,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          214.671,
+          67.8,
           0.936,
-          -172.06
+          223.551
         ],
         "rotation": [
           0,
-          0,
+          1.571,
           0
         ],
         "anchor": {
@@ -10200,9 +10401,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          94.671,
+          214.671,
           0.936,
-          -219.86
+          -172.06
         ],
         "rotation": [
           0,
@@ -10221,13 +10422,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          0.794,
+          94.671,
           0.936,
-          -95.983
+          -219.86
         ],
         "rotation": [
           0,
-          -1.571,
+          0,
           0
         ],
         "anchor": {
@@ -10242,9 +10443,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          58.394,
+          0.794,
           0.936,
-          -155.384
+          -95.983
         ],
         "rotation": [
           0,
@@ -10263,9 +10464,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          78.2,
+          58.394,
           0.936,
-          213.972
+          -155.384
         ],
         "rotation": [
           0,
@@ -10284,9 +10485,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          222.794,
+          78.2,
           0.936,
-          -83.817
+          213.972
         ],
         "rotation": [
           0,
@@ -10305,13 +10506,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          154.671,
+          222.794,
           0.936,
-          -69.86
+          -83.817
         ],
         "rotation": [
           0,
-          0,
+          -1.571,
           0
         ],
         "anchor": {
@@ -10326,13 +10527,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          58.394,
+          154.671,
           0.936,
-          -133.817
+          -69.86
         ],
         "rotation": [
           0,
-          -1.571,
+          0,
           0
         ],
         "anchor": {
@@ -10347,13 +10548,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          114.671,
+          58.394,
           0.936,
-          -232.06
+          -133.817
         ],
         "rotation": [
           0,
-          0,
+          -1.571,
           0
         ],
         "anchor": {
@@ -10368,13 +10569,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          127.394,
+          114.671,
           0.936,
-          -23.817
+          -232.06
         ],
         "rotation": [
           0,
-          -1.571,
+          0,
           0
         ],
         "anchor": {
@@ -10389,9 +10590,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          130.594,
+          127.394,
           0.936,
-          -83.817
+          -23.817
         ],
         "rotation": [
           0,
@@ -10410,13 +10611,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          199.986,
+          130.594,
           0.936,
-          157.593
+          -83.817
         ],
         "rotation": [
           0,
-          2.443,
+          -1.571,
           0
         ],
         "anchor": {
@@ -10431,13 +10632,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          84.671,
+          199.986,
           0.936,
-          -112.06
+          157.593
         ],
         "rotation": [
           0,
-          0,
+          2.443,
           0
         ],
         "anchor": {
@@ -10452,13 +10653,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          108.394,
+          84.671,
           0.936,
-          -53.867
+          -112.06
         ],
         "rotation": [
           0,
-          -1.571,
+          0,
           0
         ],
         "anchor": {
@@ -10473,9 +10674,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          200.594,
+          108.394,
           0.936,
-          -183.817
+          -53.867
         ],
         "rotation": [
           0,
@@ -10494,13 +10695,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          74.671,
+          200.594,
           0.936,
-          -229.86
+          -183.817
         ],
         "rotation": [
           0,
-          0,
+          -1.571,
           0
         ],
         "anchor": {
@@ -10515,9 +10716,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          234.671,
+          74.671,
           0.936,
-          -52.06
+          -229.86
         ],
         "rotation": [
           0,
@@ -10536,13 +10737,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          100.594,
+          234.671,
           0.936,
-          -273.817
+          -52.06
         ],
         "rotation": [
           0,
-          -1.571,
+          0,
           0
         ],
         "anchor": {
@@ -10557,13 +10758,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          36.437,
+          100.594,
           0.936,
-          -139.86
+          -273.817
         ],
         "rotation": [
           0,
-          0,
+          -1.571,
           0
         ],
         "anchor": {
@@ -10578,9 +10779,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          214.671,
+          36.437,
           0.936,
-          -217.66
+          -139.86
         ],
         "rotation": [
           0,
@@ -10599,9 +10800,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          184.671,
+          214.671,
           0.936,
-          -69.86
+          -217.66
         ],
         "rotation": [
           0,
@@ -10620,13 +10821,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          62.794,
+          184.671,
           0.936,
-          -243.817
+          -69.86
         ],
         "rotation": [
           0,
-          -1.571,
+          0,
           0
         ],
         "anchor": {
@@ -10641,13 +10842,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          214.671,
+          62.794,
           0.936,
-          -142.06
+          -243.817
         ],
         "rotation": [
           0,
-          0,
+          -1.571,
           0
         ],
         "anchor": {
@@ -10662,13 +10863,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          100.594,
+          214.671,
           0.936,
-          -83.817
+          -142.06
         ],
         "rotation": [
           0,
-          -1.571,
+          0,
           0
         ],
         "anchor": {
@@ -10683,13 +10884,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          184.671,
+          100.594,
           0.936,
-          -169.86
+          -83.817
         ],
         "rotation": [
           0,
-          0,
+          -1.571,
           0
         ],
         "anchor": {
@@ -10750,9 +10951,9 @@
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          41.2,
+          41.5,
           0.02,
-          -184.73
+          -186.19
         ],
         "rotation": [
           0,
@@ -10766,18 +10967,39 @@
         }
       },
       {
+        "id": "key_prop_table_02",
+        "supportProp": "prop_table_02",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          60.254,
+          0.936,
+          -183.877
+        ],
+        "rotation": [
+          0,
+          -1.571,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_02",
+          "supportType": "table"
+        }
+      },
+      {
         "id": "key_prop_vending_02_front",
         "supportProp": "prop_vending_02",
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          33.824,
+          33.804,
           0.02,
-          -27.96
+          -27.66
         ],
         "rotation": [
           0,
-          -1.571,
+          1.571,
           0
         ],
         "anchor": {
@@ -10792,13 +11014,13 @@
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          82.5,
+          82.2,
           0.02,
-          233.232
+          233.212
         ],
         "rotation": [
           0,
-          -3.142,
+          0,
           0
         ],
         "anchor": {
@@ -10813,13 +11035,13 @@
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          123.231,
+          123.211,
           0.02,
-          232.5
+          232.8
         ],
         "rotation": [
           0,
-          -1.571,
+          1.571,
           0
         ],
         "anchor": {
@@ -10834,13 +11056,13 @@
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          52.5,
+          52.2,
           0.02,
-          233.232
+          233.212
         ],
         "rotation": [
           0,
-          -3.142,
+          0,
           0
         ],
         "anchor": {
@@ -10855,13 +11077,13 @@
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          110.294,
+          110.594,
           0.02,
-          -273.092
+          -273.072
         ],
         "rotation": [
           0,
-          0,
+          -3.142,
           0
         ],
         "anchor": {
@@ -10876,13 +11098,13 @@
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          153.825,
+          153.805,
           0.02,
-          -97.96
+          -97.66
         ],
         "rotation": [
           0,
-          -1.571,
+          1.571,
           0
         ],
         "anchor": {
@@ -10897,13 +11119,13 @@
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          110.294,
+          110.594,
           0.02,
-          -173.092
+          -173.072
         ],
         "rotation": [
           0,
-          0,
+          -3.142,
           0
         ],
         "anchor": {
@@ -10918,13 +11140,13 @@
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          129.7,
+          130,
           0.02,
-          46.768
+          46.788
         ],
         "rotation": [
           0,
-          0,
+          -3.142,
           0
         ],
         "anchor": {
@@ -10939,13 +11161,13 @@
         "supportType": "vending_almond",
         "surfaceType": "vending_around",
         "position": [
-          151.9,
+          152.2,
           0.02,
-          126.769
+          126.789
         ],
         "rotation": [
           0,
-          0,
+          -3.142,
           0
         ],
         "anchor": {
@@ -12312,35 +12534,14 @@
         }
       },
       {
-        "id": "key_prop_table_02",
-        "supportProp": "prop_table_02",
+        "id": "key_prop_table_03",
+        "supportProp": "prop_table_03",
         "supportType": "table",
         "surfaceType": "table",
         "position": [
           114.611,
           0.936,
           -177.9
-        ],
-        "rotation": [
-          0,
-          0.5,
-          0
-        ],
-        "anchor": {
-          "surface": "table",
-          "supportProp": "prop_table_02",
-          "supportType": "table"
-        }
-      },
-      {
-        "id": "key_prop_table_03",
-        "supportProp": "prop_table_03",
-        "supportType": "table",
-        "surfaceType": "table",
-        "position": [
-          54.611,
-          0.936,
-          -60.1
         ],
         "rotation": [
           0,
@@ -12359,13 +12560,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          50.834,
+          54.611,
           0.936,
-          -203.877
+          -60.1
         ],
         "rotation": [
           0,
-          -1.071,
+          0.5,
           0
         ],
         "anchor": {
@@ -12380,9 +12581,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          138.634,
+          50.834,
           0.936,
-          -133.877
+          -203.877
         ],
         "rotation": [
           0,
@@ -12401,13 +12602,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          96.377,
+          138.634,
           0.936,
-          -142.3
+          -133.877
         ],
         "rotation": [
           0,
-          0.5,
+          -1.071,
           0
         ],
         "anchor": {
@@ -12422,13 +12623,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          173.034,
+          96.377,
           0.936,
-          -133.877
+          -142.3
         ],
         "rotation": [
           0,
-          -1.071,
+          0.5,
           0
         ],
         "anchor": {
@@ -12443,9 +12644,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          230.834,
+          173.034,
           0.936,
-          -273.877
+          -133.877
         ],
         "rotation": [
           0,
@@ -12464,13 +12665,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          47.76,
+          230.834,
           0.936,
-          193.817
+          -273.877
         ],
         "rotation": [
           0,
-          2.071,
+          -1.071,
           0
         ],
         "anchor": {
@@ -12485,13 +12686,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          214.611,
+          47.76,
           0.936,
-          -227.9
+          193.817
         ],
         "rotation": [
           0,
-          0.5,
+          2.071,
           0
         ],
         "anchor": {
@@ -12506,9 +12707,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          184.611,
+          214.611,
           0.936,
-          -102.3
+          -227.9
         ],
         "rotation": [
           0,
@@ -12527,9 +12728,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          16.176,
+          184.611,
           0.936,
-          -22.1
+          -102.3
         ],
         "rotation": [
           0,
@@ -12548,9 +12749,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          24.611,
+          16.176,
           0.936,
-          -167.9
+          -22.1
         ],
         "rotation": [
           0,
@@ -12569,13 +12770,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          20.834,
+          24.611,
           0.936,
-          -273.878
+          -167.9
         ],
         "rotation": [
           0,
-          -1.071,
+          0.5,
           0
         ],
         "anchor": {
@@ -12590,9 +12791,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          -1.166,
+          20.834,
           0.936,
-          -123.878
+          -273.878
         ],
         "rotation": [
           0,
@@ -12611,13 +12812,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          104.611,
+          -1.166,
           0.936,
-          -147.9
+          -123.878
         ],
         "rotation": [
           0,
-          0.5,
+          -1.071,
           0
         ],
         "anchor": {
@@ -12632,13 +12833,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          60.834,
+          104.611,
           0.936,
-          -263.877
+          -147.9
         ],
         "rotation": [
           0,
-          -1.071,
+          0.5,
           0
         ],
         "anchor": {
@@ -12653,13 +12854,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          136.377,
+          60.834,
           0.936,
-          -190.1
+          -263.877
         ],
         "rotation": [
           0,
-          0.5,
+          -1.071,
           0
         ],
         "anchor": {
@@ -12674,9 +12875,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          34.61,
+          136.377,
           0.936,
-          -32.3
+          -190.1
         ],
         "rotation": [
           0,
@@ -12695,9 +12896,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          124.611,
+          34.61,
           0.936,
-          -102.3
+          -32.3
         ],
         "rotation": [
           0,
@@ -12716,13 +12917,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          130.834,
+          124.611,
           0.936,
-          -73.877
+          -102.3
         ],
         "rotation": [
           0,
-          -1.071,
+          0.5,
           0
         ],
         "anchor": {
@@ -12737,13 +12938,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          144.611,
+          130.834,
           0.936,
-          -42.3
+          -73.877
         ],
         "rotation": [
           0,
-          0.5,
+          -1.071,
           0
         ],
         "anchor": {
@@ -12758,13 +12959,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          52.16,
+          144.611,
           0.936,
-          196.183
+          -42.3
         ],
         "rotation": [
           0,
-          2.071,
+          0.5,
           0
         ],
         "anchor": {
@@ -12779,13 +12980,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          10.834,
+          52.16,
           0.936,
-          -53.877
+          196.183
         ],
         "rotation": [
           0,
-          -1.071,
+          2.071,
           0
         ],
         "anchor": {
@@ -12800,13 +13001,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          67.56,
+          10.834,
           0.936,
-          223.611
+          -53.877
         ],
         "rotation": [
           0,
-          2.071,
+          -1.071,
           0
         ],
         "anchor": {
@@ -12821,13 +13022,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          214.611,
+          67.56,
           0.936,
-          -172.3
+          223.611
         ],
         "rotation": [
           0,
-          0.5,
+          2.071,
           0
         ],
         "anchor": {
@@ -12842,9 +13043,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          94.611,
+          214.611,
           0.936,
-          -220.1
+          -172.3
         ],
         "rotation": [
           0,
@@ -12863,13 +13064,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          1.034,
+          94.611,
           0.936,
-          -96.043
+          -220.1
         ],
         "rotation": [
           0,
-          -1.071,
+          0.5,
           0
         ],
         "anchor": {
@@ -12884,9 +13085,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          58.634,
+          1.034,
           0.936,
-          -155.444
+          -96.043
         ],
         "rotation": [
           0,
@@ -12905,9 +13106,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          78.44,
+          58.634,
           0.936,
-          213.912
+          -155.444
         ],
         "rotation": [
           0,
@@ -12926,9 +13127,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          223.034,
+          78.44,
           0.936,
-          -83.877
+          213.912
         ],
         "rotation": [
           0,
@@ -12947,13 +13148,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          154.611,
+          223.034,
           0.936,
-          -70.1
+          -83.877
         ],
         "rotation": [
           0,
-          0.5,
+          -1.071,
           0
         ],
         "anchor": {
@@ -12968,13 +13169,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          58.634,
+          154.611,
           0.936,
-          -133.877
+          -70.1
         ],
         "rotation": [
           0,
-          -1.071,
+          0.5,
           0
         ],
         "anchor": {
@@ -12989,13 +13190,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          114.611,
+          58.634,
           0.936,
-          -232.3
+          -133.877
         ],
         "rotation": [
           0,
-          0.5,
+          -1.071,
           0
         ],
         "anchor": {
@@ -13010,13 +13211,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          127.634,
+          114.611,
           0.936,
-          -23.877
+          -232.3
         ],
         "rotation": [
           0,
-          -1.071,
+          0.5,
           0
         ],
         "anchor": {
@@ -13031,9 +13232,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          130.834,
+          127.634,
           0.936,
-          -83.877
+          -23.877
         ],
         "rotation": [
           0,
@@ -13052,13 +13253,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          199.878,
+          130.834,
           0.936,
-          157.816
+          -83.877
         ],
         "rotation": [
           0,
-          2.943,
+          -1.071,
           0
         ],
         "anchor": {
@@ -13073,13 +13274,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          84.611,
+          199.878,
           0.936,
-          -112.3
+          157.816
         ],
         "rotation": [
           0,
-          0.5,
+          2.943,
           0
         ],
         "anchor": {
@@ -13094,13 +13295,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          108.634,
+          84.611,
           0.936,
-          -53.927
+          -112.3
         ],
         "rotation": [
           0,
-          -1.071,
+          0.5,
           0
         ],
         "anchor": {
@@ -13115,9 +13316,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          200.834,
+          108.634,
           0.936,
-          -183.877
+          -53.927
         ],
         "rotation": [
           0,
@@ -13136,13 +13337,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          74.611,
+          200.834,
           0.936,
-          -230.1
+          -183.877
         ],
         "rotation": [
           0,
-          0.5,
+          -1.071,
           0
         ],
         "anchor": {
@@ -13157,9 +13358,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          234.611,
+          74.611,
           0.936,
-          -52.3
+          -230.1
         ],
         "rotation": [
           0,
@@ -13178,13 +13379,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          100.834,
+          234.611,
           0.936,
-          -273.877
+          -52.3
         ],
         "rotation": [
           0,
-          -1.071,
+          0.5,
           0
         ],
         "anchor": {
@@ -13199,13 +13400,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          36.377,
+          100.834,
           0.936,
-          -140.1
+          -273.877
         ],
         "rotation": [
           0,
-          0.5,
+          -1.071,
           0
         ],
         "anchor": {
@@ -13220,9 +13421,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          214.611,
+          36.377,
           0.936,
-          -217.9
+          -140.1
         ],
         "rotation": [
           0,
@@ -13241,9 +13442,9 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          184.611,
+          214.611,
           0.936,
-          -70.1
+          -217.9
         ],
         "rotation": [
           0,
@@ -13262,13 +13463,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          63.034,
+          184.611,
           0.936,
-          -243.877
+          -70.1
         ],
         "rotation": [
           0,
-          -1.071,
+          0.5,
           0
         ],
         "anchor": {
@@ -13283,13 +13484,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          214.611,
+          63.034,
           0.936,
-          -142.3
+          -243.877
         ],
         "rotation": [
           0,
-          0.5,
+          -1.071,
           0
         ],
         "anchor": {
@@ -13304,13 +13505,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          100.834,
+          214.611,
           0.936,
-          -83.877
+          -142.3
         ],
         "rotation": [
           0,
-          -1.071,
+          0.5,
           0
         ],
         "anchor": {
@@ -13325,13 +13526,13 @@
         "supportType": "table",
         "surfaceType": "table",
         "position": [
-          184.611,
+          100.834,
           0.936,
-          -170.1
+          -83.877
         ],
         "rotation": [
           0,
-          0.5,
+          -1.071,
           0
         ],
         "anchor": {

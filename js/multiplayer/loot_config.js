@@ -27,20 +27,30 @@ export const APPROVED_CONSUMABLE_TYPES = new Set([
 
 export const DEFAULT_LOOT_CONFIG = {
   enabled: true,
+  distributionMode: 'exact_quantities', // 'exact_quantities' | 'weighted_random'
+  consumableQuantities: {
+    aa_battery: 30,
+    sanity_pill: 15,
+    almond_can: 20,
+    energy_drink: 12
+  },
+  vendingAlmondShare: 0.35,
+  maxConsumablesNearSpawn: 4,
+  nearSpawnRadius: 18,
   consumableSlotSpawnChance: 0.45,
-  minConsumables: 45,
-  maxConsumables: 70,
+  minConsumables: 77,
+  maxConsumables: 77,
   consumableWeights: {
-    aa_battery: 28,
-    almond_can: 28,
-    energy_drink: 24,
-    sanity_pill: 20
+    aa_battery: 30,
+    almond_can: 20,
+    energy_drink: 12,
+    sanity_pill: 15
   },
   maxPerType: {
-    aa_battery: 22,
-    almond_can: 22,
-    energy_drink: 18,
-    sanity_pill: 18
+    aa_battery: 30,
+    almond_can: 20,
+    energy_drink: 12,
+    sanity_pill: 15
   },
   keyRules: {
     enforceSurfaceRestriction: true,
@@ -55,6 +65,11 @@ export const DEFAULT_LOOT_CONFIG = {
 
 export const LOOT_CONFIG = {
   enabled: DEFAULT_LOOT_CONFIG.enabled,
+  distributionMode: DEFAULT_LOOT_CONFIG.distributionMode,
+  consumableQuantities: { ...DEFAULT_LOOT_CONFIG.consumableQuantities },
+  vendingAlmondShare: DEFAULT_LOOT_CONFIG.vendingAlmondShare,
+  maxConsumablesNearSpawn: DEFAULT_LOOT_CONFIG.maxConsumablesNearSpawn,
+  nearSpawnRadius: DEFAULT_LOOT_CONFIG.nearSpawnRadius,
   consumableSlotSpawnChance: DEFAULT_LOOT_CONFIG.consumableSlotSpawnChance,
   minConsumables: DEFAULT_LOOT_CONFIG.minConsumables,
   maxConsumables: DEFAULT_LOOT_CONFIG.maxConsumables,
@@ -66,6 +81,30 @@ export const LOOT_CONFIG = {
 
 export function configureLootRules(opts = {}) {
   if (typeof opts.enabled === 'boolean') LOOT_CONFIG.enabled = opts.enabled;
+  if (opts.distributionMode === 'exact_quantities' || opts.distributionMode === 'weighted_random') {
+    LOOT_CONFIG.distributionMode = opts.distributionMode;
+  } else if (opts.consumableQuantities && typeof opts.consumableQuantities === 'object') {
+    LOOT_CONFIG.distributionMode = 'exact_quantities';
+  } else if (opts.minConsumables !== undefined || opts.maxConsumables !== undefined || opts.consumableWeights !== undefined) {
+    LOOT_CONFIG.distributionMode = 'weighted_random';
+  }
+
+  if (opts.consumableQuantities && typeof opts.consumableQuantities === 'object') {
+    for (const [k, v] of Object.entries(opts.consumableQuantities)) {
+      if (APPROVED_CONSUMABLE_TYPES.has(k) && typeof v === 'number' && v >= 0) {
+        LOOT_CONFIG.consumableQuantities[k] = Math.floor(v);
+      }
+    }
+  }
+  if (typeof opts.vendingAlmondShare === 'number' && !Number.isNaN(opts.vendingAlmondShare)) {
+    LOOT_CONFIG.vendingAlmondShare = Math.max(0, Math.min(1, opts.vendingAlmondShare));
+  }
+  if (typeof opts.maxConsumablesNearSpawn === 'number' && !Number.isNaN(opts.maxConsumablesNearSpawn)) {
+    LOOT_CONFIG.maxConsumablesNearSpawn = Math.max(0, Math.floor(opts.maxConsumablesNearSpawn));
+  }
+  if (typeof opts.nearSpawnRadius === 'number' && !Number.isNaN(opts.nearSpawnRadius)) {
+    LOOT_CONFIG.nearSpawnRadius = Math.max(0, opts.nearSpawnRadius);
+  }
   if (typeof opts.consumableSlotSpawnChance === 'number' && !Number.isNaN(opts.consumableSlotSpawnChance)) {
     LOOT_CONFIG.consumableSlotSpawnChance = Math.max(0, Math.min(1, opts.consumableSlotSpawnChance));
   }
@@ -103,6 +142,11 @@ export function configureLootRules(opts = {}) {
 
 export function resetLootConfig() {
   LOOT_CONFIG.enabled = DEFAULT_LOOT_CONFIG.enabled;
+  LOOT_CONFIG.distributionMode = DEFAULT_LOOT_CONFIG.distributionMode;
+  LOOT_CONFIG.consumableQuantities = { ...DEFAULT_LOOT_CONFIG.consumableQuantities };
+  LOOT_CONFIG.vendingAlmondShare = DEFAULT_LOOT_CONFIG.vendingAlmondShare;
+  LOOT_CONFIG.maxConsumablesNearSpawn = DEFAULT_LOOT_CONFIG.maxConsumablesNearSpawn;
+  LOOT_CONFIG.nearSpawnRadius = DEFAULT_LOOT_CONFIG.nearSpawnRadius;
   LOOT_CONFIG.consumableSlotSpawnChance = DEFAULT_LOOT_CONFIG.consumableSlotSpawnChance;
   LOOT_CONFIG.minConsumables = DEFAULT_LOOT_CONFIG.minConsumables;
   LOOT_CONFIG.maxConsumables = DEFAULT_LOOT_CONFIG.maxConsumables;
@@ -116,6 +160,11 @@ export function resetLootConfig() {
 export function getLootConfigSnapshot() {
   return {
     enabled: LOOT_CONFIG.enabled,
+    distributionMode: LOOT_CONFIG.distributionMode,
+    consumableQuantities: { ...LOOT_CONFIG.consumableQuantities },
+    vendingAlmondShare: LOOT_CONFIG.vendingAlmondShare,
+    maxConsumablesNearSpawn: LOOT_CONFIG.maxConsumablesNearSpawn,
+    nearSpawnRadius: LOOT_CONFIG.nearSpawnRadius,
     consumableSlotSpawnChance: LOOT_CONFIG.consumableSlotSpawnChance,
     minConsumables: LOOT_CONFIG.minConsumables,
     maxConsumables: LOOT_CONFIG.maxConsumables,
@@ -238,7 +287,7 @@ export function pickWeightedConsumableType(allowedTypes, weights, currentCounts 
   }
 
   if (totalWeight <= 0) {
-    return eligible[Math.floor(rng() * eligible.length)];
+    return null;
   }
 
   let roll = rng() * totalWeight;

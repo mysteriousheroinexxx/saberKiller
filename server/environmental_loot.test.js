@@ -63,6 +63,28 @@ test('1. Environmental loot layout audit: furniture density, strict key surface 
   ));
   assert.ok(sectors.size >= 40, `Furniture spans at least 40 Level 0 spatial sectors (got ${sectors.size})`);
 
+  // Verify pistol placed on nearby desk/shelf 10–15m from normal player spawn [48.69, 0, -187.65]
+  const pistol = layout.placements.find(p => p.id === 'floor_weapon_pistol_01');
+  assert.ok(pistol, 'Beretta Px4 pistol exists');
+  assert.equal(pistol.surfaceType, 'table', 'Pistol rests on an exploration table/desk');
+  assert.equal(pistol.position[1], 0.936, 'Pistol rests at tabletop height');
+  const pistolDistFromSpawn = Math.hypot(pistol.position[0] - 48.69, pistol.position[2] + 187.65);
+  assert.ok(pistolDistFromSpawn >= 10 && pistolDistFromSpawn <= 15, `Pistol within 10-15m of spawn (got ${pistolDistFromSpawn.toFixed(2)}m)`);
+
+  // Verify every vending machine's -Z front faces unobstructed walkable room space
+  for (const vp of vendingProps) {
+    const ry = vp.rotation?.[1] || 0;
+    const fx = -Math.sin(ry);
+    const fz = -Math.cos(ry);
+    const frontX = vp.position[0] + fx * 0.75;
+    const frontZ = vp.position[2] + fz * 0.75;
+    const clearX = vp.position[0] + fx * 1.5;
+    const clearZ = vp.position[2] + fz * 1.5;
+    assert.equal(env.isWall(env.cellOfX(frontX), env.cellOfZ(frontZ)), false, `Vending '${vp.id}' -Z front must face walkable area`);
+    assert.ok(minObsDist(frontX, frontZ) >= 0.35, `Vending '${vp.id}' front has clear access (dist=${minObsDist(frontX, frontZ).toFixed(2)})`);
+    assert.ok(minObsDist(clearX, clearZ) >= 0.35, `Vending '${vp.id}' approach room side is unobstructed`);
+  }
+
   assert.ok(layout.environmentalLoot, 'world_items.json must define environmentalLoot');
   const { consumableSlots, healthPackSlots, keySlots } = layout.environmentalLoot;
 
@@ -153,9 +175,11 @@ test('2. Configurable loot rules: quantities, probabilities, weights, and cap en
   }
 });
 
-test('3. Randomized distribution & economy preservation across runs (keys only on shelf/table/vending, 60 ammo, 3x HP)', () => {
+test('3. Exact per-run quantities (30 batteries, 15 pills, 20 almond cans, 12 energy drinks), randomized across runs & economy preservation', () => {
   resetLootConfig();
+  const env = new Level0Environment();
   const observedKeySlotIds = new Set();
+  const observedBatterySlots = new Set();
 
   for (let run = 0; run < 8; run++) {
     const rm = new RoomManager();
@@ -190,19 +214,47 @@ test('3. Randomized distribution & economy preservation across runs (keys only o
     assert.equal(ammo.pistol.max, 48);
     assert.equal(ammo.shotgun.max, 12);
 
-    // Consumables within configured bounds & distributed widely across Level 0
+    // Exact requested per-type consumable quantities (30 + 15 + 20 + 12 = 77)
     const activeConsumables = [...room.worldItems.values()].filter(
       i => i.isPickup && i.available && APPROVED_CONSUMABLE_TYPES.has(i.type)
     );
-    assert.ok(
-      activeConsumables.length >= LOOT_CONFIG.minConsumables && activeConsumables.length <= LOOT_CONFIG.maxConsumables,
-      `Consumable count ${activeConsumables.length} within [${LOOT_CONFIG.minConsumables}, ${LOOT_CONFIG.maxConsumables}]`
-    );
+    const counts = { aa_battery: 0, sanity_pill: 0, almond_can: 0, energy_drink: 0 };
+    let almondNearVending = 0;
+    for (const c of activeConsumables) {
+      counts[c.type] = (counts[c.type] || 0) + 1;
+      if (c.type === 'aa_battery') {
+        observedBatterySlots.add(c.slotId);
+        assert.ok(['table', 'shelf_tier'].includes(c.surfaceType), 'Batteries only spawn on tables or shelves');
+      }
+      if (c.type === 'sanity_pill' || c.type === 'energy_drink') {
+        assert.ok(['table', 'shelf_tier'].includes(c.surfaceType), `${c.type} only spawns on tables or shelves`);
+      }
+      if (c.type === 'almond_can' && c.surfaceType === 'vending_around') {
+        almondNearVending++;
+      }
+    }
+    assert.equal(counts.aa_battery, 30, 'Exact 30 flashlight batteries per run');
+    assert.equal(counts.sanity_pill, 15, 'Exact 15 sanity pills per run');
+    assert.equal(counts.almond_can, 20, 'Exact 20 Almond Water cans per run');
+    assert.equal(counts.energy_drink, 12, 'Exact 12 energy drinks per run');
+    assert.ok(almondNearVending >= 1, 'Some Almond Water cans appear near vending machines');
+
     const consumableZones = new Set(activeConsumables.map(i => `${Math.floor(i.position[0] / 35)},${Math.floor(i.position[2] / 35)}`));
-    assert.ok(consumableZones.size >= 15, `Consumables distributed widely across Level 0 zones (got ${consumableZones.size})`);
+    assert.ok(consumableZones.size >= 25, `Consumables distributed widely across Level 0 zones (got ${consumableZones.size})`);
+
+    // Verify vending dispense places almond_can cleanly in front of machine's -Z facing direction
+    const vend = [...room.worldItems.values()].find(i => i.type === 'vending_almond');
+    assert.ok(vend, 'Vending machine exists');
+    const player1 = rm.getPlayer(ws1).player;
+    player1.position = { x: vend.position[0], y: 0, z: vend.position[2] };
+    const dispRes = rm.handleVendingDispense(ws1, vend.id, player1.position);
+    assert.equal(dispRes.success, true, 'Vending dispense succeeds');
+    const dispPos = dispRes.dispensedItem.position;
+    assert.equal(env.isWall(env.cellOfX(dispPos[0]), env.cellOfZ(dispPos[2])), false, `Dispensed can from '${vend.id}' lands on walkable floor`);
   }
 
   assert.ok(observedKeySlotIds.size >= 3, `Expected randomized key locations across 8 runs, saw ${observedKeySlotIds.size}`);
+  assert.ok(observedBatterySlots.size > 30, `Expected randomized battery slot selection across runs, saw ${observedBatterySlots.size}`);
 });
 
 test('4. Authoritative 2-player contention, drop handling, unique IDs, and fresh-run loot regeneration', () => {

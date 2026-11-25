@@ -1281,7 +1281,7 @@ function initDevComparisonUI() {
     'dev-preset-spawn': { x: 48.69, y: 0.0, z: -187.65, label: 'Spawn' },
     'dev-preset-key': { x: 44.50, y: 0.0, z: -188.70, label: 'Key Shelf' },
     'dev-preset-exit': { x: 79.55, y: 0.0, z: 205.20, label: 'Exit Door' },
-    'dev-preset-pistol': { x: 44.20, y: 0.0, z: -187.50, label: 'Pistol' },
+    'dev-preset-pistol': { x: 60.594, y: 0.936, z: -183.877, label: 'Pistol' },
     'dev-preset-shotgun': { x: 40.50, y: 0.0, z: -179.80, label: 'Shotgun' }
   };
 

@@ -505,41 +505,10 @@ export class RoomManager {
 
     const gen = room.matchGeneration || 1;
     const rng = (typeof room.lootRng === 'function') ? room.lootRng : Math.random;
-    const minCount = Math.min(slots.length, Math.max(0, LOOT_CONFIG.minConsumables || 0));
-    const maxCount = Math.min(slots.length, Math.max(minCount, LOOT_CONFIG.maxConsumables ?? slots.length));
-
-    let chosenSlots = [];
-    const unchosenSlots = [];
-    for (const slot of slots) {
-      const chance = (typeof slot.spawnChance === 'number') ? slot.spawnChance : LOOT_CONFIG.consumableSlotSpawnChance;
-      if (rng() < chance) {
-        chosenSlots.push(slot);
-      } else {
-        unchosenSlots.push(slot);
-      }
-    }
-
-    if (chosenSlots.length < minCount) {
-      const extraNeeded = minCount - chosenSlots.length;
-      const extras = selectDistinctHubSlots(unchosenSlots, extraNeeded, rng, true);
-      chosenSlots.push(...extras);
-    }
-    if (chosenSlots.length > maxCount) {
-      chosenSlots = shuffleWithRng(chosenSlots, rng).slice(0, maxCount);
-    }
-
     const byType = {};
     const spawned = [];
-    for (const slot of chosenSlots) {
-      const itemType = pickWeightedConsumableType(
-        slot.allowedTypes,
-        LOOT_CONFIG.consumableWeights,
-        byType,
-        LOOT_CONFIG.maxPerType,
-        rng
-      );
-      if (!itemType) continue;
 
+    const registerItem = (slot, itemType) => {
       const def = getItemDefinition(itemType);
       const itemId = `loot_g${gen}_${slot.id}`;
       const item = {
@@ -560,10 +529,117 @@ export class RoomManager {
         collectedBy: null,
         collectedAt: null
       };
-
       room.worldItems.set(itemId, item);
       byType[itemType] = (byType[itemType] || 0) + 1;
       spawned.push(item);
+    };
+
+    if (LOOT_CONFIG.distributionMode === 'exact_quantities') {
+      const qtys = LOOT_CONFIG.consumableQuantities || {};
+      const almondTarget = Math.max(0, Math.floor(qtys.almond_can || 0));
+      const batteryTarget = Math.max(0, Math.floor(qtys.aa_battery || 0));
+      const pillTarget = Math.max(0, Math.floor(qtys.sanity_pill || 0));
+      const drinkTarget = Math.max(0, Math.floor(qtys.energy_drink || 0));
+
+      const vendingSlots = slots.filter(s => s.surfaceType === 'vending_around');
+      const furnitureSlots = slots.filter(s => s.surfaceType === 'table' || s.surfaceType === 'shelf_tier');
+
+      // 1. Place a share of Almond Water cans immediately around vending machines (across distinct vending hubs)
+      const desiredVendingAlmonds = Math.min(
+        almondTarget,
+        vendingSlots.length,
+        Math.round(almondTarget * (LOOT_CONFIG.vendingAlmondShare ?? 0.35))
+      );
+      const chosenVendingSlots = selectDistinctHubSlots(vendingSlots, desiredVendingAlmonds, rng, true);
+      for (const vs of chosenVendingSlots) {
+        registerItem(vs, 'almond_can');
+      }
+
+      // 2. Build remaining exact consumable pool for tables & metal shelves
+      const remainingAlmonds = Math.max(0, almondTarget - chosenVendingSlots.length);
+      const typeQueue = [];
+      for (let i = 0; i < batteryTarget; i++) typeQueue.push('aa_battery');
+      for (let i = 0; i < pillTarget; i++) typeQueue.push('sanity_pill');
+      for (let i = 0; i < remainingAlmonds; i++) typeQueue.push('almond_can');
+      for (let i = 0; i < drinkTarget; i++) typeQueue.push('energy_drink');
+      const shuffledTypes = shuffleWithRng(typeQueue, rng);
+
+      // Cap how many consumables spawn immediately near spawn so loot distributes map-wide
+      const nearSpawnCap = LOOT_CONFIG.maxConsumablesNearSpawn ?? 4;
+      const nearSpawnRadius = LOOT_CONFIG.nearSpawnRadius ?? 18;
+      const isNearSpawn = (s) => Math.hypot((s.position?.[0] || 0) - 48.69, (s.position?.[2] || 0) + 187.65) < nearSpawnRadius;
+
+      const farSlots = furnitureSlots.filter(s => !isNearSpawn(s));
+      const nearSlots = furnitureSlots.filter(s => isNearSpawn(s));
+
+      // Spread primary picks widely across far/map-wide zones, mixing up to nearSpawnCap nearby
+      const selectedNear = selectDistinctHubSlots(nearSlots, Math.min(nearSpawnCap, shuffledTypes.length), rng, true);
+      const remainingNeeded = Math.max(0, shuffledTypes.length - selectedNear.length);
+      const selectedFar = selectDistinctHubSlots(farSlots, remainingNeeded, rng, true);
+
+      let chosenFurniture = shuffleWithRng([...selectedFar, ...selectedNear], rng);
+      if (chosenFurniture.length < shuffledTypes.length) {
+        const usedIds = new Set(chosenFurniture.map(s => s.id));
+        const leftover = shuffleWithRng(furnitureSlots.filter(s => !usedIds.has(s.id)), rng);
+        chosenFurniture.push(...leftover.slice(0, shuffledTypes.length - chosenFurniture.length));
+      }
+
+      for (let i = 0; i < shuffledTypes.length && i < chosenFurniture.length; i++) {
+        registerItem(chosenFurniture[i], shuffledTypes[i]);
+      }
+
+      room.lootSummary = {
+        matchGeneration: gen,
+        totalConsumables: spawned.length,
+        byType,
+        healthPackCount: room.availableHealthPackCount || 0
+      };
+      return spawned;
+    }
+
+    // Legacy weighted_random mode (used when caller passes minConsumables/maxConsumables/consumableWeights)
+    const minCount = Math.min(slots.length, Math.max(0, LOOT_CONFIG.minConsumables || 0));
+    const maxCount = Math.min(slots.length, Math.max(minCount, LOOT_CONFIG.maxConsumables ?? slots.length));
+
+    let chosenSlots = [];
+    const unchosenSlots = [];
+    const isEligibleSlot = (slot) => pickWeightedConsumableType(
+      slot.allowedTypes,
+      LOOT_CONFIG.consumableWeights,
+      byType,
+      LOOT_CONFIG.maxPerType,
+      rng
+    ) !== null;
+
+    for (const slot of slots) {
+      if (!isEligibleSlot(slot)) continue;
+      const chance = (typeof slot.spawnChance === 'number') ? slot.spawnChance : LOOT_CONFIG.consumableSlotSpawnChance;
+      if (rng() < chance) {
+        chosenSlots.push(slot);
+      } else {
+        unchosenSlots.push(slot);
+      }
+    }
+
+    if (chosenSlots.length < minCount) {
+      const extraNeeded = minCount - chosenSlots.length;
+      const extras = selectDistinctHubSlots(unchosenSlots, extraNeeded, rng, true);
+      chosenSlots.push(...extras);
+    }
+    if (chosenSlots.length > maxCount) {
+      chosenSlots = shuffleWithRng(chosenSlots, rng).slice(0, maxCount);
+    }
+
+    for (const slot of chosenSlots) {
+      const itemType = pickWeightedConsumableType(
+        slot.allowedTypes,
+        LOOT_CONFIG.consumableWeights,
+        byType,
+        LOOT_CONFIG.maxPerType,
+        rng
+      );
+      if (!itemType) continue;
+      registerItem(slot, itemType);
     }
 
     room.lootSummary = {
@@ -594,7 +670,7 @@ export class RoomManager {
         id: 'floor_weapon_pistol_01',
         type: 'weapon_pistol',
         category: 'weapon',
-        position: [44.2, 0.0, -187.5],
+        position: [60.594, 0.936, -183.877],
         rotation: [0, 0, 0],
         isPickup: true,
         available: true,
