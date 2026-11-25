@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RoomManager } from './room_manager.js';
+import { RoomManager, configureHealthPackMultiplier } from './room_manager.js';
 
 const mockLayout = {
   placements: [
@@ -110,6 +110,7 @@ test('5. Ready state toggles and synchronizes', () => {
 });
 
 test('6. Leader can start match when everyone is ready, freezing Health Pack supply', () => {
+  configureHealthPackMultiplier(1);
   const manager = new RoomManager();
   const ws1 = { send: () => {} };
   const ws2 = { send: () => {} };
@@ -140,6 +141,9 @@ test('6. Leader can start match when everyone is ready, freezing Health Pack sup
   assert.equal(aid2.available, true);
   assert.equal(aid3.available, false);
   assert.equal(aid3.cappedUnavailable, true);
+
+  // Restore default multiplier 3
+  configureHealthPackMultiplier(3);
 });
 
 test('7. Disconnecting a player updates lobby state and leadership', () => {

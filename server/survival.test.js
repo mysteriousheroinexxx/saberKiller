@@ -7,6 +7,7 @@ const mockLayout = {
     { id: 'floor_first_aid_01', type: 'first_aid', position: [48.69, 0, -187.65] },
     { id: 'floor_first_aid_02', type: 'first_aid', position: [49.50, 0, -187.65] },
     { id: 'floor_first_aid_03', type: 'first_aid', position: [50.50, 0, -187.65] },
+    { id: 'floor_first_aid_04', type: 'first_aid', position: [51.50, 0, -187.65] },
     { id: 'almond_01', type: 'almond_can', position: [48.69, 0, -187.0] }
   ]
 };
@@ -159,40 +160,39 @@ test('4. Revival limit (1 per run) & permanent elimination on second death', () 
 test('5. Health Pack economy: Supply scales with starting player count and freezes against late joiners', () => {
   const manager = new RoomManager();
   const ws1 = { send: () => {} };
-  // Start with 1 player
+  // Start with 1 player (3x multiplier = 3 health packs)
   const roomRes = manager.createRoom(ws1, 'SUPPLY_TEST', 'default', mockLayout, { startingPlayers: 1 });
   const room = manager.getRoom('SUPPLY_TEST');
 
-  // In mockLayout there are 3 first_aid items. With startingPlayers: 1, exactly 1 must be available
-  assert.equal(room.availableHealthPackCount, 1);
+  // In mockLayout with 4 first_aid items. With startingPlayers: 1 (multiplier: 3), exactly 3 must be available
+  assert.equal(room.availableHealthPackCount, 3);
   assert.equal(room.healthPacksFrozen, true);
 
   const aid1 = room.worldItems.get('floor_first_aid_01');
   const aid2 = room.worldItems.get('floor_first_aid_02');
   const aid3 = room.worldItems.get('floor_first_aid_03');
+  const aid4 = room.worldItems.get('floor_first_aid_04');
 
   assert.equal(aid1.available, true);
-  assert.equal(aid2.available, false);
-  assert.equal(aid2.cappedUnavailable, true);
-  assert.equal(aid3.available, false);
-  assert.equal(aid3.cappedUnavailable, true);
+  assert.equal(aid2.available, true);
+  assert.equal(aid3.available, true);
+  assert.equal(aid4.available, false);
+  assert.equal(aid4.cappedUnavailable, true);
 
   // Late joiner joins room
   const ws2 = { send: () => {} };
   const joinRes = manager.joinRoom(ws2, 'SUPPLY_TEST');
   assert.equal(joinRes.totalPlayers, 2);
 
-  // Supply must NOT increase for late joiners! Still 1
-  assert.equal(room.availableHealthPackCount, 1);
-  assert.equal(aid2.available, false);
-  assert.equal(aid3.available, false);
+  // Supply must NOT increase for late joiners! Still 3
+  assert.equal(room.availableHealthPackCount, 3);
+  assert.equal(aid4.available, false);
 
   // Late joiner receives capped items in collectedItems
-  assert.equal(joinRes.collectedItems.includes('floor_first_aid_02'), true);
-  assert.equal(joinRes.collectedItems.includes('floor_first_aid_03'), true);
+  assert.equal(joinRes.collectedItems.includes('floor_first_aid_04'), true);
 
   // Attempting to pick up capped Health Pack is rejected
-  const pickRes = manager.handlePickupRequest(ws2, 'floor_first_aid_02');
+  const pickRes = manager.handlePickupRequest(ws2, 'floor_first_aid_04');
   assert.match(pickRes.error, /supply capped by starting player count/);
 });
 
