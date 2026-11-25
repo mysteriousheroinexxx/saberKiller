@@ -5,99 +5,169 @@
       "name": "Office Table",
       "category": "prop",
       "modelUrl": "assets/items/table.glb",
-      "scale": [1.0, 1.0, 1.0],
+      "scale": [
+        1,
+        1,
+        1
+      ],
       "surfaceHeight": 0.936
     },
     "metal_shelf": {
       "name": "Industrial Metal Shelf",
       "category": "prop",
       "modelUrl": "assets/items/metal_shelf.glb",
-      "scale": [1.0, 1.0, 1.0],
-      "tiers": [0.243, 0.715, 1.188, 1.643, 2.097]
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "tiers": [
+        0.243,
+        0.715,
+        1.188,
+        1.643,
+        2.097
+      ]
     },
     "vending_almond": {
       "name": "Almond Water Vending Machine",
       "category": "prop",
       "modelUrl": "assets/items/vending_almond.glb",
-      "scale": [1.0, 1.0, 1.0]
+      "scale": [
+        1,
+        1,
+        1
+      ]
     },
     "ammo_crate": {
       "name": "Ammunition Crate",
       "category": "ammunition",
       "modelUrl": "assets/items/ammo_crate.glb",
-      "scale": [1.0, 1.0, 1.0]
+      "scale": [
+        1,
+        1,
+        1
+      ]
     },
     "ammo_box": {
       "name": ".45 ACP Ammunition Box",
       "category": "ammunition",
       "modelUrl": "assets/items/ammo_box.glb",
-      "scale": [1.0, 1.0, 1.0]
+      "scale": [
+        1,
+        1,
+        1
+      ]
     },
     "pistol_ammo": {
       "name": "Pistol Ammunition",
       "category": "ammunition",
       "modelUrl": "assets/items/ammo_box.glb",
-      "scale": [1.0, 1.0, 1.0]
+      "scale": [
+        1,
+        1,
+        1
+      ]
     },
     "shotgun_ammo": {
       "name": "Shotgun Ammunition",
       "category": "ammunition",
       "modelUrl": "assets/items/ammo_box.glb",
-      "scale": [1.0, 1.0, 1.0]
+      "scale": [
+        1,
+        1,
+        1
+      ]
     },
     "almond_can": {
       "name": "Almond Water Can",
       "category": "consumable",
       "modelUrl": "assets/items/almond_can.glb",
-      "scale": [1.0, 1.0, 1.0]
+      "scale": [
+        1,
+        1,
+        1
+      ]
     },
     "first_aid": {
       "name": "First Aid Kit",
       "category": "medical",
       "modelUrl": "assets/items/first_aid.glb",
-      "scale": [1.0, 1.0, 1.0]
+      "scale": [
+        1,
+        1,
+        1
+      ]
     },
     "sanity_pill": {
       "name": "Sanity Pills Bottle",
       "category": "consumable",
       "modelUrl": "assets/items/sanity_pill_bottle.glb",
-      "scale": [0.0008, 0.0008, 0.0008]
+      "scale": [
+        0.0008,
+        0.0008,
+        0.0008
+      ]
     },
     "energy_drink": {
       "name": "Almond Water Energy Drink",
       "category": "consumable",
       "modelUrl": "assets/items/energy_drink.glb",
-      "scale": [1.0, 1.0, 1.0]
+      "scale": [
+        1,
+        1,
+        1
+      ]
     },
     "aa_battery": {
       "name": "Flashlight Battery Pack",
       "category": "battery",
       "modelUrl": "assets/items/aa_battery.glb",
-      "scale": [1.0, 1.0, 1.0]
+      "scale": [
+        1,
+        1,
+        1
+      ]
     },
     "doorKey": {
       "name": "Brass Door Key",
       "category": "key",
       "modelUrl": "assets/items/doorKey.glb",
-      "scale": [1.0, 1.0, 1.0]
+      "scale": [
+        1,
+        1,
+        1
+      ]
     },
     "exit_door": {
       "name": "Level 0 Exit Door",
       "category": "environmental",
       "modelUrl": null,
-      "scale": [1.0, 1.0, 1.0]
+      "scale": [
+        1,
+        1,
+        1
+      ]
     },
     "weapon_pistol": {
       "name": "Beretta Px4 Storm",
       "category": "weapon",
       "modelUrl": "assets/beretta_px4_storm_compact.glb",
-      "scale": [0.028, 0.028, 0.028]
+      "scale": [
+        0.028,
+        0.028,
+        0.028
+      ]
     },
     "weapon_shotgun": {
       "name": "Stagecoach Shotgun",
       "category": "weapon",
       "modelUrl": "assets/stagecoach_shotgun.glb",
-      "scale": [1.0, 1.0, 1.0]
+      "scale": [
+        1,
+        1,
+        1
+      ]
     }
   },
   "placements": [
@@ -106,8 +176,16 @@
       "type": "table",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [44.5, 0.0, -185.35],
-      "rotation": [0.0, -1.5708, 0.0],
+      "position": [
+        44.5,
+        0,
+        -185.35
+      ],
+      "rotation": [
+        0,
+        -1.5708,
+        0
+      ],
       "anchor": {
         "surface": "floor"
       }
@@ -117,8 +195,16 @@
       "type": "metal_shelf",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [44.5, 0.0, -189.50],
-      "rotation": [0.0, 1.5708, 0.0],
+      "position": [
+        44.5,
+        0,
+        -189.5
+      ],
+      "rotation": [
+        0,
+        1.5708,
+        0
+      ],
       "anchor": {
         "surface": "floor"
       }
@@ -128,8 +214,16 @@
       "type": "vending_almond",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [41.5, 0.0, -185.45],
-      "rotation": [0.0, 0.0, 0.0],
+      "position": [
+        41.5,
+        0,
+        -185.45
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
       "anchor": {
         "surface": "floor"
       }
@@ -139,19 +233,16 @@
       "type": "ammo_crate",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [42.5, 0.0, -189.40],
-      "rotation": [0.0, 0.2, 0.0],
-      "anchor": {
-        "surface": "floor"
-      }
-    },
-    {
-      "id": "floor_first_aid_01",
-      "type": "first_aid",
-      "surfaceType": "floor",
-      "surfaceName": "Carpet Floor",
-      "position": [43.7, 0.0, -188.90],
-      "rotation": [0.0, 0.3, 0.0],
+      "position": [
+        42.5,
+        0,
+        -189.4
+      ],
+      "rotation": [
+        0,
+        0.2,
+        0
+      ],
       "anchor": {
         "surface": "floor"
       }
@@ -161,8 +252,16 @@
       "type": "ammo_crate",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [42.8, 0.0, -188.80],
-      "rotation": [0.0, -0.2, 0.0],
+      "position": [
+        42.8,
+        0,
+        -188.8
+      ],
+      "rotation": [
+        0,
+        -0.2,
+        0
+      ],
       "anchor": {
         "surface": "floor"
       }
@@ -172,55 +271,18 @@
       "type": "pistol_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [43.3, 0.0, -188.70],
-      "rotation": [0.0, 0.5, 0.0],
+      "position": [
+        43.3,
+        0,
+        -188.7
+      ],
+      "rotation": [
+        0,
+        0.5,
+        0
+      ],
       "anchor": {
         "surface": "floor"
-      }
-    },
-    {
-      "id": "floor_almond_can_01",
-      "type": "almond_can",
-      "surfaceType": "floor",
-      "surfaceName": "Carpet Floor",
-      "position": [41.8, 0.0, -186.20],
-      "rotation": [0.0, 0.4, 0.0],
-      "anchor": {
-        "surface": "floor"
-      }
-    },
-    {
-      "id": "floor_energy_drink_01",
-      "type": "energy_drink",
-      "surfaceType": "floor",
-      "surfaceName": "Carpet Floor",
-      "position": [42.2, 0.0, -186.10],
-      "rotation": [0.0, 0.8, 0.0],
-      "anchor": {
-        "surface": "floor"
-      }
-    },
-    {
-      "id": "floor_sanity_pill_01",
-      "type": "sanity_pill",
-      "surfaceType": "floor",
-      "surfaceName": "Carpet Floor",
-      "position": [42.6, 0.0, -186.00],
-      "rotation": [0.0, -0.5, 0.0],
-      "anchor": {
-        "surface": "floor"
-      }
-    },
-    {
-      "id": "table_first_aid_01",
-      "type": "first_aid",
-      "surfaceType": "table",
-      "surfaceName": "Office Table Top",
-      "position": [44.75, 0.936, -185.45],
-      "rotation": [0.0, 0.1, 0.0],
-      "anchor": {
-        "surface": "table",
-        "supportProp": "prop_table_01"
       }
     },
     {
@@ -228,44 +290,16 @@
       "type": "pistol_ammo",
       "surfaceType": "table",
       "surfaceName": "Office Table Top",
-      "position": [44.35, 0.936, -185.45],
-      "rotation": [0.0, -0.3, 0.0],
-      "anchor": {
-        "surface": "table",
-        "supportProp": "prop_table_01"
-      }
-    },
-    {
-      "id": "table_almond_can_01",
-      "type": "almond_can",
-      "surfaceType": "table",
-      "surfaceName": "Office Table Top",
-      "position": [44.00, 0.936, -185.45],
-      "rotation": [0.0, 0.6, 0.0],
-      "anchor": {
-        "surface": "table",
-        "supportProp": "prop_table_01"
-      }
-    },
-    {
-      "id": "table_battery_01",
-      "type": "aa_battery",
-      "surfaceType": "table",
-      "surfaceName": "Office Table Top",
-      "position": [43.70, 0.936, -185.45],
-      "rotation": [0.0, 0.9, 0.0],
-      "anchor": {
-        "surface": "table",
-        "supportProp": "prop_table_01"
-      }
-    },
-    {
-      "id": "table_sanity_pill_01",
-      "type": "sanity_pill",
-      "surfaceType": "table",
-      "surfaceName": "Office Table Top",
-      "position": [44.55, 0.936, -185.20],
-      "rotation": [0.0, 0.5, 0.0],
+      "position": [
+        44.35,
+        0.936,
+        -185.45
+      ],
+      "rotation": [
+        0,
+        -0.3,
+        0
+      ],
       "anchor": {
         "surface": "table",
         "supportProp": "prop_table_01"
@@ -277,8 +311,16 @@
       "surfaceType": "shelf_tier",
       "shelfTier": 1,
       "surfaceName": "Metal Shelf Tier 1 (Bottom)",
-      "position": [44.5, 0.243, -189.50],
-      "rotation": [0.0, 0.0, 0.0],
+      "position": [
+        44.5,
+        0.243,
+        -189.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
       "anchor": {
         "surface": "shelf_tier",
         "supportProp": "prop_shelf_01",
@@ -291,118 +333,20 @@
       "surfaceType": "shelf_tier",
       "shelfTier": 2,
       "surfaceName": "Metal Shelf Tier 2",
-      "position": [44.3, 0.715, -189.50],
-      "rotation": [0.0, 0.2, 0.0],
+      "position": [
+        44.3,
+        0.715,
+        -189.5
+      ],
+      "rotation": [
+        0,
+        0.2,
+        0
+      ],
       "anchor": {
         "surface": "shelf_tier",
         "supportProp": "prop_shelf_01",
         "tier": 2
-      }
-    },
-    {
-      "id": "shelf_almond_can_tier2",
-      "type": "almond_can",
-      "surfaceType": "shelf_tier",
-      "shelfTier": 2,
-      "surfaceName": "Metal Shelf Tier 2",
-      "position": [44.7, 0.715, -189.50],
-      "rotation": [0.0, -0.4, 0.0],
-      "anchor": {
-        "surface": "shelf_tier",
-        "supportProp": "prop_shelf_01",
-        "tier": 2
-      }
-    },
-    {
-      "id": "shelf_sanity_pill_tier2",
-      "type": "sanity_pill",
-      "surfaceType": "shelf_tier",
-      "shelfTier": 2,
-      "surfaceName": "Metal Shelf Tier 2",
-      "position": [44.5, 0.715, -189.50],
-      "rotation": [0.0, -0.6, 0.0],
-      "anchor": {
-        "surface": "shelf_tier",
-        "supportProp": "prop_shelf_01",
-        "tier": 2
-      }
-    },
-    {
-      "id": "shelf_battery_tier3",
-      "type": "aa_battery",
-      "surfaceType": "shelf_tier",
-      "shelfTier": 3,
-      "surfaceName": "Metal Shelf Tier 3 (Eye Level)",
-      "position": [44.3, 1.188, -189.50],
-      "rotation": [0.0, 0.7, 0.0],
-      "anchor": {
-        "surface": "shelf_tier",
-        "supportProp": "prop_shelf_01",
-        "tier": 3
-      }
-    },
-    {
-      "id": "shelf_door_key_tier3",
-      "type": "doorKey",
-      "surfaceType": "shelf_tier",
-      "shelfTier": 3,
-      "surfaceName": "Metal Shelf Tier 3 (Eye Level)",
-      "position": [44.5, 1.188, -189.50],
-      "rotation": [0.0, -0.3, 0.0],
-      "anchor": {
-        "surface": "shelf_tier",
-        "supportProp": "prop_shelf_01",
-        "tier": 3
-      }
-    },
-    {
-      "id": "table_door_key_01",
-      "type": "doorKey",
-      "surfaceType": "table",
-      "surfaceName": "Exploration Table",
-      "position": [44.15, 0.936, -185.20],
-      "rotation": [0.0, 0.4, 0.0],
-      "anchor": {
-        "surface": "table"
-      }
-    },
-    {
-      "id": "floor_door_key_01",
-      "type": "doorKey",
-      "surfaceType": "floor",
-      "surfaceName": "Carpet Floor",
-      "position": [45.0, 0.02, -189.50],
-      "rotation": [0.0, 0.1, 0.0],
-      "anchor": {
-        "surface": "floor"
-      }
-    },
-    {
-      "id": "shelf_almond_can_tier3",
-      "type": "almond_can",
-      "surfaceType": "shelf_tier",
-      "shelfTier": 3,
-      "surfaceName": "Metal Shelf Tier 3 (Eye Level)",
-      "position": [44.7, 1.188, -189.50],
-      "rotation": [0.0, 0.5, 0.0],
-      "anchor": {
-        "surface": "shelf_tier",
-        "supportProp": "prop_shelf_01",
-        "tier": 3
-      }
-    },
-    {
-      "id": "shelf_first_aid_tier4",
-      "type": "first_aid",
-      "surfaceType": "shelf_tier",
-      "shelfTier": 4,
-      "surfaceName": "Metal Shelf Tier 4",
-      "position": [44.5, 1.643, -189.50],
-      "rotation": [0.0, 0.0, 0.0],
-      "anchor": {
-        "surface": "shelf_tier",
-        "supportProp": "prop_shelf_01",
-        "tier": 4
       }
     },
     {
@@ -410,8 +354,16 @@
       "type": "weapon_pistol",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [44.2, 0.0, -187.5],
-      "rotation": [0.0, 0.4, 0.0],
+      "position": [
+        44.2,
+        0,
+        -187.5
+      ],
+      "rotation": [
+        0,
+        0.4,
+        0
+      ],
       "anchor": {
         "surface": "floor"
       }
@@ -421,8 +373,16 @@
       "type": "weapon_shotgun",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [40.5, 0.0, -179.8],
-      "rotation": [0.0, 1.5708, 0.0],
+      "position": [
+        40.5,
+        0,
+        -179.8
+      ],
+      "rotation": [
+        0,
+        1.5708,
+        0
+      ],
       "anchor": {
         "surface": "floor"
       }
@@ -432,171 +392,2393 @@
       "type": "pistol_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [45.1, 0.0, -186.2],
-      "rotation": [0.0, 0.1, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        45.1,
+        0,
+        -186.2
+      ],
+      "rotation": [
+        0,
+        0.1,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     },
     {
       "id": "floor_pistol_ammo_04",
       "type": "pistol_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [42.1, 0.0, -185.8],
-      "rotation": [0.0, -0.4, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        42.1,
+        0,
+        -185.8
+      ],
+      "rotation": [
+        0,
+        -0.4,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     },
     {
       "id": "floor_pistol_ammo_05",
       "type": "pistol_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [46.5, 0.0, -184.2],
-      "rotation": [0.0, 0.6, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        46.5,
+        0,
+        -184.2
+      ],
+      "rotation": [
+        0,
+        0.6,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     },
     {
       "id": "floor_pistol_ammo_06",
       "type": "pistol_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [47.8, 0.0, -187.0],
-      "rotation": [0.0, 0.2, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        47.8,
+        0,
+        -187
+      ],
+      "rotation": [
+        0,
+        0.2,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     },
     {
       "id": "floor_pistol_ammo_07",
       "type": "pistol_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [41.2, 0.0, -188.0],
-      "rotation": [0.0, -0.2, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        41.2,
+        0,
+        -188
+      ],
+      "rotation": [
+        0,
+        -0.2,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     },
     {
       "id": "floor_pistol_ammo_08",
       "type": "pistol_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [43.9, 0.0, -183.5],
-      "rotation": [0.0, 0.8, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        43.9,
+        0,
+        -183.5
+      ],
+      "rotation": [
+        0,
+        0.8,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     },
     {
       "id": "floor_pistol_ammo_09",
       "type": "pistol_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [45.8, 0.0, -188.5],
-      "rotation": [0.0, 0.3, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        45.8,
+        0,
+        -188.5
+      ],
+      "rotation": [
+        0,
+        0.3,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     },
     {
       "id": "floor_pistol_ammo_10",
       "type": "pistol_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [48.2, 0.0, -185.0],
-      "rotation": [0.0, -0.5, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        48.2,
+        0,
+        -185
+      ],
+      "rotation": [
+        0,
+        -0.5,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     },
     {
       "id": "floor_pistol_ammo_11",
       "type": "pistol_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [40.8, 0.0, -186.5],
-      "rotation": [0.0, 0.7, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        40.8,
+        0,
+        -186.5
+      ],
+      "rotation": [
+        0,
+        0.7,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     },
     {
       "id": "floor_pistol_ammo_12",
       "type": "pistol_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [42.9, 0.0, -184.0],
-      "rotation": [0.0, -0.1, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        42.9,
+        0,
+        -184
+      ],
+      "rotation": [
+        0,
+        -0.1,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     },
     {
       "id": "floor_pistol_ammo_13",
       "type": "pistol_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [46.2, 0.0, -186.8],
-      "rotation": [0.0, 0.4, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        46.2,
+        0,
+        -186.8
+      ],
+      "rotation": [
+        0,
+        0.4,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     },
     {
       "id": "floor_pistol_ammo_14",
       "type": "pistol_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [47.1, 0.0, -183.0],
-      "rotation": [0.0, -0.3, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        47.1,
+        0,
+        -183
+      ],
+      "rotation": [
+        0,
+        -0.3,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     },
     {
       "id": "floor_pistol_ammo_15",
       "type": "pistol_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [41.9, 0.0, -187.2],
-      "rotation": [0.0, 0.5, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        41.9,
+        0,
+        -187.2
+      ],
+      "rotation": [
+        0,
+        0.5,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     },
     {
       "id": "floor_pistol_ammo_16",
       "type": "pistol_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [44.8, 0.0, -189.0],
-      "rotation": [0.0, 0.1, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        44.8,
+        0,
+        -189
+      ],
+      "rotation": [
+        0,
+        0.1,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     },
     {
       "id": "floor_pistol_ammo_17",
       "type": "pistol_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [48.9, 0.0, -186.0],
-      "rotation": [0.0, -0.6, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        48.9,
+        0,
+        -186
+      ],
+      "rotation": [
+        0,
+        -0.6,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     },
     {
       "id": "floor_pistol_ammo_18",
       "type": "pistol_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [43.6, 0.0, -185.1],
-      "rotation": [0.0, 0.2, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        43.6,
+        0,
+        -185.1
+      ],
+      "rotation": [
+        0,
+        0.2,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     },
     {
       "id": "floor_shotgun_ammo_02",
       "type": "shotgun_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [41.0, 0.0, -180.5],
-      "rotation": [0.0, 0.3, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        41,
+        0,
+        -180.5
+      ],
+      "rotation": [
+        0,
+        0.3,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     },
     {
       "id": "floor_shotgun_ammo_03",
       "type": "shotgun_ammo",
       "surfaceType": "floor",
       "surfaceName": "Carpet Floor",
-      "position": [39.8, 0.0, -178.9],
-      "rotation": [0.0, -0.4, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        39.8,
+        0,
+        -178.9
+      ],
+      "rotation": [
+        0,
+        -0.4,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
+      "id": "prop_shelf_02",
+      "type": "metal_shelf",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [
+        38.5,
+        0,
+        -195.5
+      ],
+      "rotation": [
+        0,
+        1.5708,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
+      "id": "prop_table_02",
+      "type": "table",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [
+        70.5,
+        0,
+        -184.5
+      ],
+      "rotation": [
+        0,
+        -1.5708,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
+      "id": "prop_shelf_03",
+      "type": "metal_shelf",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [
+        70.5,
+        0,
+        -186.5
+      ],
+      "rotation": [
+        0,
+        1.5708,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
+      "id": "prop_table_03",
+      "type": "table",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [
+        42.5,
+        0,
+        -138.5
+      ],
+      "rotation": [
+        0,
+        -1.5708,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
+      "id": "prop_shelf_04",
+      "type": "metal_shelf",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [
+        43.5,
+        0,
+        -112.5
+      ],
+      "rotation": [
+        0,
+        1.5708,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
+      "id": "prop_vending_02",
+      "type": "vending_almond",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [
+        45,
+        0,
+        -112.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
+      "id": "prop_table_04",
+      "type": "table",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [
+        5.5,
+        0,
+        -120.5
+      ],
+      "rotation": [
+        0,
+        -1.5708,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
+      "id": "prop_shelf_05",
+      "type": "metal_shelf",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [
+        5.5,
+        0,
+        -122.5
+      ],
+      "rotation": [
+        0,
+        1.5708,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
+      "id": "prop_shelf_06",
+      "type": "metal_shelf",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [
+        18.5,
+        0,
+        -174.5
+      ],
+      "rotation": [
+        0,
+        1.5708,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
+      "id": "prop_table_05",
+      "type": "table",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [
+        11.5,
+        0,
+        -39.5
+      ],
+      "rotation": [
+        0,
+        -1.5708,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
+      "id": "prop_vending_03",
+      "type": "vending_almond",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [
+        13.2,
+        0,
+        -39.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
+      "id": "prop_shelf_07",
+      "type": "metal_shelf",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [
+        9.5,
+        0,
+        8.5
+      ],
+      "rotation": [
+        0,
+        1.5708,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
+      "id": "prop_table_06",
+      "type": "table",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [
+        84.5,
+        0,
+        21.5
+      ],
+      "rotation": [
+        0,
+        -1.5708,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
+      "id": "prop_shelf_08",
+      "type": "metal_shelf",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [
+        84.5,
+        0,
+        19.5
+      ],
+      "rotation": [
+        0,
+        1.5708,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
+    },
+    {
+      "id": "prop_table_07",
+      "type": "table",
+      "surfaceType": "floor",
+      "surfaceName": "Carpet Floor",
+      "position": [
+        157.5,
+        0,
+        18.5
+      ],
+      "rotation": [
+        0,
+        -1.5708,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     },
     {
       "id": "level0_exit_door",
       "type": "exit_door",
       "surfaceType": "floor",
       "surfaceName": "Transit Gateway",
-      "position": [79.55, 0.0, 207.0],
-      "rotation": [0.0, 0.0, 0.0],
-      "anchor": { "surface": "floor" }
+      "position": [
+        79.55,
+        0,
+        207
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "anchor": {
+        "surface": "floor"
+      }
     }
-  ]
+  ],
+  "environmentalLoot": {
+    "version": "1.0.0",
+    "consumableSlots": [
+      {
+        "id": "loot_table01_west",
+        "supportProp": "prop_table_01",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          43.78,
+          0.936,
+          -185.21
+        ],
+        "rotation": [
+          0,
+          0.3,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_01",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "loot_table01_east",
+        "supportProp": "prop_table_01",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          44.56,
+          0.936,
+          -185.19
+        ],
+        "rotation": [
+          0,
+          -0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_01",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "loot_shelf01_t2_east",
+        "supportProp": "prop_shelf_01",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 2,
+        "position": [
+          44.75,
+          0.715,
+          -189.5
+        ],
+        "rotation": [
+          0,
+          -0.4,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_01",
+          "supportType": "metal_shelf",
+          "tier": 2
+        }
+      },
+      {
+        "id": "loot_shelf01_t3_west",
+        "supportProp": "prop_shelf_01",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 3,
+        "position": [
+          44.25,
+          1.188,
+          -189.5
+        ],
+        "rotation": [
+          0,
+          0.5,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_01",
+          "supportType": "metal_shelf",
+          "tier": 3
+        }
+      },
+      {
+        "id": "loot_shelf01_t3_east",
+        "supportProp": "prop_shelf_01",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 3,
+        "position": [
+          44.75,
+          1.188,
+          -189.5
+        ],
+        "rotation": [
+          0,
+          0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_01",
+          "supportType": "metal_shelf",
+          "tier": 3
+        }
+      },
+      {
+        "id": "loot_vend01_right",
+        "supportProp": "prop_vending_01",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          41.8,
+          0.02,
+          -184.72
+        ],
+        "rotation": [
+          0,
+          0.3,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_01",
+          "supportType": "vending_almond"
+        },
+        "allowedTypes": [
+          "almond_can",
+          "energy_drink",
+          "aa_battery"
+        ]
+      },
+      {
+        "id": "loot_shelf02_t2_west",
+        "supportProp": "prop_shelf_02",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 2,
+        "position": [
+          38.24,
+          0.715,
+          -195.5
+        ],
+        "rotation": [
+          0,
+          0.4,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_02",
+          "supportType": "metal_shelf",
+          "tier": 2
+        }
+      },
+      {
+        "id": "loot_shelf02_t3_east",
+        "supportProp": "prop_shelf_02",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 3,
+        "position": [
+          38.76,
+          1.188,
+          -195.5
+        ],
+        "rotation": [
+          0,
+          -0.3,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_02",
+          "supportType": "metal_shelf",
+          "tier": 3
+        }
+      },
+      {
+        "id": "loot_shelf02_t4_west",
+        "supportProp": "prop_shelf_02",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 4,
+        "position": [
+          38.28,
+          1.643,
+          -195.5
+        ],
+        "rotation": [
+          0,
+          0.1,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_02",
+          "supportType": "metal_shelf",
+          "tier": 4
+        }
+      },
+      {
+        "id": "loot_table02_west",
+        "supportProp": "prop_table_02",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          70.2,
+          0.936,
+          -184.38
+        ],
+        "rotation": [
+          0,
+          0.5,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_02",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "loot_table02_east",
+        "supportProp": "prop_table_02",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          70.8,
+          0.936,
+          -184.6
+        ],
+        "rotation": [
+          0,
+          -0.4,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_02",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "loot_shelf03_t2_east",
+        "supportProp": "prop_shelf_03",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 2,
+        "position": [
+          70.74,
+          0.715,
+          -186.5
+        ],
+        "rotation": [
+          0,
+          0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_03",
+          "supportType": "metal_shelf",
+          "tier": 2
+        }
+      },
+      {
+        "id": "loot_shelf03_t3_west",
+        "supportProp": "prop_shelf_03",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 3,
+        "position": [
+          70.26,
+          1.188,
+          -186.5
+        ],
+        "rotation": [
+          0,
+          -0.5,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_03",
+          "supportType": "metal_shelf",
+          "tier": 3
+        }
+      },
+      {
+        "id": "loot_table03_west",
+        "supportProp": "prop_table_03",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          42.22,
+          0.936,
+          -138.4
+        ],
+        "rotation": [
+          0,
+          0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_03",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "loot_table03_east",
+        "supportProp": "prop_table_03",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          42.78,
+          0.936,
+          -138.6
+        ],
+        "rotation": [
+          0,
+          -0.1,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_03",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "loot_shelf04_t2_west",
+        "supportProp": "prop_shelf_04",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 2,
+        "position": [
+          43.24,
+          0.715,
+          -112.5
+        ],
+        "rotation": [
+          0,
+          0.3,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_04",
+          "supportType": "metal_shelf",
+          "tier": 2
+        }
+      },
+      {
+        "id": "loot_shelf04_t4_east",
+        "supportProp": "prop_shelf_04",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 4,
+        "position": [
+          43.76,
+          1.643,
+          -112.5
+        ],
+        "rotation": [
+          0,
+          -0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_04",
+          "supportType": "metal_shelf",
+          "tier": 4
+        }
+      },
+      {
+        "id": "loot_vend02_front_r",
+        "supportProp": "prop_vending_02",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          45.28,
+          0.02,
+          -111.75
+        ],
+        "rotation": [
+          0,
+          0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_02",
+          "supportType": "vending_almond"
+        },
+        "allowedTypes": [
+          "almond_can",
+          "energy_drink",
+          "aa_battery"
+        ]
+      },
+      {
+        "id": "loot_table04_west",
+        "supportProp": "prop_table_04",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          5.22,
+          0.936,
+          -120.38
+        ],
+        "rotation": [
+          0,
+          0.4,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_04",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "loot_table04_east",
+        "supportProp": "prop_table_04",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          5.78,
+          0.936,
+          -120.62
+        ],
+        "rotation": [
+          0,
+          -0.3,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_04",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "loot_shelf05_t2_west",
+        "supportProp": "prop_shelf_05",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 2,
+        "position": [
+          5.26,
+          0.715,
+          -122.5
+        ],
+        "rotation": [
+          0,
+          0.6,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_05",
+          "supportType": "metal_shelf",
+          "tier": 2
+        }
+      },
+      {
+        "id": "loot_shelf05_t3_east",
+        "supportProp": "prop_shelf_05",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 3,
+        "position": [
+          5.74,
+          1.188,
+          -122.5
+        ],
+        "rotation": [
+          0,
+          -0.4,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_05",
+          "supportType": "metal_shelf",
+          "tier": 3
+        }
+      },
+      {
+        "id": "loot_shelf06_t2_east",
+        "supportProp": "prop_shelf_06",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 2,
+        "position": [
+          18.76,
+          0.715,
+          -174.5
+        ],
+        "rotation": [
+          0,
+          0.1,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_06",
+          "supportType": "metal_shelf",
+          "tier": 2
+        }
+      },
+      {
+        "id": "loot_shelf06_t4_west",
+        "supportProp": "prop_shelf_06",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 4,
+        "position": [
+          18.24,
+          1.643,
+          -174.5
+        ],
+        "rotation": [
+          0,
+          -0.5,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_06",
+          "supportType": "metal_shelf",
+          "tier": 4
+        }
+      },
+      {
+        "id": "loot_table05_west",
+        "supportProp": "prop_table_05",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          11.22,
+          0.936,
+          -39.4
+        ],
+        "rotation": [
+          0,
+          0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_05",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "loot_table05_east",
+        "supportProp": "prop_table_05",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          11.78,
+          0.936,
+          -39.6
+        ],
+        "rotation": [
+          0,
+          0.7,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_05",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "loot_vend03_front_r",
+        "supportProp": "prop_vending_03",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          13.48,
+          0.02,
+          -38.75
+        ],
+        "rotation": [
+          0,
+          -0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_03",
+          "supportType": "vending_almond"
+        },
+        "allowedTypes": [
+          "almond_can",
+          "energy_drink",
+          "aa_battery"
+        ]
+      },
+      {
+        "id": "loot_shelf07_t2_west",
+        "supportProp": "prop_shelf_07",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 2,
+        "position": [
+          9.24,
+          0.715,
+          8.5
+        ],
+        "rotation": [
+          0,
+          0.3,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_07",
+          "supportType": "metal_shelf",
+          "tier": 2
+        }
+      },
+      {
+        "id": "loot_shelf07_t3_east",
+        "supportProp": "prop_shelf_07",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 3,
+        "position": [
+          9.76,
+          1.188,
+          8.5
+        ],
+        "rotation": [
+          0,
+          -0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_07",
+          "supportType": "metal_shelf",
+          "tier": 3
+        }
+      },
+      {
+        "id": "loot_table06_west",
+        "supportProp": "prop_table_06",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          84.22,
+          0.936,
+          21.62
+        ],
+        "rotation": [
+          0,
+          -0.3,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_06",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "loot_table06_east",
+        "supportProp": "prop_table_06",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          84.78,
+          0.936,
+          21.38
+        ],
+        "rotation": [
+          0,
+          0.4,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_06",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "loot_shelf08_t2_east",
+        "supportProp": "prop_shelf_08",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 2,
+        "position": [
+          84.76,
+          0.715,
+          19.5
+        ],
+        "rotation": [
+          0,
+          0.5,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_08",
+          "supportType": "metal_shelf",
+          "tier": 2
+        }
+      },
+      {
+        "id": "loot_shelf08_t3_west",
+        "supportProp": "prop_shelf_08",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 3,
+        "position": [
+          84.24,
+          1.188,
+          19.5
+        ],
+        "rotation": [
+          0,
+          -0.1,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_08",
+          "supportType": "metal_shelf",
+          "tier": 3
+        }
+      },
+      {
+        "id": "loot_table07_west",
+        "supportProp": "prop_table_07",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          157.22,
+          0.936,
+          18.6
+        ],
+        "rotation": [
+          0,
+          0.1,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_07",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "loot_table07_east",
+        "supportProp": "prop_table_07",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          157.78,
+          0.936,
+          18.4
+        ],
+        "rotation": [
+          0,
+          -0.4,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_07",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "loot_mapvend01_a",
+        "supportProp": "map_vending_01",
+        "supportType": "vending",
+        "surfaceType": "vending_around",
+        "position": [
+          133.55,
+          0.02,
+          -71.82
+        ],
+        "rotation": [
+          0,
+          0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "map_vending_01",
+          "supportType": "vending"
+        }
+      },
+      {
+        "id": "loot_mapvend02_a",
+        "supportProp": "map_vending_02",
+        "supportType": "vending",
+        "surfaceType": "vending_around",
+        "position": [
+          107.25,
+          0.02,
+          -64.75
+        ],
+        "rotation": [
+          0,
+          -0.3,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "map_vending_02",
+          "supportType": "vending"
+        }
+      },
+      {
+        "id": "loot_mapvend03_a",
+        "supportProp": "map_vending_03",
+        "supportType": "vending",
+        "surfaceType": "vending_around",
+        "position": [
+          243.15,
+          0.02,
+          91.55
+        ],
+        "rotation": [
+          0,
+          0.4,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "map_vending_03",
+          "supportType": "vending"
+        }
+      },
+      {
+        "id": "loot_mapvend04_a",
+        "supportProp": "map_vending_04",
+        "supportType": "vending",
+        "surfaceType": "vending_around",
+        "position": [
+          114.2,
+          0.02,
+          -56.82
+        ],
+        "rotation": [
+          0,
+          -0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "map_vending_04",
+          "supportType": "vending"
+        }
+      },
+      {
+        "id": "loot_mapvend05_a",
+        "supportProp": "map_vending_05",
+        "supportType": "vending",
+        "surfaceType": "vending_around",
+        "position": [
+          83.05,
+          0.02,
+          207.45
+        ],
+        "rotation": [
+          0,
+          0.5,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "map_vending_05",
+          "supportType": "vending"
+        }
+      },
+      {
+        "id": "loot_mapvend06_a",
+        "supportProp": "map_vending_06",
+        "supportType": "vending",
+        "surfaceType": "vending_around",
+        "position": [
+          73.2,
+          0.02,
+          -262.95
+        ],
+        "rotation": [
+          0,
+          -0.4,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "map_vending_06",
+          "supportType": "vending"
+        }
+      }
+    ],
+    "healthPackSlots": [
+      {
+        "id": "hp_table01",
+        "supportProp": "prop_table_01",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          44.8,
+          0.936,
+          -185.47
+        ],
+        "rotation": [
+          0,
+          0.1,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_01",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "hp_shelf01_t4",
+        "supportProp": "prop_shelf_01",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 4,
+        "position": [
+          44.5,
+          1.643,
+          -189.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_01",
+          "supportType": "metal_shelf",
+          "tier": 4
+        }
+      },
+      {
+        "id": "hp_vend01",
+        "supportProp": "prop_vending_01",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          41.48,
+          0.02,
+          -184.42
+        ],
+        "rotation": [
+          0,
+          0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_01",
+          "supportType": "vending_almond"
+        }
+      },
+      {
+        "id": "hp_shelf02_t2",
+        "supportProp": "prop_shelf_02",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 2,
+        "position": [
+          38.75,
+          0.715,
+          -195.5
+        ],
+        "rotation": [
+          0,
+          -0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_02",
+          "supportType": "metal_shelf",
+          "tier": 2
+        }
+      },
+      {
+        "id": "hp_table02",
+        "supportProp": "prop_table_02",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          70.5,
+          0.936,
+          -184.38
+        ],
+        "rotation": [
+          0,
+          0.3,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_02",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "hp_shelf03_t4",
+        "supportProp": "prop_shelf_03",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 4,
+        "position": [
+          70.5,
+          1.643,
+          -186.5
+        ],
+        "rotation": [
+          0,
+          0.1,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_03",
+          "supportType": "metal_shelf",
+          "tier": 4
+        }
+      },
+      {
+        "id": "hp_table03",
+        "supportProp": "prop_table_03",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          42.5,
+          0.936,
+          -138.38
+        ],
+        "rotation": [
+          0,
+          -0.3,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_03",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "hp_shelf04_t3",
+        "supportProp": "prop_shelf_04",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 3,
+        "position": [
+          43.26,
+          1.188,
+          -112.5
+        ],
+        "rotation": [
+          0,
+          0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_04",
+          "supportType": "metal_shelf",
+          "tier": 3
+        }
+      },
+      {
+        "id": "hp_vend02",
+        "supportProp": "prop_vending_02",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          44.72,
+          0.02,
+          -111.75
+        ],
+        "rotation": [
+          0,
+          -0.1,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_02",
+          "supportType": "vending_almond"
+        }
+      },
+      {
+        "id": "hp_table04",
+        "supportProp": "prop_table_04",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          5.5,
+          0.936,
+          -120.38
+        ],
+        "rotation": [
+          0,
+          0.4,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_04",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "hp_shelf05_t4",
+        "supportProp": "prop_shelf_05",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 4,
+        "position": [
+          5.5,
+          1.643,
+          -122.5
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_05",
+          "supportType": "metal_shelf",
+          "tier": 4
+        }
+      },
+      {
+        "id": "hp_shelf06_t3",
+        "supportProp": "prop_shelf_06",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 3,
+        "position": [
+          18.75,
+          1.188,
+          -174.5
+        ],
+        "rotation": [
+          0,
+          -0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_06",
+          "supportType": "metal_shelf",
+          "tier": 3
+        }
+      },
+      {
+        "id": "hp_table05",
+        "supportProp": "prop_table_05",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          11.5,
+          0.936,
+          -39.38
+        ],
+        "rotation": [
+          0,
+          0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_05",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "hp_vend03",
+        "supportProp": "prop_vending_03",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          12.92,
+          0.02,
+          -38.75
+        ],
+        "rotation": [
+          0,
+          0.3,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_03",
+          "supportType": "vending_almond"
+        }
+      },
+      {
+        "id": "hp_shelf07_t4",
+        "supportProp": "prop_shelf_07",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 4,
+        "position": [
+          9.5,
+          1.643,
+          8.5
+        ],
+        "rotation": [
+          0,
+          -0.3,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_07",
+          "supportType": "metal_shelf",
+          "tier": 4
+        }
+      },
+      {
+        "id": "hp_table06",
+        "supportProp": "prop_table_06",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          84.5,
+          0.936,
+          21.62
+        ],
+        "rotation": [
+          0,
+          0.1,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_06",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "hp_table07",
+        "supportProp": "prop_table_07",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          157.5,
+          0.936,
+          18.62
+        ],
+        "rotation": [
+          0,
+          -0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_07",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "hp_mapvend01",
+        "supportProp": "map_vending_01",
+        "supportType": "vending",
+        "surfaceType": "vending_around",
+        "position": [
+          133.55,
+          0.02,
+          -71.15
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "map_vending_01",
+          "supportType": "vending"
+        }
+      },
+      {
+        "id": "hp_mapvend05",
+        "supportProp": "map_vending_05",
+        "supportType": "vending",
+        "surfaceType": "vending_around",
+        "position": [
+          83.05,
+          0.02,
+          208.15
+        ],
+        "rotation": [
+          0,
+          0.1,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "map_vending_05",
+          "supportType": "vending"
+        }
+      }
+    ],
+    "keySlots": [
+      {
+        "id": "key_shelf01_t3",
+        "supportProp": "prop_shelf_01",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 3,
+        "position": [
+          44.5,
+          1.188,
+          -189.5
+        ],
+        "rotation": [
+          0,
+          -0.3,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_01",
+          "supportType": "metal_shelf",
+          "tier": 3
+        }
+      },
+      {
+        "id": "key_table01",
+        "supportProp": "prop_table_01",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          44.15,
+          0.936,
+          -185.2
+        ],
+        "rotation": [
+          0,
+          0.4,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_01",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "key_vend01",
+        "supportProp": "prop_vending_01",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          41.18,
+          0.02,
+          -184.72
+        ],
+        "rotation": [
+          0,
+          0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_01",
+          "supportType": "vending_almond"
+        }
+      },
+      {
+        "id": "key_shelf02_t3",
+        "supportProp": "prop_shelf_02",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 3,
+        "position": [
+          38.48,
+          1.188,
+          -195.5
+        ],
+        "rotation": [
+          0,
+          0.1,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_02",
+          "supportType": "metal_shelf",
+          "tier": 3
+        }
+      },
+      {
+        "id": "key_table02",
+        "supportProp": "prop_table_02",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          70.5,
+          0.936,
+          -184.64
+        ],
+        "rotation": [
+          0,
+          0.5,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_02",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "key_shelf03_t3",
+        "supportProp": "prop_shelf_03",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 3,
+        "position": [
+          70.72,
+          1.188,
+          -186.5
+        ],
+        "rotation": [
+          0,
+          -0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_03",
+          "supportType": "metal_shelf",
+          "tier": 3
+        }
+      },
+      {
+        "id": "key_table03",
+        "supportProp": "prop_table_03",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          42.5,
+          0.936,
+          -138.64
+        ],
+        "rotation": [
+          0,
+          0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_03",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "key_shelf04_t3",
+        "supportProp": "prop_shelf_04",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 3,
+        "position": [
+          43.74,
+          1.188,
+          -112.5
+        ],
+        "rotation": [
+          0,
+          -0.4,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_04",
+          "supportType": "metal_shelf",
+          "tier": 3
+        }
+      },
+      {
+        "id": "key_vend02",
+        "supportProp": "prop_vending_02",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          45,
+          0.02,
+          -111.55
+        ],
+        "rotation": [
+          0,
+          0.1,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_02",
+          "supportType": "vending_almond"
+        }
+      },
+      {
+        "id": "key_table04",
+        "supportProp": "prop_table_04",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          5.5,
+          0.936,
+          -120.64
+        ],
+        "rotation": [
+          0,
+          0.3,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_04",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "key_shelf06_t3",
+        "supportProp": "prop_shelf_06",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 3,
+        "position": [
+          18.26,
+          1.188,
+          -174.5
+        ],
+        "rotation": [
+          0,
+          0.4,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_06",
+          "supportType": "metal_shelf",
+          "tier": 3
+        }
+      },
+      {
+        "id": "key_vend03",
+        "supportProp": "prop_vending_03",
+        "supportType": "vending_almond",
+        "surfaceType": "vending_around",
+        "position": [
+          13.2,
+          0.02,
+          -38.55
+        ],
+        "rotation": [
+          0,
+          -0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "prop_vending_03",
+          "supportType": "vending_almond"
+        }
+      },
+      {
+        "id": "key_shelf07_t3",
+        "supportProp": "prop_shelf_07",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 3,
+        "position": [
+          9.26,
+          1.188,
+          8.5
+        ],
+        "rotation": [
+          0,
+          0.2,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_07",
+          "supportType": "metal_shelf",
+          "tier": 3
+        }
+      },
+      {
+        "id": "key_table06",
+        "supportProp": "prop_table_06",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          84.5,
+          0.936,
+          21.36
+        ],
+        "rotation": [
+          0,
+          -0.3,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_06",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "key_shelf08_t3",
+        "supportProp": "prop_shelf_08",
+        "supportType": "metal_shelf",
+        "surfaceType": "shelf_tier",
+        "shelfTier": 3,
+        "position": [
+          84.74,
+          1.188,
+          19.5
+        ],
+        "rotation": [
+          0,
+          0.5,
+          0
+        ],
+        "anchor": {
+          "surface": "shelf_tier",
+          "supportProp": "prop_shelf_08",
+          "supportType": "metal_shelf",
+          "tier": 3
+        }
+      },
+      {
+        "id": "key_table07",
+        "supportProp": "prop_table_07",
+        "supportType": "table",
+        "surfaceType": "table",
+        "position": [
+          157.5,
+          0.936,
+          18.36
+        ],
+        "rotation": [
+          0,
+          0.4,
+          0
+        ],
+        "anchor": {
+          "surface": "table",
+          "supportProp": "prop_table_07",
+          "supportType": "table"
+        }
+      },
+      {
+        "id": "key_mapvend01",
+        "supportProp": "map_vending_01",
+        "supportType": "vending",
+        "surfaceType": "vending_around",
+        "position": [
+          133.55,
+          0.02,
+          -71.5
+        ],
+        "rotation": [
+          0,
+          0.3,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "map_vending_01",
+          "supportType": "vending"
+        }
+      },
+      {
+        "id": "key_mapvend02",
+        "supportProp": "map_vending_02",
+        "supportType": "vending",
+        "surfaceType": "vending_around",
+        "position": [
+          107.25,
+          0.02,
+          -65.3
+        ],
+        "rotation": [
+          0,
+          -0.4,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "map_vending_02",
+          "supportType": "vending"
+        }
+      },
+      {
+        "id": "key_mapvend06",
+        "supportProp": "map_vending_06",
+        "supportType": "vending",
+        "surfaceType": "vending_around",
+        "position": [
+          72.65,
+          0.02,
+          -262.95
+        ],
+        "rotation": [
+          0,
+          0.1,
+          0
+        ],
+        "anchor": {
+          "surface": "vending_around",
+          "supportProp": "map_vending_06",
+          "supportType": "vending"
+        }
+      }
+    ]
+  }
 }

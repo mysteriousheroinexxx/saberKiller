@@ -778,12 +778,19 @@ export class WorldItemManager {
         this._instantiatePlacement(p);
       }
 
+      this.isLoaded = true;
+      if (Array.isArray(this.pendingSpawnItems) && this.pendingSpawnItems.length > 0) {
+        const pending = this.pendingSpawnItems.splice(0, this.pendingSpawnItems.length);
+        for (const itemData of pending) {
+          await this.spawnWorldItem(itemData);
+        }
+      }
+
       this.container.updateMatrixWorld(true);
 
       // 5. Build developer debug bounding box visualization
       this.buildDebugVisuals();
 
-      this.isLoaded = true;
       console.log(`[WorldItemManager] Successfully spawned and validated ${this.items.length} items & props in Level 0`);
       return this.items;
     } catch (err) {
@@ -837,8 +844,10 @@ export class WorldItemManager {
       if (detectedSurface.isValidSupport) {
         targetY = detectedSurface.surfaceY;
       }
+    } else if (surfaceType === 'vending_around' || surfaceType === 'vending') {
+      targetY = (typeof pos[1] === 'number' && Number.isFinite(pos[1])) ? pos[1] : (this.detectFloorHeight(pos[0], pos[2]) + 0.02);
     } else if (surfaceType === 'floor') {
-      targetY = this.detectFloorHeight(pos[0], pos[2]);
+      targetY = p.preservePositionY ? pos[1] : this.detectFloorHeight(pos[0], pos[2]);
     }
 
     wrapper.position.set(pos[0], targetY, pos[2]);
@@ -878,6 +887,8 @@ export class WorldItemManager {
       surfaceName: p.surfaceName || surfaceType,
       shelfTier: p.shelfTier || anchor.tier || null,
       anchor,
+      isDropped: Boolean(p.isDropped),
+      isGenerated: Boolean(p.isGenerated),
       definition: def,
       validation
     };
@@ -891,6 +902,8 @@ export class WorldItemManager {
       surfaceName: p.surfaceName || surfaceType,
       shelfTier: p.shelfTier || anchor.tier || null,
       anchor,
+      isDropped: Boolean(p.isDropped),
+      isGenerated: Boolean(p.isGenerated),
       definition: def,
       override: isOverridden,
       userData: wrapper.userData,
@@ -939,10 +952,18 @@ export class WorldItemManager {
   }
 
   /**
-   * Spawns a physical world item dynamically (e.g. dropped by a player)
+   * Spawns a physical world item dynamically (e.g. generated loot, dispensed item, or dropped by a player)
    */
   async spawnWorldItem(itemData) {
     if (!itemData || !itemData.id) return null;
+
+    if (!this.isLoaded) {
+      if (!Array.isArray(this.pendingSpawnItems)) this.pendingSpawnItems = [];
+      if (!this.pendingSpawnItems.some(p => p.id === itemData.id)) {
+        this.pendingSpawnItems.push(itemData);
+      }
+      return null;
+    }
 
     // If item already exists in scene, unhide it
     const existing = this.getItemById(itemData.id);
@@ -963,20 +984,33 @@ export class WorldItemManager {
       await this.preloadTemplate(def.modelUrl);
     }
 
+    const surfaceType = itemData.surfaceType || itemData.anchor?.surface || 'floor';
+    const anchor = itemData.anchor
+      ? { ...itemData.anchor }
+      : {
+          surface: surfaceType,
+          supportProp: itemData.supportProp || undefined,
+          supportType: itemData.supportType || undefined,
+          tier: itemData.shelfTier || undefined
+        };
+
     const placement = {
       id: itemData.id,
       type: itemData.type,
       position: itemData.position || [0, 0.02, 0],
       rotation: itemData.rotation || [0, 0, 0],
-      surfaceType: 'floor',
-      anchor: { surface: 'floor' },
-      isDropped: true
+      surfaceType,
+      shelfTier: itemData.shelfTier || anchor.tier || undefined,
+      anchor,
+      preservePositionY: true,
+      isDropped: Boolean(itemData.isDropped),
+      isGenerated: Boolean(itemData.isGenerated)
     };
 
     const entry = this._instantiatePlacement(placement);
     if (entry) {
       this.collectedItemIds.delete(itemData.id);
-      console.log(`[WorldItemManager] Spawned dropped world item: ${itemData.id} (${itemData.type}) at [${placement.position.join(', ')}]`);
+      console.log(`[WorldItemManager] Spawned world item: ${itemData.id} (${itemData.type}) on ${surfaceType} at [${placement.position.join(', ')}]`);
     }
     return entry;
   }
@@ -994,16 +1028,21 @@ export class WorldItemManager {
   /**
    * Authoritatively restores all world items to clean authored initial state:
    * - Clears collected IDs
-   * - Removes and disposes all dynamic/dropped items from previous runs
+   * - Removes and disposes all dynamic/dropped/generated loot items from previous runs
    * - Restores all authored placements to visible and uncollected
    */
   resetRunItems() {
     this.collectedItemIds.clear();
+    this.pendingSpawnItems = [];
     const remainingItems = [];
     for (const item of this.items) {
       const isDynamic = Boolean(
         item.userData?.isDropped || item.isDropped ||
-        item.id.startsWith('drop_') || item.id.startsWith('key_level0_spawn_')
+        item.userData?.isGenerated || item.isGenerated ||
+        item.id.startsWith('drop_') ||
+        item.id.startsWith('loot_') ||
+        item.id.startsWith('gen_') ||
+        item.id.startsWith('key_level0_spawn_')
       );
       if (isDynamic) {
         if (item.object && item.object.parent) {

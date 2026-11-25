@@ -5,7 +5,26 @@ import { fileURLToPath } from 'url';
 import { MAX_PLAYERS_PER_ROOM, isValidNumber } from './protocol.js';
 import { InventoryController } from '../js/multiplayer/inventory_controller.js';
 import { isPickupItem, getItemDefinition, ITEM_EFFECTS_CONFIG } from '../js/multiplayer/item_catalog.js';
+import {
+  LOOT_CONFIG,
+  DEFAULT_LOOT_CONFIG,
+  configureLootRules,
+  resetLootConfig,
+  getLootConfigSnapshot,
+  isApprovedKeySlot,
+  shuffleWithRng,
+  selectDistinctHubSlots,
+  pickWeightedConsumableType
+} from '../js/multiplayer/loot_config.js';
 import { RoomSimulation } from './ai/room_simulation.js';
+
+export {
+  LOOT_CONFIG,
+  DEFAULT_LOOT_CONFIG,
+  configureLootRules,
+  resetLootConfig,
+  getLootConfigSnapshot
+};
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -199,6 +218,9 @@ export class RoomManager {
       healthPacksFrozen: false,
       startingPlayerCount: 0,
       availableHealthPackCount: 0,
+      matchGeneration: 1,
+      lootRng: (options && typeof options.rng === 'function') ? options.rng : Math.random,
+      lootSummary: null,
       healthPackMultiplier: (options && typeof options.healthPackMultiplier === 'number') ? options.healthPackMultiplier : (SURVIVAL_CONFIG.healthPacksPerStartingPlayer || 3),
       saberDifficulty: (options && typeof options.difficulty === 'string') ? ((options.difficulty.toUpperCase() === 'HARD') ? 'HARD' : 'NORMAL') : (SURVIVAL_CONFIG.saberDifficulty || 'NORMAL'),
       simulation: null
@@ -254,6 +276,9 @@ export class RoomManager {
     // Fixed Ammunition Economy: Initialize and enforce Level 0 room budget
     this._initializeRoomAmmo(room);
 
+    // Configurable Environmental Loot: Generate initial run consumables across Level 0 furniture & vending hubs
+    this._initializeRoomLoot(room);
+
     // Level 0 Key & Exit Door: Configure physical keys based on starting player count
     const startingCount = (options && typeof options.startingPlayers === 'number' && options.startingPlayers > 0)
       ? options.startingPlayers
@@ -267,11 +292,14 @@ export class RoomManager {
       this._initializeRoomSimulation(room);
     }
 
-    // Collect any world items that are unavailable from the start (e.g. capped health packs)
+    // Collect any world items that are unavailable from the start and any dynamically spawned items
     const collectedItems = [];
+    const spawnedItems = [];
     for (const [id, item] of room.worldItems) {
       if (item.isPickup && !item.available) {
         collectedItems.push(id);
+      } else if ((item.isDropped || item.isDispensed || item.isGenerated) && item.available) {
+        spawnedItems.push(item);
       }
     }
 
@@ -284,7 +312,7 @@ export class RoomManager {
       totalPlayers: 1,
       layoutRevision: room.layoutRevision,
       collectedItems,
-      spawnedItems: [],
+      spawnedItems,
       doors: this.serializeDoors(room),
       inventory: player.inventory.serialize()
     };
@@ -300,7 +328,81 @@ export class RoomManager {
       : (SURVIVAL_CONFIG.healthPacksPerStartingPlayer || 3);
     const requiredCount = room.startingPlayerCount * multiplier;
 
-    // Collect all existing first_aid items registered in room.worldItems
+    const envSlots = room.rawLayoutData?.environmentalLoot?.healthPackSlots;
+    const rng = (typeof room.lootRng === 'function') ? room.lootRng : Math.random;
+
+    if (Array.isArray(envSlots) && envSlots.length > 0) {
+      const gen = room.matchGeneration || 1;
+      const chosenSlots = LOOT_CONFIG.healthPackRules?.randomizeHealthPacks
+        ? selectDistinctHubSlots(envSlots, requiredCount, rng, LOOT_CONFIG.healthPackRules?.preferDistinctHubs !== false)
+        : envSlots.slice(0, requiredCount);
+      const chosenSlotIds = new Set(chosenSlots.map(s => s.id));
+
+      let active = 0;
+      for (const slot of envSlots) {
+        const isChosen = chosenSlotIds.has(slot.id) && active < requiredCount;
+        const itemId = `loot_g${gen}_${slot.id}`;
+        const item = {
+          id: itemId,
+          slotId: slot.id,
+          type: 'first_aid',
+          category: 'medical',
+          position: Array.isArray(slot.position) ? [...slot.position] : [0, 0.02, 0],
+          rotation: Array.isArray(slot.rotation) ? [...slot.rotation] : [0, 0, 0],
+          surfaceType: slot.surfaceType || slot.anchor?.surface || 'floor',
+          shelfTier: slot.shelfTier || slot.anchor?.tier || null,
+          supportProp: slot.supportProp || slot.anchor?.supportProp || null,
+          supportType: slot.supportType || slot.anchor?.supportType || null,
+          anchor: slot.anchor ? { ...slot.anchor } : { surface: slot.surfaceType || 'floor' },
+          isPickup: true,
+          available: isChosen,
+          cappedUnavailable: !isChosen,
+          collectedReason: isChosen ? null : 'SUPPLY_CAPPED',
+          isGenerated: true,
+          collectedBy: null,
+          collectedAt: null
+        };
+        room.worldItems.set(itemId, item);
+        if (isChosen) active++;
+      }
+
+      // If requiredCount exceeds authored healthPackSlots (e.g. high custom multiplier), expand along approved hubs
+      let extraIdx = 1;
+      while (active < requiredCount) {
+        const baseSlot = envSlots[(extraIdx - 1) % envSlots.length];
+        const genId = `loot_g${gen}_hp_extra_${extraIdx}`;
+        const basePos = Array.isArray(baseSlot.position) ? baseSlot.position : [44.5, 0.936, -185.35];
+        const offset = 0.16 * (Math.floor((extraIdx - 1) / envSlots.length) + 1);
+        const item = {
+          id: genId,
+          slotId: baseSlot.id,
+          type: 'first_aid',
+          category: 'medical',
+          position: [+(basePos[0] + offset).toFixed(3), basePos[1], basePos[2]],
+          rotation: Array.isArray(baseSlot.rotation) ? [...baseSlot.rotation] : [0, 0, 0],
+          surfaceType: baseSlot.surfaceType || 'floor',
+          shelfTier: baseSlot.shelfTier || null,
+          supportProp: baseSlot.supportProp || null,
+          supportType: baseSlot.supportType || null,
+          anchor: baseSlot.anchor ? { ...baseSlot.anchor } : { surface: baseSlot.surfaceType || 'floor' },
+          isPickup: true,
+          available: true,
+          cappedUnavailable: false,
+          collectedReason: null,
+          isGenerated: true,
+          collectedBy: null,
+          collectedAt: null
+        };
+        room.worldItems.set(genId, item);
+        active++;
+        extraIdx++;
+      }
+
+      room.availableHealthPackCount = active;
+      return active;
+    }
+
+    // Legacy explicit-layout path (used by mockLayouts in unit tests)
     const firstAidItems = [];
     for (const [id, item] of room.worldItems) {
       if (item.type === 'first_aid') {
@@ -308,7 +410,6 @@ export class RoomManager {
       }
     }
 
-    // Authored candidate positions across Level 0 to scale first_aid supply
     const candidateLocations = [
       { id: 'floor_first_aid_01', position: [43.7, 0.0, -188.90], rotation: [0.0, 0.3, 0.0] },
       { id: 'table_first_aid_01', position: [44.75, 0.936, -185.45], rotation: [0.0, 0.1, 0.0] },
@@ -328,7 +429,6 @@ export class RoomManager {
       { id: 'junction_first_aid_01', position: [55.0, 0.02, -177.0], rotation: [0.0, 0.7, 0.0] }
     ];
 
-    // Register all candidate locations into room.worldItems if not already present
     for (const cand of candidateLocations) {
       if (!room.worldItems.has(cand.id)) {
         const item = {
@@ -348,7 +448,6 @@ export class RoomManager {
       }
     }
 
-    // If still not enough (e.g. high multiplier or many players), dynamically generate
     while (firstAidItems.length < requiredCount) {
       const idx = firstAidItems.length + 1;
       const genId = `gen_first_aid_${idx}`;
@@ -386,6 +485,94 @@ export class RoomManager {
     }
     room.availableHealthPackCount = active;
     return active;
+  }
+
+  /**
+   * Authoritatively spawns randomized environmental consumables (batteries, almond water,
+   * energy drinks, sanity pills) at designated Level 0 furniture & vending slots.
+   */
+  _initializeRoomLoot(room) {
+    const slots = room.rawLayoutData?.environmentalLoot?.consumableSlots;
+    if (!Array.isArray(slots) || slots.length === 0 || !LOOT_CONFIG.enabled) {
+      room.lootSummary = {
+        matchGeneration: room.matchGeneration || 1,
+        totalConsumables: 0,
+        byType: {},
+        healthPackCount: room.availableHealthPackCount || 0
+      };
+      return [];
+    }
+
+    const gen = room.matchGeneration || 1;
+    const rng = (typeof room.lootRng === 'function') ? room.lootRng : Math.random;
+    const minCount = Math.min(slots.length, Math.max(0, LOOT_CONFIG.minConsumables || 0));
+    const maxCount = Math.min(slots.length, Math.max(minCount, LOOT_CONFIG.maxConsumables ?? slots.length));
+
+    let chosenSlots = [];
+    const unchosenSlots = [];
+    for (const slot of slots) {
+      const chance = (typeof slot.spawnChance === 'number') ? slot.spawnChance : LOOT_CONFIG.consumableSlotSpawnChance;
+      if (rng() < chance) {
+        chosenSlots.push(slot);
+      } else {
+        unchosenSlots.push(slot);
+      }
+    }
+
+    if (chosenSlots.length < minCount) {
+      const extraNeeded = minCount - chosenSlots.length;
+      const extras = selectDistinctHubSlots(unchosenSlots, extraNeeded, rng, true);
+      chosenSlots.push(...extras);
+    }
+    if (chosenSlots.length > maxCount) {
+      chosenSlots = shuffleWithRng(chosenSlots, rng).slice(0, maxCount);
+    }
+
+    const byType = {};
+    const spawned = [];
+    for (const slot of chosenSlots) {
+      const itemType = pickWeightedConsumableType(
+        slot.allowedTypes,
+        LOOT_CONFIG.consumableWeights,
+        byType,
+        LOOT_CONFIG.maxPerType,
+        rng
+      );
+      if (!itemType) continue;
+
+      const def = getItemDefinition(itemType);
+      const itemId = `loot_g${gen}_${slot.id}`;
+      const item = {
+        id: itemId,
+        slotId: slot.id,
+        type: itemType,
+        category: def?.category || 'consumable',
+        position: Array.isArray(slot.position) ? [...slot.position] : [0, 0.02, 0],
+        rotation: Array.isArray(slot.rotation) ? [...slot.rotation] : [0, 0, 0],
+        surfaceType: slot.surfaceType || slot.anchor?.surface || 'floor',
+        shelfTier: slot.shelfTier || slot.anchor?.tier || null,
+        supportProp: slot.supportProp || slot.anchor?.supportProp || null,
+        supportType: slot.supportType || slot.anchor?.supportType || null,
+        anchor: slot.anchor ? { ...slot.anchor } : { surface: slot.surfaceType || 'floor' },
+        isPickup: true,
+        available: true,
+        isGenerated: true,
+        collectedBy: null,
+        collectedAt: null
+      };
+
+      room.worldItems.set(itemId, item);
+      byType[itemType] = (byType[itemType] || 0) + 1;
+      spawned.push(item);
+    }
+
+    room.lootSummary = {
+      matchGeneration: gen,
+      totalConsumables: spawned.length,
+      byType,
+      healthPackCount: room.availableHealthPackCount || 0
+    };
+    return spawned;
   }
 
   freezeHealthPackSupply(roomCode, startingCount = 1) {
@@ -971,7 +1158,8 @@ export class RoomManager {
     const dropZ = +(pPos.z - Math.cos(yaw) * 0.9).toFixed(3);
     const dropY = 0.02; // Rest on floor
 
-    const dropId = `drop_${item.typeId}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    this._dropSeq = (this._dropSeq || 0) + 1;
+    const dropId = `drop_${item.typeId}_${Date.now()}_${this._dropSeq}`;
     const worldItem = {
       id: dropId,
       type: item.typeId,
@@ -1273,6 +1461,9 @@ export class RoomManager {
 
     // Freeze Health Pack economy using starting player count at actual match start
     this._freezeRoomHealthPacks(room, room.players.size);
+
+    // Generate fresh environmental consumable loot distribution for this run
+    this._initializeRoomLoot(room);
 
     // Reset exit door to locked
     const door = room.doors?.get('level0_exit_door');
@@ -1772,7 +1963,70 @@ export class RoomManager {
     room.requiredKeyCount = requiredKeys;
     room.startingPlayerCount = startingPlayerCount;
 
-    // Candidate key spawn positions across Level 0 exploration locations
+    const envKeySlots = room.rawLayoutData?.environmentalLoot?.keySlots;
+    const rng = (typeof room.lootRng === 'function') ? room.lootRng : Math.random;
+
+    if (Array.isArray(envKeySlots) && envKeySlots.length > 0) {
+      // Strictly filter key slots so keys ONLY spawn on or immediately around
+      // metal_shelf, table, or vending/vending_almond (NEVER random floor points).
+      const approvedSlots = LOOT_CONFIG.keyRules?.enforceSurfaceRestriction !== false
+        ? envKeySlots.filter(isApprovedKeySlot)
+        : [...envKeySlots];
+
+      if (approvedSlots.length < requiredKeys) {
+        throw new Error(`Insufficient approved key slots (${approvedSlots.length}) for required key count (${requiredKeys})`);
+      }
+
+      const gen = room.matchGeneration || 1;
+      const chosenSlots = LOOT_CONFIG.keyRules?.randomizeKeys !== false
+        ? selectDistinctHubSlots(approvedSlots, requiredKeys, rng, LOOT_CONFIG.keyRules?.preferDistinctHubs !== false)
+        : approvedSlots.slice(0, requiredKeys);
+      const chosenIds = new Set(chosenSlots.map(s => s.id));
+
+      const activeKeys = [];
+      for (const slot of approvedSlots) {
+        const isChosen = chosenIds.has(slot.id) && activeKeys.length < requiredKeys;
+        const keyId = `loot_g${gen}_${slot.id}`;
+        const keyItem = {
+          id: keyId,
+          slotId: slot.id,
+          type: 'doorKey',
+          category: 'key',
+          position: Array.isArray(slot.position) ? [...slot.position] : [0, 0.02, 0],
+          rotation: Array.isArray(slot.rotation) ? [...slot.rotation] : [0, 0, 0],
+          surfaceType: slot.surfaceType || slot.anchor?.surface || 'floor',
+          shelfTier: slot.shelfTier || slot.anchor?.tier || null,
+          supportProp: slot.supportProp || slot.anchor?.supportProp || null,
+          supportType: slot.supportType || slot.anchor?.supportType || null,
+          anchor: slot.anchor ? { ...slot.anchor } : { surface: slot.surfaceType || 'floor' },
+          isPickup: true,
+          available: isChosen,
+          cappedUnavailable: !isChosen,
+          collectedReason: isChosen ? null : 'SUPPLY_CAPPED',
+          isGenerated: true,
+          collectedBy: null,
+          collectedAt: null
+        };
+        room.worldItems.set(keyId, keyItem);
+        if (isChosen) {
+          activeKeys.push(keyItem);
+        }
+      }
+
+      // Guard against any legacy non-environmental floor keys still present
+      for (const [id, item] of room.worldItems) {
+        if (item.type === 'doorKey' && !activeKeys.some(ak => ak.id === item.id)) {
+          item.available = false;
+          item.isPickup = true;
+          item.cappedUnavailable = true;
+          item.collectedReason = 'SUPPLY_CAPPED';
+        }
+      }
+
+      return activeKeys;
+    }
+
+    // Legacy explicit-layout path (used by mockLayouts in unit tests like key_exit.test.js #2)
     const candidateLocations = [
       { id: 'shelf_door_key_tier3', position: [44.5, 1.188, -189.50], rotation: [0, -0.3, 0] },
       { id: 'table_door_key_01', position: [44.15, 0.936, -185.20], rotation: [0.0, 0.4, 0.0] },
@@ -1784,7 +2038,6 @@ export class RoomManager {
     const activeKeys = [];
     const newlyGeneratedKeys = [];
 
-    // Ensure we have enough key definitions in room.worldItems
     for (const cand of candidateLocations) {
       if (activeKeys.length >= requiredKeys) break;
       let keyItem = room.worldItems.get(cand.id);
@@ -1818,7 +2071,6 @@ export class RoomManager {
       activeKeys.push(keyItem);
     }
 
-    // If there are still not enough (e.g. 6+ players), dynamically generate additional keys
     while (activeKeys.length < requiredKeys) {
       const idx = activeKeys.length + 1;
       const genId = `gen_door_key_${idx}`;
@@ -1841,9 +2093,6 @@ export class RoomManager {
       newlyGeneratedKeys.push(keyItem);
     }
 
-    // CRITICAL: Any existing keys in room.worldItems that are NOT active
-    // MUST NOT be deleted (which causes "Item does not exist in room layout").
-    // Instead mark them as supply-capped / unavailable so they are reported in collectedItems and hidden.
     for (const [id, item] of room.worldItems) {
       if (item.type === 'doorKey' && !activeKeys.some(ak => ak.id === item.id)) {
         item.available = false;
