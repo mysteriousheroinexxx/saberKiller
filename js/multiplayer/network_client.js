@@ -24,9 +24,11 @@ export const MSG_TYPES = {
   INVENTORY_SWAP_REQUEST: 'INVENTORY_SWAP_REQUEST',
   VENDING_DISPENSE_REQUEST: 'VENDING_DISPENSE_REQUEST',
   VENDING_DISPENSE_RESPONSE: 'VENDING_DISPENSE_RESPONSE',
-  // Health, Downed & Revival packet types
+  // Health, Downed, Sanity & Status packet types
   PLAYER_DAMAGE_REQUEST: 'PLAYER_DAMAGE_REQUEST',
   PLAYER_HEALTH_UPDATE: 'PLAYER_HEALTH_UPDATE',
+  PLAYER_SANITY_UPDATE: 'PLAYER_SANITY_UPDATE',
+  PLAYER_SPEED_BOOST_UPDATE: 'PLAYER_SPEED_BOOST_UPDATE',
   PLAYER_DOWNED: 'PLAYER_DOWNED',
   PLAYER_ELIMINATED: 'PLAYER_ELIMINATED',
   PLAYER_REVIVE_REQUEST: 'PLAYER_REVIVE_REQUEST',
@@ -98,6 +100,8 @@ export class NetworkClient {
     this.onItemSpawned = null;
     this.onVendingDispenseResponse = null;
     this.onHealthUpdate = null;
+    this.onPlayerSanityUpdate = null;
+    this.onPlayerSpeedBoostUpdate = null;
     this.onPlayerDowned = null;
     this.onPlayerEliminated = null;
     this.onPlayerReviveResponse = null;
@@ -308,6 +312,14 @@ export class NetworkClient {
 
       case MSG_TYPES.PLAYER_HEALTH_UPDATE:
         if (this.onHealthUpdate) this.onHealthUpdate(payload);
+        break;
+
+      case MSG_TYPES.PLAYER_SANITY_UPDATE:
+        if (this.onPlayerSanityUpdate) this.onPlayerSanityUpdate(payload);
+        break;
+
+      case MSG_TYPES.PLAYER_SPEED_BOOST_UPDATE:
+        if (this.onPlayerSpeedBoostUpdate) this.onPlayerSpeedBoostUpdate(payload);
         break;
 
       case MSG_TYPES.PLAYER_DOWNED:

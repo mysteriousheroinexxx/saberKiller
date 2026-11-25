@@ -276,6 +276,19 @@ export class MPManager {
         } else if (payload.effect && this.localPlayer) {
           this.localPlayer.applyItemEffect(payload.effect);
         }
+        if (payload.sanityUpdate && window.sanityController && typeof window.sanityController.applyServerState === 'function') {
+          window.sanityController.applyServerState(payload.sanityUpdate);
+          if (window.sanityHUD && typeof window.sanityHUD.update === 'function') {
+            window.sanityHUD.update();
+          }
+        }
+        if (payload.staminaUpdate && this.localPlayer && typeof payload.staminaUpdate.stamina === 'number') {
+          this.localPlayer.stamina = Math.min(this.localPlayer.maxStamina, payload.staminaUpdate.stamina);
+          this.localPlayer._staminaExhausted = false;
+        }
+        if (payload.speedBoostUpdate && this.localPlayer) {
+          this.localPlayer.applyServerSpeedBoost(payload.speedBoostUpdate);
+        }
         if (this.localPlayer) {
           this.localPlayer.onItemUseAccepted(payload);
         }
@@ -285,6 +298,27 @@ export class MPManager {
         }
       }
       if (this.ui.onItemUseResponse) this.ui.onItemUseResponse(payload);
+    };
+
+    this.network.onPlayerSanityUpdate = (payload) => {
+      if (payload && (!payload.playerId || payload.playerId === this.myPlayerId)) {
+        if (window.sanityController && typeof window.sanityController.applyServerState === 'function') {
+          window.sanityController.applyServerState(payload);
+        }
+        if (window.sanityHUD && typeof window.sanityHUD.update === 'function') {
+          window.sanityHUD.update();
+        }
+      }
+      if (this.ui.onPlayerSanityUpdate) this.ui.onPlayerSanityUpdate(payload);
+    };
+
+    this.network.onPlayerSpeedBoostUpdate = (payload) => {
+      if (payload && (!payload.playerId || payload.playerId === this.myPlayerId)) {
+        if (this.localPlayer && typeof this.localPlayer.applyServerSpeedBoost === 'function') {
+          this.localPlayer.applyServerSpeedBoost(payload);
+        }
+      }
+      if (this.ui.onPlayerSpeedBoostUpdate) this.ui.onPlayerSpeedBoostUpdate(payload);
     };
 
     this.network.onVendingDispenseResponse = (payload) => {
@@ -459,11 +493,16 @@ export class MPManager {
         }
       }
 
-      // 6. Reset HUDs & Inventory UI
+      // 6. Reset HUDs, Sanity & Inventory UI
       if (window.inventoryUI && typeof window.inventoryUI.render === 'function') {
         window.inventoryUI.render();
       }
-      if (window.sanityHud && typeof window.sanityHud.updateSanity === 'function') {
+      if (window.sanityController && typeof window.sanityController.reset === 'function') {
+        window.sanityController.reset();
+      }
+      if (window.sanityHUD && typeof window.sanityHUD.update === 'function') {
+        window.sanityHUD.update();
+      } else if (window.sanityHud && typeof window.sanityHud.updateSanity === 'function') {
         window.sanityHud.updateSanity(100);
       }
       if (window.survivalHud && typeof window.survivalHud.updateHealth === 'function') {
@@ -592,6 +631,7 @@ export class MPManager {
     this.itemManager?.resetRunItems();
     this.saberManager?.reset();
     this.localPlayer?.resetCombatState();
+    window.sanityController?.reset();
     window.interactionManager?.reset();
     this._updatePlayerCount();
   }
@@ -612,6 +652,7 @@ export class MPManager {
     this.itemManager?.resetRunItems();
     this.saberManager?.reset();
     this.localPlayer?.resetCombatState();
+    window.sanityController?.reset();
     window.interactionManager?.reset();
     this._updatePlayerCount();
   }

@@ -642,7 +642,13 @@ roomManager.onRoomEvents = (room, events) => {
   if (!room || !room.players || !Array.isArray(events)) return;
   for (const evt of events) {
     for (const [_, p] of room.players) {
-      if (evt.type === MSG_TYPES.INVENTORY_UPDATE && evt.payload?.playerId && p.id !== evt.payload.playerId) {
+      if (
+        (evt.type === MSG_TYPES.INVENTORY_UPDATE ||
+         evt.type === MSG_TYPES.PLAYER_SANITY_UPDATE ||
+         evt.type === MSG_TYPES.PLAYER_SPEED_BOOST_UPDATE) &&
+        evt.payload?.playerId &&
+        p.id !== evt.payload.playerId
+      ) {
         continue;
       }
       send(p.ws, evt.type, evt.payload);
@@ -1056,6 +1062,9 @@ wss.on('connection', (ws, req) => {
             itemName: res.itemName,
             effect: res.effect,
             ammoUpdate: res.ammoUpdate,
+            sanityUpdate: res.sanityUpdate || null,
+            staminaUpdate: res.staminaUpdate || null,
+            speedBoostUpdate: res.speedBoostUpdate || null,
             remainingQuantity: res.remainingQuantity
           };
           if (res.room?.useRequests) {
@@ -1063,6 +1072,10 @@ wss.on('connection', (ws, req) => {
             if (res.room.useRequests.size > 500) res.room.useRequests.delete(res.room.useRequests.keys().next().value);
           }
           send(ws, MSG_TYPES.ITEM_USE_RESPONSE, acceptPayload);
+
+          if (res.sanityUpdate) {
+            send(ws, MSG_TYPES.PLAYER_SANITY_UPDATE, res.sanityUpdate);
+          }
 
           send(ws, MSG_TYPES.INVENTORY_UPDATE, {
             requestId,
@@ -1254,6 +1267,22 @@ wss.on('connection', (ws, req) => {
               players: res.players || [],
               inventory: p.inventory ? p.inventory.serialize() : null,
               matchGeneration: res.matchGeneration
+            });
+            send(p.ws, MSG_TYPES.PLAYER_SANITY_UPDATE, {
+              playerId: p.id,
+              sanity: p.sanity ?? 100,
+              maxSanity: p.maxSanity ?? 100,
+              state: 'NORMAL',
+              isPaused: false,
+              isChased: false,
+              drainRatePerSecond: 0.035,
+              reason: 'MATCH_STARTED'
+            });
+            send(p.ws, MSG_TYPES.PLAYER_SPEED_BOOST_UPDATE, {
+              playerId: p.id,
+              active: false,
+              speedMultiplier: 1.0,
+              remainingSeconds: 0
             });
           }
         }

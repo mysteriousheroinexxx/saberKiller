@@ -2121,7 +2121,9 @@ function loop(timestamp) {
 
   // Survival Mode Sanity Simulation and Visual Effects
   if (sanityController) {
-    sanityController.update(dt);
+    if (!sanityController.hasServerSync) {
+      sanityController.update(dt);
+    }
     updateSanityVisualEffects(dt);
   }
 

@@ -32,6 +32,7 @@ export class RoomSimulation {
 
     // Callbacks to communicate with RoomManager and Network Server
     this.onPlayerDamaged = options.onPlayerDamaged || null;
+    this.onSimulationStep = options.onSimulationStep || null;
     this.broadcastMessage = options.broadcastMessage || null;
     this.sendDevMessage = options.sendDevMessage || null;
 
@@ -333,6 +334,12 @@ export class RoomSimulation {
     // 1. Advance Yuka spatial simulation, sensory checks, FSMs, and Director
     this.sim.update(delta);
 
+    // 1b. Determine per-player active Saber CHASE status using actual AI state & target
+    if (this.onSimulationStep) {
+      const chasedPlayers = this.getChasedPlayersMap();
+      this.onSimulationStep(delta, chasedPlayers);
+    }
+
     // 2. Build authoritative monster snapshot
     const monsterSnapshot = this.buildMonsterSnapshot();
 
@@ -346,6 +353,24 @@ export class RoomSimulation {
       const devTelemetry = this.buildDevTelemetry();
       this.sendDevMessage(AI_PACKET_TYPES.DEV_AI_TELEMETRY, devTelemetry);
     }
+  }
+
+  /**
+   * Returns a Map<playerId, number> counting how many Sabers are currently in active CHASE state pursuing each survivor.
+   */
+  getChasedPlayersMap() {
+    const chased = new Map();
+    const sabers = [this.sim?.saberAlpha, this.sim?.saberBeta];
+    for (const saber of sabers) {
+      if (!saber || saber.isDead) continue;
+      if (saber.getCurrentStateName() !== SABER_STATES.CHASE) continue;
+      const target = saber.targetEntity;
+      if (!target || target.isDead) continue;
+      const targetId = target.id || target.name;
+      if (!targetId) continue;
+      chased.set(targetId, (chased.get(targetId) || 0) + 1);
+    }
+    return chased;
   }
 
   buildMonsterSnapshot() {

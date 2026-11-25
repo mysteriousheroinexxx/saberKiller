@@ -85,10 +85,10 @@ export const ITEM_DEFINITIONS = {
     droppable: true,
     metadata: {
       staminaBoost: 100,
-      sanityRestore: 15,
-      speedMultiplier: 1.25,
+      restoreFullStamina: true,
+      speedMultiplier: 1.27,
       durationSeconds: 15,
-      description: 'Caffeinated Almond Water infusion. Temporarily elevates sprint endurance.'
+      description: 'Restores stamina to maximum and boosts movement speed to 1.27x for a limited time.'
     }
   },
 
@@ -309,6 +309,57 @@ export function isPickupItem(typeId) {
 }
 
 /**
+ * Configurable Energy Drink gameplay parameters (speed multiplier & duration).
+ * Intentionally never restores sanity.
+ */
+export const DEFAULT_ENERGY_DRINK_CONFIG = Object.freeze({
+  staminaBoost: 100,
+  restoreFullStamina: true,
+  speedMultiplier: 1.27,
+  durationSeconds: 15
+});
+
+export const ENERGY_DRINK_CONFIG = {
+  ...DEFAULT_ENERGY_DRINK_CONFIG
+};
+
+/**
+ * Configures Energy Drink parameters cleanly for server/client/tests.
+ */
+export function configureEnergyDrinkRules(opts = {}) {
+  if (typeof opts.speedMultiplier === 'number' && Number.isFinite(opts.speedMultiplier) && opts.speedMultiplier >= 1.0) {
+    ENERGY_DRINK_CONFIG.speedMultiplier = opts.speedMultiplier;
+  }
+  if (typeof opts.durationSeconds === 'number' && Number.isFinite(opts.durationSeconds) && opts.durationSeconds > 0) {
+    ENERGY_DRINK_CONFIG.durationSeconds = opts.durationSeconds;
+  }
+  if (typeof opts.staminaBoost === 'number' && Number.isFinite(opts.staminaBoost) && opts.staminaBoost >= 0) {
+    ENERGY_DRINK_CONFIG.staminaBoost = opts.staminaBoost;
+  }
+  if (typeof opts.restoreFullStamina === 'boolean') {
+    ENERGY_DRINK_CONFIG.restoreFullStamina = opts.restoreFullStamina;
+  }
+
+  ITEM_DEFINITIONS.energy_drink.metadata.staminaBoost = ENERGY_DRINK_CONFIG.staminaBoost;
+  ITEM_DEFINITIONS.energy_drink.metadata.restoreFullStamina = ENERGY_DRINK_CONFIG.restoreFullStamina;
+  ITEM_DEFINITIONS.energy_drink.metadata.speedMultiplier = ENERGY_DRINK_CONFIG.speedMultiplier;
+  ITEM_DEFINITIONS.energy_drink.metadata.durationSeconds = ENERGY_DRINK_CONFIG.durationSeconds;
+
+  ITEM_EFFECTS_CONFIG.energy_drink.staminaBoost = ENERGY_DRINK_CONFIG.staminaBoost;
+  ITEM_EFFECTS_CONFIG.energy_drink.restoreFullStamina = ENERGY_DRINK_CONFIG.restoreFullStamina;
+  ITEM_EFFECTS_CONFIG.energy_drink.speedMultiplier = ENERGY_DRINK_CONFIG.speedMultiplier;
+  ITEM_EFFECTS_CONFIG.energy_drink.durationSeconds = ENERGY_DRINK_CONFIG.durationSeconds;
+  ITEM_EFFECTS_CONFIG.energy_drink.description =
+    `Restores stamina to 100% and boosts movement speed to ${ENERGY_DRINK_CONFIG.speedMultiplier}x for ${ENERGY_DRINK_CONFIG.durationSeconds}s`;
+
+  return { ...ENERGY_DRINK_CONFIG };
+}
+
+export function resetEnergyDrinkConfig() {
+  return configureEnergyDrinkRules(DEFAULT_ENERGY_DRINK_CONFIG);
+}
+
+/**
  * Central consumable effect configuration
  */
 export const ITEM_EFFECTS_CONFIG = {
@@ -329,11 +380,11 @@ export const ITEM_EFFECTS_CONFIG = {
     description: 'Restores 60 Sanity'
   },
   energy_drink: {
-    staminaBoost: 100,
-    speedMultiplier: 1.25,
-    durationSeconds: 15,
-    sanityRestore: 15,
-    description: 'Boosts stamina by 100 and movement speed by +25% for 15s'
+    staminaBoost: ENERGY_DRINK_CONFIG.staminaBoost,
+    restoreFullStamina: ENERGY_DRINK_CONFIG.restoreFullStamina,
+    speedMultiplier: ENERGY_DRINK_CONFIG.speedMultiplier,
+    durationSeconds: ENERGY_DRINK_CONFIG.durationSeconds,
+    description: 'Restores stamina to 100% and boosts movement speed to 1.27x for 15s'
   },
   aa_battery: {
     batteryCharge: 50,

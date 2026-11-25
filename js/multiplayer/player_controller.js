@@ -532,7 +532,7 @@ export class LocalPlayerController {
     if (typeof effect.healAmount === 'number') {
       this.heal(effect.healAmount);
     }
-    if (typeof effect.sanityRestore === 'number' && window.sanityController) {
+    if (typeof effect.sanityRestore === 'number' && effect.sanityRestore > 0 && window.sanityController) {
       window.sanityController.restoreSanity(effect.sanityRestore);
     }
     if (typeof effect.batteryCharge === 'number') {
@@ -546,14 +546,40 @@ export class LocalPlayerController {
       }
       this._notifyStateChange();
     }
-    if (typeof effect.staminaBoost === 'number') {
+    if (effect.restoreFullStamina || (typeof effect.staminaBoost === 'number' && effect.staminaBoost >= this.maxStamina)) {
+      this.stamina = this.maxStamina;
+      this._staminaExhausted = false;
+    } else if (typeof effect.staminaBoost === 'number' && effect.staminaBoost > 0) {
       this.stamina = Math.min(this.maxStamina, this.stamina + effect.staminaBoost);
       this._staminaExhausted = false;
     }
-    if (typeof effect.speedMultiplier === 'number') {
+    if (typeof effect.speedMultiplier === 'number' && effect.speedMultiplier >= 1.0) {
+      // Assign non-stacking speed multiplier and refresh temporary duration
       this.speedMultiplier = effect.speedMultiplier;
-      this.speedBoostTimer = Math.max(this.speedBoostTimer, effect.durationSeconds || 15);
+      const dur = (typeof effect.durationSeconds === 'number' && effect.durationSeconds > 0)
+        ? effect.durationSeconds
+        : 15;
+      this.speedBoostTimer = dur;
     }
+  }
+
+  applyServerSpeedBoost(payload) {
+    if (!payload || typeof payload !== 'object') return;
+    if (!payload.active) {
+      this.speedMultiplier = 1.0;
+      this.speedBoostTimer = 0.0;
+      return;
+    }
+    if (typeof payload.speedMultiplier === 'number' && payload.speedMultiplier >= 1.0) {
+      this.speedMultiplier = payload.speedMultiplier;
+    }
+    if (typeof payload.remainingSeconds === 'number' && payload.remainingSeconds > 0) {
+      this.speedBoostTimer = payload.remainingSeconds;
+    }
+  }
+
+  getEffectiveMoveSpeed() {
+    return (this.isSprinting ? this.sprintSpeed : this.speed) * this.speedMultiplier;
   }
 
   onItemUseAccepted(payload) {
@@ -1189,7 +1215,7 @@ export class LocalPlayerController {
       }
     }
 
-    const curSpeed = (this.isSprinting ? this.sprintSpeed : this.speed) * this.speedMultiplier;
+    const curSpeed = this.getEffectiveMoveSpeed();
 
     if (len > 0) {
       fx /= len; fz /= len;

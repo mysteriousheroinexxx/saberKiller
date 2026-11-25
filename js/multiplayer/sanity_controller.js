@@ -33,8 +33,17 @@ export const DEFAULT_SANITY_CONFIG = Object.freeze({
   initialSanity: 100.0,
   maxSanity: 100.0,
   minSanity: 0.0,
-  // 0.00035 per 0.01s in Budget-Backrooms = 0.035 per second (~47.6 minutes from 100 to 0)
+  // 0.00035 per 0.01s in Budget-Backrooms P_Player.uasset = 0.035 per second (~47.6 minutes from 100 to 0)
   passiveDrainPerSecond: 0.035,
+  // Hardcore mode triples baseline drain in Budget-Backrooms (0.105 / sec)
+  hardcorePassiveDrainPerSecond: 0.105,
+  // Active enemy chase/encounter drain in Budget-Backrooms Howler.uasset:
+  // 0.0025 per 0.01s = 0.25 per second (~7.14x normal passive drain)
+  chaseDrainPerSecond: 0.25,
+  // Hardcore active chase drain in Budget-Backrooms Howler.uasset (0.0075 per 0.01s = 0.75 / sec)
+  hardcoreChaseDrainPerSecond: 0.75,
+  // Pessi_Almond.uasset pauses sanity drain for 4.0 seconds upon consumption
+  almondPauseDurationSeconds: 4.0,
   visualFxThreshold: 80.0,
   panicThreshold: 10.0,
   depletedThreshold: 0.0,
@@ -56,6 +65,8 @@ export class SanityController {
     this.isPaused = false;
     this.isRegenerating = false;
     this.isDepleted = false;
+    this.isChased = false;
+    this.hasServerSync = false;
 
     this.state = this._calculateState(this.currentSanity);
 
@@ -224,12 +235,53 @@ export class SanityController {
   }
 
   /**
+   * Marks whether this player is currently actively chased by a Saber.
+   * @param {boolean} chased
+   */
+  setChased(chased) {
+    const next = Boolean(chased);
+    if (this.isChased !== next) {
+      this.isChased = next;
+      this.emit(SANITY_EVENTS.CHANGED, this.getSnapshot());
+    }
+  }
+
+  /**
+   * Applies an authoritative sanity update snapshot from the server.
+   * @param {Object} payload
+   */
+  applyServerState(payload) {
+    if (!payload || typeof payload !== 'object') return;
+    this.hasServerSync = true;
+    const prev = this.currentSanity;
+    if (typeof payload.maxSanity === 'number' && Number.isFinite(payload.maxSanity) && payload.maxSanity > 0) {
+      this.maxSanity = payload.maxSanity;
+    }
+    if (typeof payload.isPaused === 'boolean') {
+      this.isPaused = payload.isPaused;
+    }
+    if (typeof payload.isChased === 'boolean') {
+      this.isChased = payload.isChased;
+    }
+    if (typeof payload.sanity === 'number' && Number.isFinite(payload.sanity)) {
+      this.currentSanity = Math.max(this.minSanity, Math.min(this.maxSanity, payload.sanity));
+    }
+    if (this.currentSanity > this.config.depletedThreshold) {
+      this.isDepleted = false;
+    }
+    this._evaluateState(prev);
+    this.emit(SANITY_EVENTS.CHANGED, this.getSnapshot());
+  }
+
+  /**
    * Resets sanity to maximum baseline.
    */
   reset() {
     this.isPaused = false;
     this.isRegenerating = false;
     this.isDepleted = false;
+    this.isChased = false;
+    this.hasServerSync = false;
     this.setSanity(this.config.initialSanity);
   }
 
@@ -253,8 +305,11 @@ export class SanityController {
         this.isRegenerating = false;
       }
     } else if (!this.isPaused) {
-      // Passive atmospheric decay
-      const drainStep = this.config.passiveDrainPerSecond * dt;
+      // Passive atmospheric decay or elevated active-chase drain
+      const rate = this.isChased
+        ? this.config.chaseDrainPerSecond
+        : this.config.passiveDrainPerSecond;
+      const drainStep = rate * dt;
       this.currentSanity = Math.max(this.minSanity, this.currentSanity - drainStep);
     }
 
@@ -337,7 +392,8 @@ export class SanityController {
       state: this.state,
       isPaused: this.isPaused,
       isRegenerating: this.isRegenerating,
-      isDepleted: this.isDepleted
+      isDepleted: this.isDepleted,
+      isChased: this.isChased
     };
   }
 }

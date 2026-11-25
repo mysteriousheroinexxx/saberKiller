@@ -4,7 +4,19 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { MAX_PLAYERS_PER_ROOM, isValidNumber } from './protocol.js';
 import { InventoryController } from '../js/multiplayer/inventory_controller.js';
-import { isPickupItem, getItemDefinition, ITEM_EFFECTS_CONFIG } from '../js/multiplayer/item_catalog.js';
+import {
+  isPickupItem,
+  getItemDefinition,
+  ITEM_EFFECTS_CONFIG,
+  ENERGY_DRINK_CONFIG,
+  DEFAULT_ENERGY_DRINK_CONFIG,
+  configureEnergyDrinkRules,
+  resetEnergyDrinkConfig
+} from '../js/multiplayer/item_catalog.js';
+import {
+  DEFAULT_SANITY_CONFIG,
+  SANITY_STATE
+} from '../js/multiplayer/sanity_controller.js';
 import {
   LOOT_CONFIG,
   DEFAULT_LOOT_CONFIG,
@@ -23,8 +35,42 @@ export {
   DEFAULT_LOOT_CONFIG,
   configureLootRules,
   resetLootConfig,
-  getLootConfigSnapshot
+  getLootConfigSnapshot,
+  ENERGY_DRINK_CONFIG,
+  DEFAULT_ENERGY_DRINK_CONFIG,
+  configureEnergyDrinkRules,
+  resetEnergyDrinkConfig
 };
+
+// Server-authoritative Sanity Configuration (Budget-Backrooms UE4.27 reference)
+export const SANITY_CONFIG = {
+  ...DEFAULT_SANITY_CONFIG
+};
+
+export function configureSanityRules(opts = {}) {
+  for (const key of [
+    'initialSanity',
+    'maxSanity',
+    'minSanity',
+    'passiveDrainPerSecond',
+    'hardcorePassiveDrainPerSecond',
+    'chaseDrainPerSecond',
+    'hardcoreChaseDrainPerSecond',
+    'almondPauseDurationSeconds',
+    'visualFxThreshold',
+    'panicThreshold',
+    'depletedThreshold'
+  ]) {
+    if (typeof opts[key] === 'number' && Number.isFinite(opts[key]) && opts[key] >= 0) {
+      SANITY_CONFIG[key] = opts[key];
+    }
+  }
+  return { ...SANITY_CONFIG };
+}
+
+export function resetSanityConfig() {
+  return configureSanityRules(DEFAULT_SANITY_CONFIG);
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -188,6 +234,17 @@ export class RoomManager {
       inventory: new InventoryController(30),
       hp: SURVIVAL_CONFIG.startingHp,
       maxHp: SURVIVAL_CONFIG.maxHp,
+      sanity: SANITY_CONFIG.initialSanity,
+      maxSanity: SANITY_CONFIG.maxSanity,
+      sanityPauseRemaining: 0,
+      isSanityPaused: false,
+      isChasedBySaber: false,
+      sanityDrainRate: SANITY_CONFIG.passiveDrainPerSecond,
+      sanitySyncAccum: 0,
+      stamina: 100,
+      maxStamina: 100,
+      speedMultiplier: 1.0,
+      speedBoostRemaining: 0,
       state: 'ACTIVE', // 'ACTIVE', 'DOWNED', 'ELIMINATED'
       revivalsUsed: 0,
       isDead: false,
@@ -888,6 +945,17 @@ export class RoomManager {
       inventory: new InventoryController(30),
       hp: SURVIVAL_CONFIG.startingHp,
       maxHp: SURVIVAL_CONFIG.maxHp,
+      sanity: SANITY_CONFIG.initialSanity,
+      maxSanity: SANITY_CONFIG.maxSanity,
+      sanityPauseRemaining: 0,
+      isSanityPaused: false,
+      isChasedBySaber: false,
+      sanityDrainRate: SANITY_CONFIG.passiveDrainPerSecond,
+      sanitySyncAccum: 0,
+      stamina: 100,
+      maxStamina: 100,
+      speedMultiplier: 1.0,
+      speedBoostRemaining: 0,
       state: 'ACTIVE',
       revivalsUsed: 0,
       isDead: false,
@@ -1134,6 +1202,51 @@ export class RoomManager {
       };
     }
 
+    // Sanity recovery items (Almond Water & Sanity Pills — Energy Drink NEVER restores sanity)
+    let sanityUpdate = null;
+    let staminaUpdate = null;
+    let speedBoostUpdate = null;
+
+    if (item.typeId === 'almond_can' || item.typeId === 'sanity_pill') {
+      const sanityRestore = Math.max(0, Number(effectConfig.sanityRestore) || 0);
+      const maxSanity = player.maxSanity || SANITY_CONFIG.maxSanity;
+      const prevSanity = typeof player.sanity === 'number' ? player.sanity : SANITY_CONFIG.initialSanity;
+      player.sanity = Math.min(maxSanity, prevSanity + sanityRestore);
+      if (item.typeId === 'almond_can') {
+        player.sanityPauseRemaining = SANITY_CONFIG.almondPauseDurationSeconds;
+        player.isSanityPaused = true;
+        if (typeof effectConfig.staminaBoost === 'number' && effectConfig.staminaBoost > 0) {
+          player.stamina = Math.min(player.maxStamina || 100, (player.stamina ?? 100) + effectConfig.staminaBoost);
+          staminaUpdate = { playerId: player.id, stamina: player.stamina, maxStamina: player.maxStamina || 100 };
+        }
+      }
+      sanityUpdate = this._buildSanityPayload(player, `ITEM_${item.typeId.toUpperCase()}`);
+    } else if (item.typeId === 'energy_drink') {
+      // Energy Drink:
+      // 1) Instantly restores existing stamina to maximum
+      // 2) Applies non-stacking 1.27x movement speed boost for configurable duration
+      // 3) Explicitly NEVER restores sanity
+      const maxStam = player.maxStamina || 100;
+      player.stamina = maxStam;
+      const boostMult = Math.max(1.0, Number(effectConfig.speedMultiplier ?? ENERGY_DRINK_CONFIG.speedMultiplier) || 1.27);
+      const boostDur = Math.max(0.1, Number(effectConfig.durationSeconds ?? ENERGY_DRINK_CONFIG.durationSeconds) || 15);
+      player.speedMultiplier = boostMult;
+      player.speedBoostRemaining = boostDur;
+
+      staminaUpdate = {
+        playerId: player.id,
+        stamina: player.stamina,
+        maxStamina: maxStam
+      };
+      speedBoostUpdate = {
+        playerId: player.id,
+        active: true,
+        speedMultiplier: player.speedMultiplier,
+        durationSeconds: boostDur,
+        remainingSeconds: boostDur
+      };
+    }
+
     // Ammunition box consumption: atomically grants exactly 2 rounds to compatible weapon reserve
     let ammoUpdate = null;
     if (item.typeId === 'pistol_ammo' || item.typeId === 'ammo_box') {
@@ -1156,6 +1269,15 @@ export class RoomManager {
       };
     }
 
+    const clientEffect = (item.typeId === 'energy_drink')
+      ? {
+          staminaBoost: ENERGY_DRINK_CONFIG.staminaBoost,
+          restoreFullStamina: true,
+          speedMultiplier: player.speedMultiplier,
+          durationSeconds: player.speedBoostRemaining
+        }
+      : { ...effectConfig };
+
     return {
       success: true,
       room,
@@ -1163,9 +1285,12 @@ export class RoomManager {
       itemType: item.typeId,
       itemName: item.name,
       slotIndex: targetSlot,
-      effect: effectConfig,
+      effect: clientEffect,
       ammoUpdate,
       hpUpdate,
+      sanityUpdate,
+      staminaUpdate,
+      speedBoostUpdate,
       remainingQuantity,
       inventory: player.inventory.serialize()
     };
@@ -1556,8 +1681,17 @@ export class RoomManager {
     for (const [id, player] of room.players) {
       player.hp = SURVIVAL_CONFIG.startingHp;
       player.maxHp = SURVIVAL_CONFIG.maxHp;
-      player.sanity = 100;
-      player.maxSanity = 100;
+      player.sanity = SANITY_CONFIG.initialSanity;
+      player.maxSanity = SANITY_CONFIG.maxSanity;
+      player.sanityPauseRemaining = 0;
+      player.isSanityPaused = false;
+      player.isChasedBySaber = false;
+      player.sanityDrainRate = SANITY_CONFIG.passiveDrainPerSecond;
+      player.sanitySyncAccum = 0;
+      player.stamina = 100;
+      player.maxStamina = 100;
+      player.speedMultiplier = 1.0;
+      player.speedBoostRemaining = 0;
       player.state = 'ACTIVE';
       player.revivalsUsed = 0;
       player.downedAt = null;
@@ -2502,6 +2636,12 @@ export class RoomManager {
           this.onRoomEvents(room, res.events);
         }
       },
+      onSimulationStep: (delta, chasedPlayers) => {
+        const events = this.stepRoomSurvivalState(room, delta, chasedPlayers);
+        if (events.length > 0 && this.onRoomEvents) {
+          this.onRoomEvents(room, events);
+        }
+      },
       broadcastMessage: (type, payload) => {
         if (this.onBroadcast) {
           this.onBroadcast(room, type, payload);
@@ -2516,12 +2656,109 @@ export class RoomManager {
 
     if (room.players) {
       for (const [pId, p] of room.players) {
-        room.simulation.addPlayer(pId, p.spawn);
+        room.simulation.addPlayer(p);
       }
     }
     room.simulation.start();
 
     return room.simulation;
+  }
+
+  _classifySanityState(sanity) {
+    if (sanity <= SANITY_CONFIG.depletedThreshold) return SANITY_STATE.DEPLETED;
+    if (sanity <= SANITY_CONFIG.panicThreshold) return SANITY_STATE.PANIC;
+    if (sanity <= SANITY_CONFIG.visualFxThreshold) return SANITY_STATE.MILD_PARANOIA;
+    return SANITY_STATE.NORMAL;
+  }
+
+  _buildSanityPayload(player, reason = 'TICK') {
+    const sanity = typeof player.sanity === 'number' ? player.sanity : SANITY_CONFIG.initialSanity;
+    const maxSanity = player.maxSanity || SANITY_CONFIG.maxSanity;
+    return {
+      playerId: player.id,
+      sanity: +sanity.toFixed(4),
+      maxSanity,
+      state: this._classifySanityState(sanity),
+      isPaused: Boolean(player.isSanityPaused),
+      isChased: Boolean(player.isChasedBySaber),
+      drainRatePerSecond: player.sanityDrainRate ?? SANITY_CONFIG.passiveDrainPerSecond,
+      reason
+    };
+  }
+
+  /**
+   * Advances server-authoritative per-player sanity drain and speed boost timers.
+   * Chase drain applies strictly when an active Saber AI in CHASE state targets that player.
+   * Zero sanity never kills or damages HP.
+   */
+  stepRoomSurvivalState(room, delta, chasedPlayers = new Map()) {
+    if (!room || room.runState !== 'IN_PROGRESS' || !(delta > 0)) return [];
+    const events = [];
+    const isHard = ((room.saberDifficulty || SURVIVAL_CONFIG.saberDifficulty || 'NORMAL').toUpperCase() === 'HARD');
+
+    for (const [playerId, player] of room.players) {
+      // 1. Speed boost expiration countdown
+      if ((player.speedBoostRemaining || 0) > 0) {
+        player.speedBoostRemaining = Math.max(0, player.speedBoostRemaining - delta);
+        if (player.speedBoostRemaining === 0) {
+          player.speedMultiplier = 1.0;
+          events.push({
+            type: 'PLAYER_SPEED_BOOST_UPDATE',
+            payload: {
+              playerId: player.id,
+              active: false,
+              speedMultiplier: 1.0,
+              remainingSeconds: 0
+            }
+          });
+        }
+      }
+
+      // 2. Skip sanity simulation while downed/eliminated
+      if (player.state === 'DOWNED' || player.state === 'ELIMINATED') {
+        player.isChasedBySaber = false;
+        player.sanityDrainRate = 0;
+        continue;
+      }
+
+      const chaseCount = (chasedPlayers && typeof chasedPlayers.get === 'function')
+        ? (chasedPlayers.get(player.id) || 0)
+        : 0;
+      const isChased = chaseCount > 0;
+      const prevChased = Boolean(player.isChasedBySaber);
+      const prevPaused = Boolean(player.isSanityPaused);
+      const prevSanity = (typeof player.sanity === 'number') ? player.sanity : SANITY_CONFIG.initialSanity;
+
+      if ((player.sanityPauseRemaining || 0) > 0) {
+        player.sanityPauseRemaining = Math.max(0, player.sanityPauseRemaining - delta);
+      }
+      const isPaused = (player.sanityPauseRemaining || 0) > 0;
+
+      const drainRate = isChased
+        ? (isHard ? SANITY_CONFIG.hardcoreChaseDrainPerSecond : SANITY_CONFIG.chaseDrainPerSecond)
+        : (isHard ? SANITY_CONFIG.hardcorePassiveDrainPerSecond : SANITY_CONFIG.passiveDrainPerSecond);
+
+      const nextSanity = isPaused
+        ? prevSanity
+        : Math.max(SANITY_CONFIG.minSanity, prevSanity - drainRate * delta);
+
+      player.sanity = nextSanity;
+      player.isChasedBySaber = isChased;
+      player.isSanityPaused = isPaused;
+      player.sanityDrainRate = isPaused ? 0 : drainRate;
+
+      player.sanitySyncAccum = (player.sanitySyncAccum || 0) + delta;
+      const stateChanged = (isChased !== prevChased) || (isPaused !== prevPaused) || (prevSanity > 0 && nextSanity === 0);
+      if (stateChanged || player.sanitySyncAccum >= 0.25) {
+        player.sanitySyncAccum = 0;
+        events.push({
+          type: 'PLAYER_SANITY_UPDATE',
+          payload: this._buildSanityPayload(player, isChased ? 'SABER_CHASE' : 'PASSIVE')
+        });
+      }
+    }
+
+    return events;
   }
 
   /**
