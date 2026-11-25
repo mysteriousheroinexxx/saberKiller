@@ -57,7 +57,8 @@ const MIME_TYPES = {
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
   '.mov': 'video/quicktime',
-  '.webm': 'video/webm'
+  '.webm': 'video/webm',
+  '.wav': 'audio/wav'
 };
 
 // Server-side active layout revision lifecycle

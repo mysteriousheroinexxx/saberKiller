@@ -7,6 +7,7 @@ import { LocalPlayerController } from './player_controller.js';
 import { InventoryController } from './inventory_controller.js';
 import { StagingLobby } from './staging_lobby.js';
 import { SaberManager } from './saber_manager.js';
+import { MultiplayerAmbientAudio } from './ambient_audio.js';
 
 export class MPManager {
   constructor(scene, camera, uiCallbacks = {}) {
@@ -31,6 +32,7 @@ export class MPManager {
     this.itemManager = null;
 
     this.stagingLobby = new StagingLobby(scene, camera, this.network);
+    this.ambientAudio = new MultiplayerAmbientAudio();
     this.isInStagingLobby = false;
     this.mySpawn = null;
     this.isLeader = false;
@@ -71,6 +73,9 @@ export class MPManager {
   _bindNetworkEvents() {
     this.network.onStatusChange = (status) => {
       if (status && status.status === 'disconnected') {
+        if (this.ambientAudio) {
+          this.ambientAudio.stop();
+        }
         if (window.interactionManager) {
           window.interactionManager.handleDisconnect();
         }
@@ -103,6 +108,9 @@ export class MPManager {
 
       if (payload.runState === 'LOBBY') {
         this.isInStagingLobby = true;
+        if (this.ambientAudio) {
+          this.ambientAudio.stop();
+        }
         if (this.localPlayer && this.localPlayer.gunGroup) {
           this.localPlayer.gunGroup.visible = false;
         }
@@ -111,6 +119,9 @@ export class MPManager {
         }
       } else {
         this.isInStagingLobby = false;
+        if (this.ambientAudio) {
+          this.ambientAudio.start();
+        }
         if (this.localPlayer && this.localPlayer.gunGroup) {
           this.localPlayer.gunGroup.visible = true;
         }
@@ -392,6 +403,9 @@ export class MPManager {
     };
 
     this.network.onGameOver = (payload) => {
+      if (this.ambientAudio) {
+        this.ambientAudio.stop();
+      }
       const isVictory = (payload?.status === 'ESCAPED' || payload?.reason === 'LEVEL_COMPLETED');
       if (!isVictory) {
         this.localPlayer.setState('ELIMINATED');
@@ -437,6 +451,9 @@ export class MPManager {
     this.network.onMatchStarted = (payload) => {
       this.isInStagingLobby = false;
       this.roomRunState = 'IN_PROGRESS';
+      if (this.ambientAudio) {
+        this.ambientAudio.start();
+      }
       if (this.stagingLobby) {
         this.stagingLobby.leaveLobby();
       }
@@ -624,6 +641,9 @@ export class MPManager {
   }
 
   leaveRoom() {
+    if (this.ambientAudio) {
+      this.ambientAudio.stop();
+    }
     if (this.stagingLobby) {
       this.stagingLobby.leaveLobby();
     }
@@ -644,6 +664,9 @@ export class MPManager {
   }
 
   disconnect() {
+    if (this.ambientAudio) {
+      this.ambientAudio.stop();
+    }
     if (this.stagingLobby) {
       this.stagingLobby.leaveLobby();
     }
