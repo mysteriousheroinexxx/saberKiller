@@ -237,6 +237,14 @@ export class MPManager {
           if (typeof payload.ammoUpdate.shells === 'number') this.localPlayer.shells = payload.ammoUpdate.shells;
           this.localPlayer._notifyStateChange();
         }
+        if (this.audioManager && !payload.dispensedItem && payload.itemType !== 'vending_almond' && payload.itemId) {
+          this.audioManager.playItemPickup?.(payload.itemId, {
+            requestId: payload.requestId,
+            emitterId: payload.playerId || 'local',
+            positional: false,
+            position: this._resolveItemEventPosition(payload.itemId, payload)
+          });
+        }
       }
       if (window.interactionManager) {
         window.interactionManager.handlePickupResponse(payload);
@@ -245,8 +253,18 @@ export class MPManager {
     };
 
     this.network.onItemCollected = (payload) => {
+      const pickupPos = this._resolveItemEventPosition(payload?.itemId, payload);
       if (this.itemManager && payload.itemId) {
         this.itemManager.hideItem(payload.itemId);
+      }
+      if (this.audioManager && payload && payload.itemId) {
+        const isLocalCollector = Boolean(payload.collectedBy && payload.collectedBy === this.myPlayerId);
+        this.audioManager.playItemPickup?.(payload.itemId, {
+          requestId: payload.requestId,
+          emitterId: payload.collectedBy || payload.itemId,
+          positional: !isLocalCollector,
+          position: pickupPos
+        });
       }
       if (window.interactionManager) {
         window.interactionManager.clearTargetIfId(payload.itemId);
@@ -774,6 +792,45 @@ export class MPManager {
     window.sanityController?.reset();
     window.interactionManager?.reset();
     this._updatePlayerCount();
+  }
+
+  _resolveItemEventPosition(itemId, payload = null) {
+    const pos = payload?.position;
+    if (pos && typeof pos === 'object' && typeof pos.x === 'number' && typeof pos.z === 'number') {
+      return { x: pos.x, y: pos.y || 0, z: pos.z };
+    }
+    if (Array.isArray(pos) && pos.length >= 3) {
+      return { x: pos[0] || 0, y: pos[1] || 0, z: pos[2] || 0 };
+    }
+    const worldItem = itemId && this.itemManager && typeof this.itemManager.getItemById === 'function'
+      ? this.itemManager.getItemById(itemId)
+      : null;
+    if (worldItem?.object?.position) {
+      const p = worldItem.object.position;
+      return { x: p.x || 0, y: p.y || 0, z: p.z || 0 };
+    }
+    if (worldItem?.mesh?.position) {
+      const p = worldItem.mesh.position;
+      return { x: p.x || 0, y: p.y || 0, z: p.z || 0 };
+    }
+    if (Array.isArray(worldItem?.data?.position) && worldItem.data.position.length >= 3) {
+      return {
+        x: worldItem.data.position[0] || 0,
+        y: worldItem.data.position[1] || 0,
+        z: worldItem.data.position[2] || 0
+      };
+    }
+    const actorId = payload?.collectedBy || payload?.playerId;
+    if (actorId && actorId !== this.myPlayerId) {
+      const rp = this.remotePlayers.get(actorId);
+      if (rp?.group?.position) {
+        return { x: rp.group.position.x || 0, y: rp.group.position.y || 0, z: rp.group.position.z || 0 };
+      }
+    }
+    if (this.localPlayer?.pos) {
+      return { x: this.localPlayer.pos.x || 0, y: this.localPlayer.pos.y || 0, z: this.localPlayer.pos.z || 0 };
+    }
+    return null;
   }
 
   syncSanityHeartbeat() {

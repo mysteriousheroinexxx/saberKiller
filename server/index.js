@@ -942,6 +942,13 @@ wss.on('connection', (ws, req) => {
           console.log(`[STAGE 11/19] [SERVER] Inventory update executed for player '${res.player.id}', added '${res.item.type}'`);
           console.log(`[STAGE 12/19] [SERVER] Pickup ACCEPTED: reqId=${requestId}, item='${res.item.id}', player='${res.player.id}'`);
 
+          const rawItemPos = res.item.position;
+          const itemPos = Array.isArray(rawItemPos)
+            ? { x: rawItemPos[0] || 0, y: rawItemPos[1] || 0, z: rawItemPos[2] || 0 }
+            : (rawItemPos && typeof rawItemPos === 'object'
+              ? { x: rawItemPos.x || 0, y: rawItemPos.y || 0, z: rawItemPos.z || 0 }
+              : (res.player.position ? { x: res.player.position.x || 0, y: res.player.position.y || 0, z: res.player.position.z || 0 } : null));
+
           const acceptPayload = {
             requestId,
             success: true,
@@ -949,6 +956,7 @@ wss.on('connection', (ws, req) => {
             itemType: res.item.type,
             playerId: res.player.id,
             roomCode: res.room.code,
+            position: itemPos,
             ammoUpdate: res.ammoUpdate
           };
           if (res.room.pickupRequests) {
@@ -965,7 +973,8 @@ wss.on('connection', (ws, req) => {
               requestId,
               itemId: res.item.id,
               itemType: res.item.type,
-              collectedBy: res.player.id
+              collectedBy: res.player.id,
+              position: itemPos
             });
           }
 

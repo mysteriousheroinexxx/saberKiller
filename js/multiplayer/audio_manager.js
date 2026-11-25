@@ -88,6 +88,15 @@ export const DEFAULT_SOUND_DEFINITIONS = Object.freeze({
     defaultVolume: 0.72,
     fadeInSeconds: 1.5,
     fadeOutSeconds: 1.2
+  },
+  interaction_pickup: {
+    id: 'interaction_pickup',
+    category: AUDIO_CATEGORIES.INTERACTIONS,
+    url: 'assets/audio/pickingUp.wav',
+    defaultVolume: 0.6,
+    minIntervalSeconds: 0.04,
+    fadeInSeconds: 0.004,
+    fadeOutSeconds: 0.03
   }
 });
 
@@ -280,11 +289,16 @@ export class MultiplayerAudioManager {
     // Active single-voice slots per emitterId (prevents overlapping/duplicate footsteps)
     this.activeVoices = new Map(); // emitterId -> { source, gain, panner, soundId, stopTimer }
     this.activeWeaponVoices = new Set(); // Set<{ emitterId, soundId, positional, position, attachTarget, source, gain, panner, stopTimer }>
+    this.activeInteractionVoices = new Set(); // Set<{ emitterId, soundId, positional, position, attachTarget, source, gain, panner, stopTimer }>
     this.lastEmitterPlayTime = new Map(); // `${emitterId}:${soundId}` -> seconds
     this.lastWeaponFireTime = new Map(); // `${emitterId}:${soundId}` -> seconds
+    this.lastInteractionTime = new Map(); // `${emitterId}:${soundId}` -> seconds
+    this._playedPickupKeys = new Set(); // `${itemId}::${requestId}` deduplication
+    this._lastPickupItemTimes = new Map(); // itemId -> ctx time
     this.lastSliceIndex = new Map(); // soundId -> index
     this.totalVoicesCreated = 0;
     this.totalWeaponVoicesCreated = 0;
+    this.totalInteractionVoicesCreated = 0;
     this._soundVolumeListeners = new Map();
 
     // Dynamic sanity heartbeat state (single looping local instance)
@@ -546,7 +560,7 @@ export class MultiplayerAudioManager {
               maxSliceSeconds: soundId === 'player_run' ? 0.27 : 0.35
             })
           );
-        } else if (soundId === 'weapon_pistol_fire' || soundId === 'weapon_reload') {
+        } else if (soundId === 'weapon_pistol_fire' || soundId === 'weapon_reload' || soundId === 'interaction_pickup') {
           this.soundTrimBounds.set(soundId, extractSoundTrimBounds(decoded));
         } else if (soundId === 'sanity_heartbeat') {
           this._heartbeatLoopBuffer = buildSeamlessLoopBuffer(ctx, decoded, 0.12);
@@ -576,7 +590,8 @@ export class MultiplayerAudioManager {
       this.loadSound('player_run'),
       this.loadSound('weapon_pistol_fire'),
       this.loadSound('weapon_reload'),
-      this.loadSound('sanity_heartbeat')
+      this.loadSound('sanity_heartbeat'),
+      this.loadSound('interaction_pickup')
     ]);
   }
 
@@ -866,12 +881,83 @@ export class MultiplayerAudioManager {
     if (!emitterId) return;
     for (const entry of [...this.activeWeaponVoices]) {
       if (entry.emitterId === emitterId && entry.soundId === 'weapon_reload') {
-        this._stopWeaponVoiceEntry(entry, { immediate: true });
+        this._stopVoiceSetEntry(this.activeWeaponVoices, entry);
       }
     }
   }
 
+  /**
+   * Plays item pickup audio once per item pickup event (deduplicating ITEM_PICKUP_RESPONSE
+   * and ITEM_COLLECTED notifications for the same pickup) through the 'interactions' bus.
+   */
+  playItemPickup(itemId, options = {}) {
+    if (!itemId) return false;
+    const reqKey = options.requestId ? `${itemId}::${options.requestId}` : null;
+    if (reqKey && this._playedPickupKeys.has(reqKey)) {
+      return false;
+    }
+
+    const ctx = this.getContext();
+    const now = ctx ? (ctx.currentTime || 0) : 0;
+    const prevT = this._lastPickupItemTimes.get(itemId) ?? -Infinity;
+    if (!options.ignoreDedupe && (now - prevT) < 0.25) {
+      return false;
+    }
+
+    const played = this.playInteractionSound('interaction_pickup', {
+      emitterId: options.emitterId || 'local',
+      positional: Boolean(options.positional),
+      position: options.position || null,
+      attachTarget: options.attachTarget || null,
+      ignoreRateLimit: Boolean(options.ignoreRateLimit),
+      minIntervalSeconds: options.minIntervalSeconds ?? 0.03,
+      pitchVariance: 0.03,
+      refDistance: 2.0,
+      maxDistance: 32.0,
+      rolloffFactor: 1.25
+    });
+
+    if (played) {
+      this._lastPickupItemTimes.set(itemId, now);
+      if (reqKey) {
+        this._playedPickupKeys.add(reqKey);
+        if (this._playedPickupKeys.size > 256) {
+          this._playedPickupKeys.delete(this._playedPickupKeys.values().next().value);
+        }
+      }
+    }
+    return played;
+  }
+
+  /**
+   * Plays a one-shot interaction/consumable sound routed through the 'interactions' bus.
+   */
+  playInteractionSound(soundId, options = {}) {
+    const emitterId = options.emitterId || 'local';
+    return this._playOneShotBusSound({
+      voiceSet: this.activeInteractionVoices,
+      lastTimeMap: this.lastInteractionTime,
+      counterKey: 'totalInteractionVoicesCreated',
+      maxVoices: 6,
+      emitterId,
+      soundId,
+      options
+    });
+  }
+
   _playOneShotWeaponSound(emitterId, soundId, options = {}) {
+    return this._playOneShotBusSound({
+      voiceSet: this.activeWeaponVoices,
+      lastTimeMap: this.lastWeaponFireTime,
+      counterKey: 'totalWeaponVoicesCreated',
+      maxVoices: 8,
+      emitterId,
+      soundId,
+      options
+    });
+  }
+
+  _playOneShotBusSound({ voiceSet, lastTimeMap, counterKey, maxVoices, emitterId, soundId, options = {} }) {
     const def = this.soundDefs.get(soundId);
     if (!def) return false;
 
@@ -891,23 +977,22 @@ export class MultiplayerAudioManager {
       ? options.minIntervalSeconds
       : (def.minIntervalSeconds ?? 0.04);
     const rateKey = `${emitterId}:${soundId}`;
-    const lastT = this.lastWeaponFireTime.get(rateKey) ?? -Infinity;
+    const lastT = lastTimeMap.get(rateKey) ?? -Infinity;
     if (!options.ignoreRateLimit && (now - lastT) < minInterval) {
       return false;
     }
 
     if (options.replaceSameSound) {
-      for (const existing of [...this.activeWeaponVoices]) {
+      for (const existing of [...voiceSet]) {
         if (existing.emitterId === emitterId && existing.soundId === soundId) {
-          this._stopWeaponVoiceEntry(existing, { immediate: true });
+          this._stopVoiceSetEntry(voiceSet, existing);
         }
       }
     }
 
-    // Cap concurrent active weapon tails at 8 (gracefully retire oldest if exceeded)
-    if (this.activeWeaponVoices.size >= 8) {
-      const oldest = this.activeWeaponVoices.values().next().value;
-      if (oldest) this._stopWeaponVoiceEntry(oldest, { immediate: true });
+    if (voiceSet.size >= maxVoices) {
+      const oldest = voiceSet.values().next().value;
+      if (oldest) this._stopVoiceSetEntry(voiceSet, oldest);
     }
 
     const bounds = this.soundTrimBounds.get(soundId) || {
@@ -946,9 +1031,9 @@ export class MultiplayerAudioManager {
       panner = ctx.createPanner();
       panner.panningModel = 'HRTF';
       panner.distanceModel = 'inverse';
-      panner.refDistance = emitterId === 'local' ? 1.8 : 2.5;
-      panner.maxDistance = 55.0;
-      panner.rolloffFactor = 1.1;
+      panner.refDistance = options.refDistance ?? (emitterId === 'local' ? 1.8 : 2.5);
+      panner.maxDistance = options.maxDistance ?? 55.0;
+      panner.rolloffFactor = options.rolloffFactor ?? 1.1;
 
       this._setPannerPosition(panner, initialPos, now);
       source.connect(voiceGain);
@@ -972,16 +1057,16 @@ export class MultiplayerAudioManager {
       stopTimer: null
     };
 
-    this.activeWeaponVoices.add(entry);
-    this.lastWeaponFireTime.set(rateKey, now);
-    this.totalWeaponVoicesCreated++;
+    voiceSet.add(entry);
+    lastTimeMap.set(rateKey, now);
+    this[counterKey] = (this[counterKey] || 0) + 1;
 
     const cleanup = () => {
       if (entry.stopTimer) {
         clearTimeout(entry.stopTimer);
         entry.stopTimer = null;
       }
-      this.activeWeaponVoices.delete(entry);
+      voiceSet.delete(entry);
       try { source.disconnect(); } catch {}
       try { voiceGain.disconnect(); } catch {}
       if (panner) {
@@ -998,9 +1083,9 @@ export class MultiplayerAudioManager {
     return true;
   }
 
-  _stopWeaponVoiceEntry(entry, { immediate = true } = {}) {
+  _stopVoiceSetEntry(voiceSet, entry) {
     if (!entry) return;
-    this.activeWeaponVoices.delete(entry);
+    voiceSet.delete(entry);
     if (entry.stopTimer) {
       clearTimeout(entry.stopTimer);
       entry.stopTimer = null;
@@ -1015,9 +1100,18 @@ export class MultiplayerAudioManager {
 
   stopAllWeaponAudio({ immediate = true } = {}) {
     for (const entry of [...this.activeWeaponVoices]) {
-      this._stopWeaponVoiceEntry(entry, { immediate });
+      this._stopVoiceSetEntry(this.activeWeaponVoices, entry);
     }
     this.lastWeaponFireTime.clear();
+  }
+
+  stopAllInteractionAudio() {
+    for (const entry of [...this.activeInteractionVoices]) {
+      this._stopVoiceSetEntry(this.activeInteractionVoices, entry);
+    }
+    this.lastInteractionTime.clear();
+    this._playedPickupKeys.clear();
+    this._lastPickupItemTimes.clear();
   }
 
   stopAllMovementAudio({ immediate = true } = {}) {
@@ -1186,6 +1280,7 @@ export class MultiplayerAudioManager {
   stopAllAudio({ immediate = true } = {}) {
     this.stopAllMovementAudio({ immediate });
     this.stopAllWeaponAudio({ immediate });
+    this.stopAllInteractionAudio();
     this.stopSanityHeartbeat({ immediate });
   }
 
@@ -1205,6 +1300,12 @@ export class MultiplayerAudioManager {
       positional: v.positional,
       position: v.position
     }));
+    const activeInteractionEmitters = [...this.activeInteractionVoices].map((v) => ({
+      emitterId: v.emitterId,
+      soundId: v.soundId,
+      positional: v.positional,
+      position: v.position
+    }));
     return {
       contextState: this.ctx ? this.ctx.state : 'uninitialized',
       masterVolume: this.masterVolume,
@@ -1217,6 +1318,9 @@ export class MultiplayerAudioManager {
       activeWeaponVoiceCount: this.activeWeaponVoices.size,
       activeWeaponEmitters,
       totalWeaponVoicesCreated: this.totalWeaponVoicesCreated,
+      activeInteractionVoiceCount: this.activeInteractionVoices.size,
+      activeInteractionEmitters,
+      totalInteractionVoicesCreated: this.totalInteractionVoicesCreated,
       pistolTrimBounds: this.soundTrimBounds.get('weapon_pistol_fire') || null,
       reloadTrimBounds: this.soundTrimBounds.get('weapon_reload') || null,
       heartbeatIsPlaying: Boolean(this._heartbeatEntry),
