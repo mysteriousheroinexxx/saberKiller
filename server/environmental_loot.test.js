@@ -92,9 +92,21 @@ test('1. Environmental loot layout audit: furniture density, strict key surface 
   assert.ok(Array.isArray(healthPackSlots) && healthPackSlots.length >= 50, 'Map-wide Health Pack slots across furniture');
   assert.ok(Array.isArray(keySlots) && keySlots.length >= 50, 'Map-wide key slots across furniture');
 
-  // Ensure ZERO static doorKey or floor_door_key_01 remains in base placements
+  // Ensure ZERO static doorKey or floor_door_key_01 and NO start-area floor demo cluster
   const staticKeys = layout.placements.filter(p => p.type === 'doorKey');
   assert.equal(staticKeys.length, 0, 'No static floor/legacy doorKey entries should remain in default placements');
+  const startFloorDemoCluster = layout.placements.filter(
+    p => p.surfaceType === 'floor' &&
+         !['table', 'metal_shelf', 'vending_almond'].includes(p.type) &&
+         p.position[0] >= 39 && p.position[0] <= 49 &&
+         p.position[2] >= -191 && p.position[2] <= -178
+  );
+  assert.equal(startFloorDemoCluster.length, 0, 'Temporary floor demo loot/ammo/crate cluster near [42, -189] must be completely removed');
+
+  // Verify calibrated small-item scales are non-trivial and visible
+  assert.ok(layout.catalog.sanity_pill.scale[0] >= 0.0012, 'Sanity pill bottle scale increased for clear visibility');
+  assert.ok(layout.catalog.aa_battery.scale[0] >= 2.0, 'AA battery scale increased for clear visibility');
+  assert.ok(layout.catalog.doorKey.scale[0] >= 2.0, 'Key scale increased for clear visibility');
 
   // Every key slot MUST strictly belong to metal_shelf, table, or vending/vending_almond
   for (const ks of keySlots) {

@@ -444,43 +444,7 @@ const server = http.createServer((req, res) => {
                 reason: p.validation.reason || p.validation.failureReason || null
               } : { status: 'valid', developerApproved: false }
             })),
-            spawnGroups: Array.isArray(payload.spawnGroups) ? payload.spawnGroups : [
-              {
-                id: 'sg_hallway_consumables_01',
-                name: 'Hallway Floor Consumables Pool',
-                eligibleTypes: ['almond_can', 'energy_drink', 'sanity_pill', 'aa_battery'],
-                candidatePoints: [
-                  [41.8, 0.0, -186.2],
-                  [42.2, 0.0, -186.1],
-                  [42.6, 0.0, -186.0],
-                  [43.1, 0.0, -186.0],
-                  [43.3, 0.0, -188.7]
-                ],
-                minCount: 2,
-                maxCount: 4,
-                surface: 'floor',
-                probability: 0.85,
-                tags: ['consumable', 'random_loot']
-              },
-              {
-                id: 'sg_tabletop_supplies_01',
-                name: 'Office Tabletop Medical & Ammo Pool',
-                eligibleTypes: ['first_aid', 'ammo_box', 'sanity_pill', 'doorKey'],
-                candidatePoints: [
-                  [44.75, 0.936, -185.45],
-                  [44.35, 0.936, -185.45],
-                  [44.00, 0.936, -185.45],
-                  [44.55, 0.936, -185.20],
-                  [44.15, 0.936, -185.20]
-                ],
-                minCount: 2,
-                maxCount: 3,
-                surface: 'table',
-                supportProp: 'prop_table_01',
-                probability: 1.0,
-                tags: ['high_tier_loot', 'loot_surface']
-              }
-            ],
+            spawnGroups: Array.isArray(payload.spawnGroups) ? payload.spawnGroups : [],
             environmentalLoot: payload.environmentalLoot || activeDevLayout?.data?.environmentalLoot || getLayoutDataForRevision('default')?.environmentalLoot || undefined
           };
 

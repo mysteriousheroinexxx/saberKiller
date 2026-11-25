@@ -282,11 +282,13 @@ async function init() {
         if (countEl) countEl.textContent = `PLAYERS: ${payload.totalPlayers || 1} / 2`;
 
         // Layout revision synchronization across room clients (dev mode)
-        if (devToolsEnabled && payload.layoutRevision && payload.layoutRevision !== 'default') {
+        if (devToolsEnabled && payload.layoutRevision && payload.layoutRevision !== 'default' &&
+            itemManager?.loadedRevisionFilename !== payload.layoutRevision) {
           console.log(`[ROOM LAYOUT SYNC] Synchronizing room ${payload.roomCode} to layout: ${payload.layoutRevision}`);
           const revUrl = `/api/developer/world-layout/load?file=${encodeURIComponent(payload.layoutRevision)}`;
           itemManager?.loadWorldItems(revUrl)
             .then(() => {
+              mpManager?.resyncWorldItems();
               if (worldEditor?.ui?.layoutSelect) {
                 worldEditor.ui.layoutSelect.value = payload.layoutRevision;
               }
@@ -315,9 +317,12 @@ async function init() {
       if (roomInfoEl) roomInfoEl.textContent = `ROOM: ${payload.roomCode}`;
       if (countEl) countEl.textContent = `PLAYERS: ${payload.startingPlayers || 2} / 2`;
 
-      if (devToolsEnabled && payload.layoutRevision && payload.layoutRevision !== 'default') {
+      if (devToolsEnabled && payload.layoutRevision && payload.layoutRevision !== 'default' &&
+          itemManager?.loadedRevisionFilename !== payload.layoutRevision) {
         const revUrl = `/api/developer/world-layout/load?file=${encodeURIComponent(payload.layoutRevision)}`;
-        itemManager?.loadWorldItems(revUrl).catch(e => console.warn('[ROOM LAYOUT SYNC] Error:', e));
+        itemManager?.loadWorldItems(revUrl)
+          .then(() => mpManager?.resyncWorldItems())
+          .catch(e => console.warn('[ROOM LAYOUT SYNC] Error:', e));
       }
 
       if (renderer && renderer.domElement) {

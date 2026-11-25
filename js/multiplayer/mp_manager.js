@@ -38,6 +38,7 @@ export class MPManager {
 
     this.currentRoomCode = null;
     this.myPlayerId = null;
+    this.lastRoomSyncState = null;
 
     this._bindNetworkEvents();
     preloadPlayerAssets();
@@ -49,6 +50,22 @@ export class MPManager {
 
   setItemManager(im) {
     this.itemManager = im;
+  }
+
+  resyncWorldItems() {
+    if (!this.itemManager || !this.lastRoomSyncState) return;
+    if (typeof this.itemManager.resetRunItems === 'function') {
+      this.itemManager.resetRunItems();
+    }
+    const { spawnedItems, collectedItems } = this.lastRoomSyncState;
+    if (Array.isArray(spawnedItems)) {
+      for (const it of spawnedItems) {
+        this.itemManager.spawnWorldItem(it);
+      }
+    }
+    if (Array.isArray(collectedItems)) {
+      this.itemManager.setCollectedItems(collectedItems);
+    }
   }
 
   _bindNetworkEvents() {
@@ -100,12 +117,18 @@ export class MPManager {
         // Spawn local player at assigned spawn
         this.localPlayer.setSpawn(payload.spawn);
 
+        // Store sync state so any asynchronous layout reload preserves generated loot
+        this.lastRoomSyncState = {
+          collectedItems: payload.collectedItems || [],
+          spawnedItems: payload.spawnedItems || []
+        };
+
         // Hide any already collected world items in this room
         if (Array.isArray(payload.collectedItems) && this.itemManager) {
           this.itemManager.setCollectedItems(payload.collectedItems);
         }
 
-        // Spawn any dynamically dropped items in this room
+        // Spawn any dynamically generated or dropped items in this room
         if (Array.isArray(payload.spawnedItems) && this.itemManager) {
           for (const si of payload.spawnedItems) {
             this.itemManager.spawnWorldItem(si);
@@ -486,7 +509,11 @@ export class MPManager {
         }
       }
 
-      // 8. Re-apply newly spawned items (keys) and collected items for this generation
+      // 8. Re-apply newly spawned items (loot, health packs, keys) and collected items for this generation
+      this.lastRoomSyncState = {
+        collectedItems: payload.collectedItems || [],
+        spawnedItems: payload.spawnedItems || []
+      };
       if (Array.isArray(payload.spawnedItems) && this.itemManager) {
         for (const it of payload.spawnedItems) {
           this.itemManager.spawnWorldItem(it);
