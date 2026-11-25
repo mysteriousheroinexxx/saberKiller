@@ -97,6 +97,15 @@ export const DEFAULT_SOUND_DEFINITIONS = Object.freeze({
     minIntervalSeconds: 0.04,
     fadeInSeconds: 0.004,
     fadeOutSeconds: 0.03
+  },
+  interaction_drink: {
+    id: 'interaction_drink',
+    category: AUDIO_CATEGORIES.INTERACTIONS,
+    url: 'assets/audio/drinkingDrink.wav',
+    defaultVolume: 0.62,
+    minIntervalSeconds: 0.1,
+    fadeInSeconds: 0.004,
+    fadeOutSeconds: 0.035
   }
 });
 
@@ -560,7 +569,7 @@ export class MultiplayerAudioManager {
               maxSliceSeconds: soundId === 'player_run' ? 0.27 : 0.35
             })
           );
-        } else if (soundId === 'weapon_pistol_fire' || soundId === 'weapon_reload' || soundId === 'interaction_pickup') {
+        } else if (soundId === 'weapon_pistol_fire' || soundId === 'weapon_reload' || soundId === 'interaction_pickup' || soundId === 'interaction_drink') {
           this.soundTrimBounds.set(soundId, extractSoundTrimBounds(decoded));
         } else if (soundId === 'sanity_heartbeat') {
           this._heartbeatLoopBuffer = buildSeamlessLoopBuffer(ctx, decoded, 0.12);
@@ -591,7 +600,8 @@ export class MultiplayerAudioManager {
       this.loadSound('weapon_pistol_fire'),
       this.loadSound('weapon_reload'),
       this.loadSound('sanity_heartbeat'),
-      this.loadSound('interaction_pickup')
+      this.loadSound('interaction_pickup'),
+      this.loadSound('interaction_drink')
     ]);
   }
 
@@ -930,6 +940,45 @@ export class MultiplayerAudioManager {
   }
 
   /**
+   * Plays drinking audio for Almond Water ('almond_can') or Energy Drink ('energy_drink')
+   * through the 'interactions' bus. Explicitly ignores 'sanity_pill' and non-drink items,
+   * and deduplicates across accepted responses / retries via requestId.
+   */
+  playDrinkConsumable(itemType, options = {}) {
+    if (itemType !== 'almond_can' && itemType !== 'energy_drink') {
+      return false;
+    }
+    if (!this._playedDrinkKeys) {
+      this._playedDrinkKeys = new Set();
+    }
+    const reqKey = options.requestId ? `${itemType}::${options.requestId}` : null;
+    if (reqKey && this._playedDrinkKeys.has(reqKey)) {
+      return false;
+    }
+
+    const played = this.playInteractionSound('interaction_drink', {
+      emitterId: options.emitterId || 'local',
+      positional: Boolean(options.positional),
+      position: options.position || null,
+      attachTarget: options.attachTarget || null,
+      ignoreRateLimit: Boolean(options.ignoreRateLimit),
+      minIntervalSeconds: options.minIntervalSeconds ?? 0.08,
+      pitchVariance: 0.03,
+      refDistance: 2.0,
+      maxDistance: 28.0,
+      rolloffFactor: 1.25
+    });
+
+    if (played && reqKey) {
+      this._playedDrinkKeys.add(reqKey);
+      if (this._playedDrinkKeys.size > 256) {
+        this._playedDrinkKeys.delete(this._playedDrinkKeys.values().next().value);
+      }
+    }
+    return played;
+  }
+
+  /**
    * Plays a one-shot interaction/consumable sound routed through the 'interactions' bus.
    */
   playInteractionSound(soundId, options = {}) {
@@ -1111,6 +1160,7 @@ export class MultiplayerAudioManager {
     }
     this.lastInteractionTime.clear();
     this._playedPickupKeys.clear();
+    this._playedDrinkKeys?.clear();
     this._lastPickupItemTimes.clear();
   }
 

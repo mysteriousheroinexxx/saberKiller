@@ -1083,9 +1083,14 @@ wss.on('connection', (ws, req) => {
           send(ws, MSG_TYPES.ITEM_USE_RESPONSE, rejectPayload);
         } else {
           console.log(`[ITEM USE ${requestId}] Accepted for player=${res.player.id}, item=${res.itemType}`);
+          const consumerPos = res.player?.position
+            ? { x: res.player.position.x || 0, y: res.player.position.y || 0, z: res.player.position.z || 0 }
+            : { x: 0, y: 0, z: 0 };
           const acceptPayload = {
             requestId,
             success: true,
+            playerId: res.player.id,
+            position: consumerPos,
             slotIndex: res.slotIndex,
             itemType: res.itemType,
             itemName: res.itemName,
@@ -1101,6 +1106,21 @@ wss.on('connection', (ws, req) => {
             if (res.room.useRequests.size > 500) res.room.useRequests.delete(res.room.useRequests.keys().next().value);
           }
           send(ws, MSG_TYPES.ITEM_USE_RESPONSE, acceptPayload);
+
+          if (res.room?.players) {
+            for (const [_, p] of res.room.players) {
+              if (p.id !== res.player.id) {
+                send(p.ws, MSG_TYPES.ITEM_CONSUMED, {
+                  requestId,
+                  playerId: res.player.id,
+                  sourceEntityId: res.player.id,
+                  itemType: res.itemType,
+                  position: consumerPos,
+                  timestamp: Date.now()
+                });
+              }
+            }
+          }
 
           if (res.sanityUpdate) {
             send(ws, MSG_TYPES.PLAYER_SANITY_UPDATE, res.sanityUpdate);

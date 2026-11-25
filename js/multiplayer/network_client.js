@@ -18,6 +18,7 @@ export const MSG_TYPES = {
   ROOM_ITEMS_STATE: 'ROOM_ITEMS_STATE',
   ITEM_USE_REQUEST: 'ITEM_USE_REQUEST',
   ITEM_USE_RESPONSE: 'ITEM_USE_RESPONSE',
+  ITEM_CONSUMED: 'ITEM_CONSUMED',
   ITEM_DROP_REQUEST: 'ITEM_DROP_REQUEST',
   ITEM_DROP_RESPONSE: 'ITEM_DROP_RESPONSE',
   ITEM_SPAWNED: 'ITEM_SPAWNED',
@@ -98,6 +99,7 @@ export class NetworkClient {
     this.onPickupRejected = null;
     this.onRoomItemsState = null;
     this.onItemUseResponse = null;
+    this.onItemConsumed = null;
     this.onItemDropResponse = null;
     this.onItemSpawned = null;
     this.onVendingDispenseResponse = null;
@@ -300,6 +302,10 @@ export class NetworkClient {
 
       case MSG_TYPES.ITEM_USE_RESPONSE:
         if (this.onItemUseResponse) this.onItemUseResponse(payload);
+        break;
+
+      case MSG_TYPES.ITEM_CONSUMED:
+        if (this.onItemConsumed) this.onItemConsumed(payload);
         break;
 
       case MSG_TYPES.ITEM_DROP_RESPONSE:

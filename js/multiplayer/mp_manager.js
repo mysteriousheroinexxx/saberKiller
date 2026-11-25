@@ -338,12 +338,38 @@ export class MPManager {
         if (this.localPlayer) {
           this.localPlayer.onItemUseAccepted(payload);
         }
+        if (this.audioManager && payload.itemType) {
+          this.audioManager.playDrinkConsumable?.(payload.itemType, {
+            requestId: payload.requestId,
+            emitterId: 'local',
+            positional: false,
+            position: payload.position || this.localPlayer?.pos
+          });
+        }
       } else if (payload && !payload.success) {
         if (this.localPlayer) {
           this.localPlayer.onItemUseRejected(payload);
         }
       }
       if (this.ui.onItemUseResponse) this.ui.onItemUseResponse(payload);
+    };
+
+    this.network.onItemConsumed = (payload) => {
+      if (this.audioManager && payload && payload.itemType) {
+        const actorId = payload.sourceEntityId || payload.playerId;
+        if (actorId && actorId !== this.myPlayerId) {
+          const rp = this.remotePlayers.get(actorId);
+          if (!rp || rp.state === 'ACTIVE') {
+            this.audioManager.playDrinkConsumable?.(payload.itemType, {
+              requestId: payload.requestId,
+              emitterId: actorId,
+              positional: true,
+              position: payload.position || rp?.group?.position
+            });
+          }
+        }
+      }
+      if (this.ui.onItemConsumed) this.ui.onItemConsumed(payload);
     };
 
     this.network.onPlayerSanityUpdate = (payload) => {
