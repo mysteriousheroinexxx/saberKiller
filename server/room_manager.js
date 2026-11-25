@@ -4,8 +4,73 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { MAX_PLAYERS_PER_ROOM, isValidNumber } from './protocol.js';
 import { InventoryController } from '../js/multiplayer/inventory_controller.js';
-import { isPickupItem, getItemDefinition, ITEM_EFFECTS_CONFIG } from '../js/multiplayer/item_catalog.js';
+import {
+  isPickupItem,
+  getItemDefinition,
+  ITEM_EFFECTS_CONFIG,
+  ENERGY_DRINK_CONFIG,
+  DEFAULT_ENERGY_DRINK_CONFIG,
+  configureEnergyDrinkRules,
+  resetEnergyDrinkConfig
+} from '../js/multiplayer/item_catalog.js';
+import {
+  DEFAULT_SANITY_CONFIG,
+  SANITY_STATE
+} from '../js/multiplayer/sanity_controller.js';
+import {
+  LOOT_CONFIG,
+  DEFAULT_LOOT_CONFIG,
+  configureLootRules,
+  resetLootConfig,
+  getLootConfigSnapshot,
+  isApprovedKeySlot,
+  shuffleWithRng,
+  selectDistinctHubSlots,
+  pickWeightedConsumableType
+} from '../js/multiplayer/loot_config.js';
 import { RoomSimulation } from './ai/room_simulation.js';
+
+export {
+  LOOT_CONFIG,
+  DEFAULT_LOOT_CONFIG,
+  configureLootRules,
+  resetLootConfig,
+  getLootConfigSnapshot,
+  ENERGY_DRINK_CONFIG,
+  DEFAULT_ENERGY_DRINK_CONFIG,
+  configureEnergyDrinkRules,
+  resetEnergyDrinkConfig
+};
+
+// Server-authoritative Sanity Configuration (Budget-Backrooms UE4.27 reference)
+export const SANITY_CONFIG = {
+  ...DEFAULT_SANITY_CONFIG
+};
+
+export function configureSanityRules(opts = {}) {
+  for (const key of [
+    'initialSanity',
+    'maxSanity',
+    'minSanity',
+    'passiveDrainPerSecond',
+    'hardcorePassiveDrainPerSecond',
+    'chaseDrainPerSecond',
+    'hardcoreChaseDrainPerSecond',
+    'almondPauseDurationSeconds',
+    'visualFxThreshold',
+    'panicThreshold',
+    'depletedThreshold'
+  ]) {
+    if (typeof opts[key] === 'number' && Number.isFinite(opts[key]) && opts[key] >= 0) {
+      SANITY_CONFIG[key] = opts[key];
+    }
+  }
+  return { ...SANITY_CONFIG };
+}
+
+export function resetSanityConfig() {
+  return configureSanityRules(DEFAULT_SANITY_CONFIG);
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -169,6 +234,17 @@ export class RoomManager {
       inventory: new InventoryController(30),
       hp: SURVIVAL_CONFIG.startingHp,
       maxHp: SURVIVAL_CONFIG.maxHp,
+      sanity: SANITY_CONFIG.initialSanity,
+      maxSanity: SANITY_CONFIG.maxSanity,
+      sanityPauseRemaining: 0,
+      isSanityPaused: false,
+      isChasedBySaber: false,
+      sanityDrainRate: SANITY_CONFIG.passiveDrainPerSecond,
+      sanitySyncAccum: 0,
+      stamina: 100,
+      maxStamina: 100,
+      speedMultiplier: 1.0,
+      speedBoostRemaining: 0,
       state: 'ACTIVE', // 'ACTIVE', 'DOWNED', 'ELIMINATED'
       revivalsUsed: 0,
       isDead: false,
@@ -199,6 +275,9 @@ export class RoomManager {
       healthPacksFrozen: false,
       startingPlayerCount: 0,
       availableHealthPackCount: 0,
+      matchGeneration: 1,
+      lootRng: (options && typeof options.rng === 'function') ? options.rng : Math.random,
+      lootSummary: null,
       healthPackMultiplier: (options && typeof options.healthPackMultiplier === 'number') ? options.healthPackMultiplier : (SURVIVAL_CONFIG.healthPacksPerStartingPlayer || 3),
       saberDifficulty: (options && typeof options.difficulty === 'string') ? ((options.difficulty.toUpperCase() === 'HARD') ? 'HARD' : 'NORMAL') : (SURVIVAL_CONFIG.saberDifficulty || 'NORMAL'),
       simulation: null
@@ -254,6 +333,9 @@ export class RoomManager {
     // Fixed Ammunition Economy: Initialize and enforce Level 0 room budget
     this._initializeRoomAmmo(room);
 
+    // Configurable Environmental Loot: Generate initial run consumables across Level 0 furniture & vending hubs
+    this._initializeRoomLoot(room);
+
     // Level 0 Key & Exit Door: Configure physical keys based on starting player count
     const startingCount = (options && typeof options.startingPlayers === 'number' && options.startingPlayers > 0)
       ? options.startingPlayers
@@ -267,11 +349,14 @@ export class RoomManager {
       this._initializeRoomSimulation(room);
     }
 
-    // Collect any world items that are unavailable from the start (e.g. capped health packs)
+    // Collect any world items that are unavailable from the start and any dynamically spawned items
     const collectedItems = [];
+    const spawnedItems = [];
     for (const [id, item] of room.worldItems) {
       if (item.isPickup && !item.available) {
         collectedItems.push(id);
+      } else if ((item.isDropped || item.isDispensed || item.isGenerated) && item.available) {
+        spawnedItems.push(item);
       }
     }
 
@@ -284,7 +369,7 @@ export class RoomManager {
       totalPlayers: 1,
       layoutRevision: room.layoutRevision,
       collectedItems,
-      spawnedItems: [],
+      spawnedItems,
       doors: this.serializeDoors(room),
       inventory: player.inventory.serialize()
     };
@@ -300,7 +385,81 @@ export class RoomManager {
       : (SURVIVAL_CONFIG.healthPacksPerStartingPlayer || 3);
     const requiredCount = room.startingPlayerCount * multiplier;
 
-    // Collect all existing first_aid items registered in room.worldItems
+    const envSlots = room.rawLayoutData?.environmentalLoot?.healthPackSlots;
+    const rng = (typeof room.lootRng === 'function') ? room.lootRng : Math.random;
+
+    if (Array.isArray(envSlots) && envSlots.length > 0) {
+      const gen = room.matchGeneration || 1;
+      const chosenSlots = LOOT_CONFIG.healthPackRules?.randomizeHealthPacks
+        ? selectDistinctHubSlots(envSlots, requiredCount, rng, LOOT_CONFIG.healthPackRules?.preferDistinctHubs !== false)
+        : envSlots.slice(0, requiredCount);
+      const chosenSlotIds = new Set(chosenSlots.map(s => s.id));
+
+      let active = 0;
+      for (const slot of envSlots) {
+        const isChosen = chosenSlotIds.has(slot.id) && active < requiredCount;
+        const itemId = `loot_g${gen}_${slot.id}`;
+        const item = {
+          id: itemId,
+          slotId: slot.id,
+          type: 'first_aid',
+          category: 'medical',
+          position: Array.isArray(slot.position) ? [...slot.position] : [0, 0.02, 0],
+          rotation: Array.isArray(slot.rotation) ? [...slot.rotation] : [0, 0, 0],
+          surfaceType: slot.surfaceType || slot.anchor?.surface || 'floor',
+          shelfTier: slot.shelfTier || slot.anchor?.tier || null,
+          supportProp: slot.supportProp || slot.anchor?.supportProp || null,
+          supportType: slot.supportType || slot.anchor?.supportType || null,
+          anchor: slot.anchor ? { ...slot.anchor } : { surface: slot.surfaceType || 'floor' },
+          isPickup: true,
+          available: isChosen,
+          cappedUnavailable: !isChosen,
+          collectedReason: isChosen ? null : 'SUPPLY_CAPPED',
+          isGenerated: true,
+          collectedBy: null,
+          collectedAt: null
+        };
+        room.worldItems.set(itemId, item);
+        if (isChosen) active++;
+      }
+
+      // If requiredCount exceeds authored healthPackSlots (e.g. high custom multiplier), expand along approved hubs
+      let extraIdx = 1;
+      while (active < requiredCount) {
+        const baseSlot = envSlots[(extraIdx - 1) % envSlots.length];
+        const genId = `loot_g${gen}_hp_extra_${extraIdx}`;
+        const basePos = Array.isArray(baseSlot.position) ? baseSlot.position : [44.5, 0.936, -185.35];
+        const offset = 0.16 * (Math.floor((extraIdx - 1) / envSlots.length) + 1);
+        const item = {
+          id: genId,
+          slotId: baseSlot.id,
+          type: 'first_aid',
+          category: 'medical',
+          position: [+(basePos[0] + offset).toFixed(3), basePos[1], basePos[2]],
+          rotation: Array.isArray(baseSlot.rotation) ? [...baseSlot.rotation] : [0, 0, 0],
+          surfaceType: baseSlot.surfaceType || 'floor',
+          shelfTier: baseSlot.shelfTier || null,
+          supportProp: baseSlot.supportProp || null,
+          supportType: baseSlot.supportType || null,
+          anchor: baseSlot.anchor ? { ...baseSlot.anchor } : { surface: baseSlot.surfaceType || 'floor' },
+          isPickup: true,
+          available: true,
+          cappedUnavailable: false,
+          collectedReason: null,
+          isGenerated: true,
+          collectedBy: null,
+          collectedAt: null
+        };
+        room.worldItems.set(genId, item);
+        active++;
+        extraIdx++;
+      }
+
+      room.availableHealthPackCount = active;
+      return active;
+    }
+
+    // Legacy explicit-layout path (used by mockLayouts in unit tests)
     const firstAidItems = [];
     for (const [id, item] of room.worldItems) {
       if (item.type === 'first_aid') {
@@ -308,7 +467,6 @@ export class RoomManager {
       }
     }
 
-    // Authored candidate positions across Level 0 to scale first_aid supply
     const candidateLocations = [
       { id: 'floor_first_aid_01', position: [43.7, 0.0, -188.90], rotation: [0.0, 0.3, 0.0] },
       { id: 'table_first_aid_01', position: [44.75, 0.936, -185.45], rotation: [0.0, 0.1, 0.0] },
@@ -328,7 +486,6 @@ export class RoomManager {
       { id: 'junction_first_aid_01', position: [55.0, 0.02, -177.0], rotation: [0.0, 0.7, 0.0] }
     ];
 
-    // Register all candidate locations into room.worldItems if not already present
     for (const cand of candidateLocations) {
       if (!room.worldItems.has(cand.id)) {
         const item = {
@@ -348,7 +505,6 @@ export class RoomManager {
       }
     }
 
-    // If still not enough (e.g. high multiplier or many players), dynamically generate
     while (firstAidItems.length < requiredCount) {
       const idx = firstAidItems.length + 1;
       const genId = `gen_first_aid_${idx}`;
@@ -388,6 +544,170 @@ export class RoomManager {
     return active;
   }
 
+  /**
+   * Authoritatively spawns randomized environmental consumables (batteries, almond water,
+   * energy drinks, sanity pills) at designated Level 0 furniture & vending slots.
+   */
+  _initializeRoomLoot(room) {
+    const slots = room.rawLayoutData?.environmentalLoot?.consumableSlots;
+    if (!Array.isArray(slots) || slots.length === 0 || !LOOT_CONFIG.enabled) {
+      room.lootSummary = {
+        matchGeneration: room.matchGeneration || 1,
+        totalConsumables: 0,
+        byType: {},
+        healthPackCount: room.availableHealthPackCount || 0
+      };
+      return [];
+    }
+
+    const gen = room.matchGeneration || 1;
+    const rng = (typeof room.lootRng === 'function') ? room.lootRng : Math.random;
+    const byType = {};
+    const spawned = [];
+
+    const registerItem = (slot, itemType) => {
+      const def = getItemDefinition(itemType);
+      const itemId = `loot_g${gen}_${slot.id}`;
+      const item = {
+        id: itemId,
+        slotId: slot.id,
+        type: itemType,
+        category: def?.category || 'consumable',
+        position: Array.isArray(slot.position) ? [...slot.position] : [0, 0.02, 0],
+        rotation: Array.isArray(slot.rotation) ? [...slot.rotation] : [0, 0, 0],
+        surfaceType: slot.surfaceType || slot.anchor?.surface || 'floor',
+        shelfTier: slot.shelfTier || slot.anchor?.tier || null,
+        supportProp: slot.supportProp || slot.anchor?.supportProp || null,
+        supportType: slot.supportType || slot.anchor?.supportType || null,
+        anchor: slot.anchor ? { ...slot.anchor } : { surface: slot.surfaceType || 'floor' },
+        isPickup: true,
+        available: true,
+        isGenerated: true,
+        collectedBy: null,
+        collectedAt: null
+      };
+      room.worldItems.set(itemId, item);
+      byType[itemType] = (byType[itemType] || 0) + 1;
+      spawned.push(item);
+    };
+
+    if (LOOT_CONFIG.distributionMode === 'exact_quantities') {
+      const qtys = LOOT_CONFIG.consumableQuantities || {};
+      const almondTarget = Math.max(0, Math.floor(qtys.almond_can || 0));
+      const batteryTarget = Math.max(0, Math.floor(qtys.aa_battery || 0));
+      const pillTarget = Math.max(0, Math.floor(qtys.sanity_pill || 0));
+      const drinkTarget = Math.max(0, Math.floor(qtys.energy_drink || 0));
+
+      const vendingSlots = slots.filter(s => s.surfaceType === 'vending_around');
+      const furnitureSlots = slots.filter(s => s.surfaceType === 'table' || s.surfaceType === 'shelf_tier');
+
+      // 1. Place a share of Almond Water cans immediately around vending machines (across distinct vending hubs)
+      const desiredVendingAlmonds = Math.min(
+        almondTarget,
+        vendingSlots.length,
+        Math.round(almondTarget * (LOOT_CONFIG.vendingAlmondShare ?? 0.35))
+      );
+      const chosenVendingSlots = selectDistinctHubSlots(vendingSlots, desiredVendingAlmonds, rng, true);
+      for (const vs of chosenVendingSlots) {
+        registerItem(vs, 'almond_can');
+      }
+
+      // 2. Build remaining exact consumable pool for tables & metal shelves
+      const remainingAlmonds = Math.max(0, almondTarget - chosenVendingSlots.length);
+      const typeQueue = [];
+      for (let i = 0; i < batteryTarget; i++) typeQueue.push('aa_battery');
+      for (let i = 0; i < pillTarget; i++) typeQueue.push('sanity_pill');
+      for (let i = 0; i < remainingAlmonds; i++) typeQueue.push('almond_can');
+      for (let i = 0; i < drinkTarget; i++) typeQueue.push('energy_drink');
+      const shuffledTypes = shuffleWithRng(typeQueue, rng);
+
+      // Cap how many consumables spawn immediately near spawn so loot distributes map-wide
+      const nearSpawnCap = LOOT_CONFIG.maxConsumablesNearSpawn ?? 4;
+      const nearSpawnRadius = LOOT_CONFIG.nearSpawnRadius ?? 18;
+      const isNearSpawn = (s) => Math.hypot((s.position?.[0] || 0) - 48.69, (s.position?.[2] || 0) + 187.65) < nearSpawnRadius;
+
+      const farSlots = furnitureSlots.filter(s => !isNearSpawn(s));
+      const nearSlots = furnitureSlots.filter(s => isNearSpawn(s));
+
+      // Spread primary picks widely across far/map-wide zones, mixing up to nearSpawnCap nearby
+      const selectedNear = selectDistinctHubSlots(nearSlots, Math.min(nearSpawnCap, shuffledTypes.length), rng, true);
+      const remainingNeeded = Math.max(0, shuffledTypes.length - selectedNear.length);
+      const selectedFar = selectDistinctHubSlots(farSlots, remainingNeeded, rng, true);
+
+      let chosenFurniture = shuffleWithRng([...selectedFar, ...selectedNear], rng);
+      if (chosenFurniture.length < shuffledTypes.length) {
+        const usedIds = new Set(chosenFurniture.map(s => s.id));
+        const leftover = shuffleWithRng(furnitureSlots.filter(s => !usedIds.has(s.id)), rng);
+        chosenFurniture.push(...leftover.slice(0, shuffledTypes.length - chosenFurniture.length));
+      }
+
+      for (let i = 0; i < shuffledTypes.length && i < chosenFurniture.length; i++) {
+        registerItem(chosenFurniture[i], shuffledTypes[i]);
+      }
+
+      room.lootSummary = {
+        matchGeneration: gen,
+        totalConsumables: spawned.length,
+        byType,
+        healthPackCount: room.availableHealthPackCount || 0
+      };
+      return spawned;
+    }
+
+    // Legacy weighted_random mode (used when caller passes minConsumables/maxConsumables/consumableWeights)
+    const minCount = Math.min(slots.length, Math.max(0, LOOT_CONFIG.minConsumables || 0));
+    const maxCount = Math.min(slots.length, Math.max(minCount, LOOT_CONFIG.maxConsumables ?? slots.length));
+
+    let chosenSlots = [];
+    const unchosenSlots = [];
+    const isEligibleSlot = (slot) => pickWeightedConsumableType(
+      slot.allowedTypes,
+      LOOT_CONFIG.consumableWeights,
+      byType,
+      LOOT_CONFIG.maxPerType,
+      rng
+    ) !== null;
+
+    for (const slot of slots) {
+      if (!isEligibleSlot(slot)) continue;
+      const chance = (typeof slot.spawnChance === 'number') ? slot.spawnChance : LOOT_CONFIG.consumableSlotSpawnChance;
+      if (rng() < chance) {
+        chosenSlots.push(slot);
+      } else {
+        unchosenSlots.push(slot);
+      }
+    }
+
+    if (chosenSlots.length < minCount) {
+      const extraNeeded = minCount - chosenSlots.length;
+      const extras = selectDistinctHubSlots(unchosenSlots, extraNeeded, rng, true);
+      chosenSlots.push(...extras);
+    }
+    if (chosenSlots.length > maxCount) {
+      chosenSlots = shuffleWithRng(chosenSlots, rng).slice(0, maxCount);
+    }
+
+    for (const slot of chosenSlots) {
+      const itemType = pickWeightedConsumableType(
+        slot.allowedTypes,
+        LOOT_CONFIG.consumableWeights,
+        byType,
+        LOOT_CONFIG.maxPerType,
+        rng
+      );
+      if (!itemType) continue;
+      registerItem(slot, itemType);
+    }
+
+    room.lootSummary = {
+      matchGeneration: gen,
+      totalConsumables: spawned.length,
+      byType,
+      healthPackCount: room.availableHealthPackCount || 0
+    };
+    return spawned;
+  }
+
   freezeHealthPackSupply(roomCode, startingCount = 1) {
     const room = this.rooms.get(roomCode);
     if (!room) return null;
@@ -407,7 +727,7 @@ export class RoomManager {
         id: 'floor_weapon_pistol_01',
         type: 'weapon_pistol',
         category: 'weapon',
-        position: [44.2, 0.0, -187.5],
+        position: [60.594, 0.936, -183.877],
         rotation: [0, 0, 0],
         isPickup: true,
         available: true,
@@ -625,6 +945,17 @@ export class RoomManager {
       inventory: new InventoryController(30),
       hp: SURVIVAL_CONFIG.startingHp,
       maxHp: SURVIVAL_CONFIG.maxHp,
+      sanity: SANITY_CONFIG.initialSanity,
+      maxSanity: SANITY_CONFIG.maxSanity,
+      sanityPauseRemaining: 0,
+      isSanityPaused: false,
+      isChasedBySaber: false,
+      sanityDrainRate: SANITY_CONFIG.passiveDrainPerSecond,
+      sanitySyncAccum: 0,
+      stamina: 100,
+      maxStamina: 100,
+      speedMultiplier: 1.0,
+      speedBoostRemaining: 0,
       state: 'ACTIVE',
       revivalsUsed: 0,
       isDead: false,
@@ -871,6 +1202,51 @@ export class RoomManager {
       };
     }
 
+    // Sanity recovery items (Almond Water & Sanity Pills — Energy Drink NEVER restores sanity)
+    let sanityUpdate = null;
+    let staminaUpdate = null;
+    let speedBoostUpdate = null;
+
+    if (item.typeId === 'almond_can' || item.typeId === 'sanity_pill') {
+      const sanityRestore = Math.max(0, Number(effectConfig.sanityRestore) || 0);
+      const maxSanity = player.maxSanity || SANITY_CONFIG.maxSanity;
+      const prevSanity = typeof player.sanity === 'number' ? player.sanity : SANITY_CONFIG.initialSanity;
+      player.sanity = Math.min(maxSanity, prevSanity + sanityRestore);
+      if (item.typeId === 'almond_can') {
+        player.sanityPauseRemaining = SANITY_CONFIG.almondPauseDurationSeconds;
+        player.isSanityPaused = true;
+        if (typeof effectConfig.staminaBoost === 'number' && effectConfig.staminaBoost > 0) {
+          player.stamina = Math.min(player.maxStamina || 100, (player.stamina ?? 100) + effectConfig.staminaBoost);
+          staminaUpdate = { playerId: player.id, stamina: player.stamina, maxStamina: player.maxStamina || 100 };
+        }
+      }
+      sanityUpdate = this._buildSanityPayload(player, `ITEM_${item.typeId.toUpperCase()}`);
+    } else if (item.typeId === 'energy_drink') {
+      // Energy Drink:
+      // 1) Instantly restores existing stamina to maximum
+      // 2) Applies non-stacking 1.27x movement speed boost for configurable duration
+      // 3) Explicitly NEVER restores sanity
+      const maxStam = player.maxStamina || 100;
+      player.stamina = maxStam;
+      const boostMult = Math.max(1.0, Number(effectConfig.speedMultiplier ?? ENERGY_DRINK_CONFIG.speedMultiplier) || 1.27);
+      const boostDur = Math.max(0.1, Number(effectConfig.durationSeconds ?? ENERGY_DRINK_CONFIG.durationSeconds) || 15);
+      player.speedMultiplier = boostMult;
+      player.speedBoostRemaining = boostDur;
+
+      staminaUpdate = {
+        playerId: player.id,
+        stamina: player.stamina,
+        maxStamina: maxStam
+      };
+      speedBoostUpdate = {
+        playerId: player.id,
+        active: true,
+        speedMultiplier: player.speedMultiplier,
+        durationSeconds: boostDur,
+        remainingSeconds: boostDur
+      };
+    }
+
     // Ammunition box consumption: atomically grants exactly 2 rounds to compatible weapon reserve
     let ammoUpdate = null;
     if (item.typeId === 'pistol_ammo' || item.typeId === 'ammo_box') {
@@ -893,6 +1269,15 @@ export class RoomManager {
       };
     }
 
+    const clientEffect = (item.typeId === 'energy_drink')
+      ? {
+          staminaBoost: ENERGY_DRINK_CONFIG.staminaBoost,
+          restoreFullStamina: true,
+          speedMultiplier: player.speedMultiplier,
+          durationSeconds: player.speedBoostRemaining
+        }
+      : { ...effectConfig };
+
     return {
       success: true,
       room,
@@ -900,9 +1285,12 @@ export class RoomManager {
       itemType: item.typeId,
       itemName: item.name,
       slotIndex: targetSlot,
-      effect: effectConfig,
+      effect: clientEffect,
       ammoUpdate,
       hpUpdate,
+      sanityUpdate,
+      staminaUpdate,
+      speedBoostUpdate,
       remainingQuantity,
       inventory: player.inventory.serialize()
     };
@@ -971,7 +1359,8 @@ export class RoomManager {
     const dropZ = +(pPos.z - Math.cos(yaw) * 0.9).toFixed(3);
     const dropY = 0.02; // Rest on floor
 
-    const dropId = `drop_${item.typeId}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    this._dropSeq = (this._dropSeq || 0) + 1;
+    const dropId = `drop_${item.typeId}_${Date.now()}_${this._dropSeq}`;
     const worldItem = {
       id: dropId,
       type: item.typeId,
@@ -1274,6 +1663,9 @@ export class RoomManager {
     // Freeze Health Pack economy using starting player count at actual match start
     this._freezeRoomHealthPacks(room, room.players.size);
 
+    // Generate fresh environmental consumable loot distribution for this run
+    this._initializeRoomLoot(room);
+
     // Reset exit door to locked
     const door = room.doors?.get('level0_exit_door');
     if (door) {
@@ -1289,8 +1681,17 @@ export class RoomManager {
     for (const [id, player] of room.players) {
       player.hp = SURVIVAL_CONFIG.startingHp;
       player.maxHp = SURVIVAL_CONFIG.maxHp;
-      player.sanity = 100;
-      player.maxSanity = 100;
+      player.sanity = SANITY_CONFIG.initialSanity;
+      player.maxSanity = SANITY_CONFIG.maxSanity;
+      player.sanityPauseRemaining = 0;
+      player.isSanityPaused = false;
+      player.isChasedBySaber = false;
+      player.sanityDrainRate = SANITY_CONFIG.passiveDrainPerSecond;
+      player.sanitySyncAccum = 0;
+      player.stamina = 100;
+      player.maxStamina = 100;
+      player.speedMultiplier = 1.0;
+      player.speedBoostRemaining = 0;
       player.state = 'ACTIVE';
       player.revivalsUsed = 0;
       player.downedAt = null;
@@ -1772,7 +2173,70 @@ export class RoomManager {
     room.requiredKeyCount = requiredKeys;
     room.startingPlayerCount = startingPlayerCount;
 
-    // Candidate key spawn positions across Level 0 exploration locations
+    const envKeySlots = room.rawLayoutData?.environmentalLoot?.keySlots;
+    const rng = (typeof room.lootRng === 'function') ? room.lootRng : Math.random;
+
+    if (Array.isArray(envKeySlots) && envKeySlots.length > 0) {
+      // Strictly filter key slots so keys ONLY spawn on or immediately around
+      // metal_shelf, table, or vending/vending_almond (NEVER random floor points).
+      const approvedSlots = LOOT_CONFIG.keyRules?.enforceSurfaceRestriction !== false
+        ? envKeySlots.filter(isApprovedKeySlot)
+        : [...envKeySlots];
+
+      if (approvedSlots.length < requiredKeys) {
+        throw new Error(`Insufficient approved key slots (${approvedSlots.length}) for required key count (${requiredKeys})`);
+      }
+
+      const gen = room.matchGeneration || 1;
+      const chosenSlots = LOOT_CONFIG.keyRules?.randomizeKeys !== false
+        ? selectDistinctHubSlots(approvedSlots, requiredKeys, rng, LOOT_CONFIG.keyRules?.preferDistinctHubs !== false)
+        : approvedSlots.slice(0, requiredKeys);
+      const chosenIds = new Set(chosenSlots.map(s => s.id));
+
+      const activeKeys = [];
+      for (const slot of approvedSlots) {
+        const isChosen = chosenIds.has(slot.id) && activeKeys.length < requiredKeys;
+        const keyId = `loot_g${gen}_${slot.id}`;
+        const keyItem = {
+          id: keyId,
+          slotId: slot.id,
+          type: 'doorKey',
+          category: 'key',
+          position: Array.isArray(slot.position) ? [...slot.position] : [0, 0.02, 0],
+          rotation: Array.isArray(slot.rotation) ? [...slot.rotation] : [0, 0, 0],
+          surfaceType: slot.surfaceType || slot.anchor?.surface || 'floor',
+          shelfTier: slot.shelfTier || slot.anchor?.tier || null,
+          supportProp: slot.supportProp || slot.anchor?.supportProp || null,
+          supportType: slot.supportType || slot.anchor?.supportType || null,
+          anchor: slot.anchor ? { ...slot.anchor } : { surface: slot.surfaceType || 'floor' },
+          isPickup: true,
+          available: isChosen,
+          cappedUnavailable: !isChosen,
+          collectedReason: isChosen ? null : 'SUPPLY_CAPPED',
+          isGenerated: true,
+          collectedBy: null,
+          collectedAt: null
+        };
+        room.worldItems.set(keyId, keyItem);
+        if (isChosen) {
+          activeKeys.push(keyItem);
+        }
+      }
+
+      // Guard against any legacy non-environmental floor keys still present
+      for (const [id, item] of room.worldItems) {
+        if (item.type === 'doorKey' && !activeKeys.some(ak => ak.id === item.id)) {
+          item.available = false;
+          item.isPickup = true;
+          item.cappedUnavailable = true;
+          item.collectedReason = 'SUPPLY_CAPPED';
+        }
+      }
+
+      return activeKeys;
+    }
+
+    // Legacy explicit-layout path (used by mockLayouts in unit tests like key_exit.test.js #2)
     const candidateLocations = [
       { id: 'shelf_door_key_tier3', position: [44.5, 1.188, -189.50], rotation: [0, -0.3, 0] },
       { id: 'table_door_key_01', position: [44.15, 0.936, -185.20], rotation: [0.0, 0.4, 0.0] },
@@ -1784,7 +2248,6 @@ export class RoomManager {
     const activeKeys = [];
     const newlyGeneratedKeys = [];
 
-    // Ensure we have enough key definitions in room.worldItems
     for (const cand of candidateLocations) {
       if (activeKeys.length >= requiredKeys) break;
       let keyItem = room.worldItems.get(cand.id);
@@ -1818,7 +2281,6 @@ export class RoomManager {
       activeKeys.push(keyItem);
     }
 
-    // If there are still not enough (e.g. 6+ players), dynamically generate additional keys
     while (activeKeys.length < requiredKeys) {
       const idx = activeKeys.length + 1;
       const genId = `gen_door_key_${idx}`;
@@ -1841,9 +2303,6 @@ export class RoomManager {
       newlyGeneratedKeys.push(keyItem);
     }
 
-    // CRITICAL: Any existing keys in room.worldItems that are NOT active
-    // MUST NOT be deleted (which causes "Item does not exist in room layout").
-    // Instead mark them as supply-capped / unavailable so they are reported in collectedItems and hidden.
     for (const [id, item] of room.worldItems) {
       if (item.type === 'doorKey' && !activeKeys.some(ak => ak.id === item.id)) {
         item.available = false;
@@ -2177,6 +2636,12 @@ export class RoomManager {
           this.onRoomEvents(room, res.events);
         }
       },
+      onSimulationStep: (delta, chasedPlayers) => {
+        const events = this.stepRoomSurvivalState(room, delta, chasedPlayers);
+        if (events.length > 0 && this.onRoomEvents) {
+          this.onRoomEvents(room, events);
+        }
+      },
       broadcastMessage: (type, payload) => {
         if (this.onBroadcast) {
           this.onBroadcast(room, type, payload);
@@ -2191,12 +2656,109 @@ export class RoomManager {
 
     if (room.players) {
       for (const [pId, p] of room.players) {
-        room.simulation.addPlayer(pId, p.spawn);
+        room.simulation.addPlayer(p);
       }
     }
     room.simulation.start();
 
     return room.simulation;
+  }
+
+  _classifySanityState(sanity) {
+    if (sanity <= SANITY_CONFIG.depletedThreshold) return SANITY_STATE.DEPLETED;
+    if (sanity <= SANITY_CONFIG.panicThreshold) return SANITY_STATE.PANIC;
+    if (sanity <= SANITY_CONFIG.visualFxThreshold) return SANITY_STATE.MILD_PARANOIA;
+    return SANITY_STATE.NORMAL;
+  }
+
+  _buildSanityPayload(player, reason = 'TICK') {
+    const sanity = typeof player.sanity === 'number' ? player.sanity : SANITY_CONFIG.initialSanity;
+    const maxSanity = player.maxSanity || SANITY_CONFIG.maxSanity;
+    return {
+      playerId: player.id,
+      sanity: +sanity.toFixed(4),
+      maxSanity,
+      state: this._classifySanityState(sanity),
+      isPaused: Boolean(player.isSanityPaused),
+      isChased: Boolean(player.isChasedBySaber),
+      drainRatePerSecond: player.sanityDrainRate ?? SANITY_CONFIG.passiveDrainPerSecond,
+      reason
+    };
+  }
+
+  /**
+   * Advances server-authoritative per-player sanity drain and speed boost timers.
+   * Chase drain applies strictly when an active Saber AI in CHASE state targets that player.
+   * Zero sanity never kills or damages HP.
+   */
+  stepRoomSurvivalState(room, delta, chasedPlayers = new Map()) {
+    if (!room || room.runState !== 'IN_PROGRESS' || !(delta > 0)) return [];
+    const events = [];
+    const isHard = ((room.saberDifficulty || SURVIVAL_CONFIG.saberDifficulty || 'NORMAL').toUpperCase() === 'HARD');
+
+    for (const [playerId, player] of room.players) {
+      // 1. Speed boost expiration countdown
+      if ((player.speedBoostRemaining || 0) > 0) {
+        player.speedBoostRemaining = Math.max(0, player.speedBoostRemaining - delta);
+        if (player.speedBoostRemaining === 0) {
+          player.speedMultiplier = 1.0;
+          events.push({
+            type: 'PLAYER_SPEED_BOOST_UPDATE',
+            payload: {
+              playerId: player.id,
+              active: false,
+              speedMultiplier: 1.0,
+              remainingSeconds: 0
+            }
+          });
+        }
+      }
+
+      // 2. Skip sanity simulation while downed/eliminated
+      if (player.state === 'DOWNED' || player.state === 'ELIMINATED') {
+        player.isChasedBySaber = false;
+        player.sanityDrainRate = 0;
+        continue;
+      }
+
+      const chaseCount = (chasedPlayers && typeof chasedPlayers.get === 'function')
+        ? (chasedPlayers.get(player.id) || 0)
+        : 0;
+      const isChased = chaseCount > 0;
+      const prevChased = Boolean(player.isChasedBySaber);
+      const prevPaused = Boolean(player.isSanityPaused);
+      const prevSanity = (typeof player.sanity === 'number') ? player.sanity : SANITY_CONFIG.initialSanity;
+
+      if ((player.sanityPauseRemaining || 0) > 0) {
+        player.sanityPauseRemaining = Math.max(0, player.sanityPauseRemaining - delta);
+      }
+      const isPaused = (player.sanityPauseRemaining || 0) > 0;
+
+      const drainRate = isChased
+        ? (isHard ? SANITY_CONFIG.hardcoreChaseDrainPerSecond : SANITY_CONFIG.chaseDrainPerSecond)
+        : (isHard ? SANITY_CONFIG.hardcorePassiveDrainPerSecond : SANITY_CONFIG.passiveDrainPerSecond);
+
+      const nextSanity = isPaused
+        ? prevSanity
+        : Math.max(SANITY_CONFIG.minSanity, prevSanity - drainRate * delta);
+
+      player.sanity = nextSanity;
+      player.isChasedBySaber = isChased;
+      player.isSanityPaused = isPaused;
+      player.sanityDrainRate = isPaused ? 0 : drainRate;
+
+      player.sanitySyncAccum = (player.sanitySyncAccum || 0) + delta;
+      const stateChanged = (isChased !== prevChased) || (isPaused !== prevPaused) || (prevSanity > 0 && nextSanity === 0);
+      if (stateChanged || player.sanitySyncAccum >= 0.25) {
+        player.sanitySyncAccum = 0;
+        events.push({
+          type: 'PLAYER_SANITY_UPDATE',
+          payload: this._buildSanityPayload(player, isChased ? 'SABER_CHASE' : 'PASSIVE')
+        });
+      }
+    }
+
+    return events;
   }
 
   /**
@@ -2213,14 +2775,134 @@ export class RoomManager {
     return diff;
   }
 
+  sanitizeProjectileImpacts(rawImpacts, allowedKinds = ['wall', 'saber'], defaultWeaponType = 'PISTOL') {
+    if (!Array.isArray(rawImpacts) || rawImpacts.length === 0) return [];
+    const allowed = new Set(allowedKinds);
+    const fallbackWeapon = (typeof defaultWeaponType === 'string' && defaultWeaponType.toUpperCase() === 'SHOTGUN')
+      ? 'shotgun'
+      : 'pistol';
+    const sanitized = [];
+
+    for (const item of rawImpacts) {
+      if (sanitized.length >= 12) break;
+      if (!item || typeof item !== 'object') continue;
+      const kind = (item.kind === 'saber' || item.kind === 'wall') ? item.kind : null;
+      if (!kind || !allowed.has(kind)) continue;
+
+      const pt = item.point;
+      if (!pt || !isValidNumber(pt.x) || !isValidNumber(pt.y) || !isValidNumber(pt.z)) continue;
+
+      const n = item.normal;
+      let norm = { x: 0, y: 0, z: 1 };
+      if (n && isValidNumber(n.x) && isValidNumber(n.y) && isValidNumber(n.z)) {
+        const len = Math.hypot(n.x, n.y, n.z);
+        if (len > 0.0001) {
+          norm = { x: +(n.x / len).toFixed(4), y: +(n.y / len).toFixed(4), z: +(n.z / len).toFixed(4) };
+        }
+      }
+
+      const wType = (typeof item.weaponType === 'string' && item.weaponType.toLowerCase() === 'shotgun')
+        ? 'shotgun'
+        : ((typeof item.weaponType === 'string' && item.weaponType.toLowerCase() === 'pistol') ? 'pistol' : fallbackWeapon);
+
+      const entry = {
+        kind,
+        weaponType: wType,
+        point: { x: +pt.x.toFixed(4), y: +pt.y.toFixed(4), z: +pt.z.toFixed(4) },
+        normal: norm
+      };
+
+      if (kind === 'saber') {
+        entry.monsterId = (typeof item.monsterId === 'string' && item.monsterId) ? item.monsterId : 'saber_alpha';
+        entry.isHeadshot = Boolean(item.isHeadshot);
+      }
+
+      sanitized.push(entry);
+    }
+
+    return sanitized;
+  }
+
   /**
-   * Handles player weapon hit against Saber
+   * Handles player weapon discharge sound and validated wall bullet impacts.
    */
-  handleAttackMonster(ws, monsterId = 'saber_alpha', damage = 50, weaponType = 'PISTOL') {
+  handleWeaponFire(ws, weaponType = 'PISTOL', rawImpacts = null) {
+    const session = this.getPlayer(ws);
+    if (!session) return { error: 'Client not associated with any active room session' };
+    const { room, player } = session;
+    if (player.state === 'DOWNED' || player.state === 'ELIMINATED') {
+      return { error: `Player is ${player.state.toLowerCase()} and cannot fire`, room, player };
+    }
+
+    const normalizedWeapon = (typeof weaponType === 'string' && weaponType.toUpperCase() === 'SHOTGUN') ? 'SHOTGUN' : 'PISTOL';
+    room.simulation?.handleWeaponFired(player.id, normalizedWeapon);
+
+    const wallImpacts = this.sanitizeProjectileImpacts(rawImpacts, ['wall'], normalizedWeapon);
+    const impactEvent = wallImpacts.length > 0
+      ? {
+          type: 'PROJECTILE_IMPACT',
+          payload: {
+            shooterId: player.id,
+            weaponType: normalizedWeapon,
+            impacts: wallImpacts
+          }
+        }
+      : null;
+
+    return {
+      success: true,
+      room,
+      player,
+      weaponType: normalizedWeapon,
+      impactEvent
+    };
+  }
+
+  /**
+   * Handles player weapon hit against Saber and produces synchronized blood impact event.
+   */
+  handleAttackMonster(ws, monsterId = 'saber_alpha', damage = 50, weaponType = 'PISTOL', rawImpacts = null) {
     const session = this.getPlayer(ws);
     if (!session) return { error: 'Client not associated with any active room session' };
     const { room, player } = session;
     if (!room.simulation) return { error: 'Room simulation not active' };
-    return room.simulation.handleAttackMonster(player.id, monsterId, damage, weaponType);
+    const res = room.simulation.handleAttackMonster(player.id, monsterId, damage, weaponType);
+    if (!res || !res.success) return res;
+
+    let impactEvent = null;
+    if (res.damageDealt > 0) {
+      let saberImpacts = this.sanitizeProjectileImpacts(rawImpacts, ['saber'], weaponType);
+      if (saberImpacts.length === 0) {
+        const saber = (monsterId === 'saber_beta' || monsterId === 'Saber Beta')
+          ? room.simulation.sim?.saberBeta
+          : room.simulation.sim?.saberAlpha;
+        if (saber) {
+          saberImpacts = [{
+            kind: 'saber',
+            monsterId: (saber === room.simulation.sim?.saberBeta) ? 'saber_beta' : 'saber_alpha',
+            weaponType: (typeof weaponType === 'string' && weaponType.toLowerCase() === 'shotgun') ? 'shotgun' : 'pistol',
+            point: { x: +saber.position.x.toFixed(4), y: +((saber.position.y || 0) + 1.1).toFixed(4), z: +saber.position.z.toFixed(4) },
+            normal: { x: 0, y: 0, z: 1 },
+            isHeadshot: false
+          }];
+        }
+      }
+      if (saberImpacts.length > 0) {
+        impactEvent = {
+          type: 'PROJECTILE_IMPACT',
+          payload: {
+            shooterId: player.id,
+            weaponType: (typeof weaponType === 'string' && weaponType.toUpperCase() === 'SHOTGUN') ? 'SHOTGUN' : 'PISTOL',
+            impacts: saberImpacts
+          }
+        };
+      }
+    }
+
+    return {
+      ...res,
+      room,
+      impactEvent
+    };
   }
 }

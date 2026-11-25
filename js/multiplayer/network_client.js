@@ -24,9 +24,11 @@ export const MSG_TYPES = {
   INVENTORY_SWAP_REQUEST: 'INVENTORY_SWAP_REQUEST',
   VENDING_DISPENSE_REQUEST: 'VENDING_DISPENSE_REQUEST',
   VENDING_DISPENSE_RESPONSE: 'VENDING_DISPENSE_RESPONSE',
-  // Health, Downed & Revival packet types
+  // Health, Downed, Sanity & Status packet types
   PLAYER_DAMAGE_REQUEST: 'PLAYER_DAMAGE_REQUEST',
   PLAYER_HEALTH_UPDATE: 'PLAYER_HEALTH_UPDATE',
+  PLAYER_SANITY_UPDATE: 'PLAYER_SANITY_UPDATE',
+  PLAYER_SPEED_BOOST_UPDATE: 'PLAYER_SPEED_BOOST_UPDATE',
   PLAYER_DOWNED: 'PLAYER_DOWNED',
   PLAYER_ELIMINATED: 'PLAYER_ELIMINATED',
   PLAYER_REVIVE_REQUEST: 'PLAYER_REVIVE_REQUEST',
@@ -50,7 +52,8 @@ export const MSG_TYPES = {
   SOUND_EVENT_BROADCAST: 'SOUND_EVENT_BROADCAST',
   DEV_AI_TELEMETRY: 'DEV_AI_TELEMETRY',
   FIRE_WEAPON: 'FIRE_WEAPON',
-  ATTACK_MONSTER: 'ATTACK_MONSTER'
+  ATTACK_MONSTER: 'ATTACK_MONSTER',
+  PROJECTILE_IMPACT: 'PROJECTILE_IMPACT'
 };
 
 function resolveWebSocketUrl(input) {
@@ -98,6 +101,8 @@ export class NetworkClient {
     this.onItemSpawned = null;
     this.onVendingDispenseResponse = null;
     this.onHealthUpdate = null;
+    this.onPlayerSanityUpdate = null;
+    this.onPlayerSpeedBoostUpdate = null;
     this.onPlayerDowned = null;
     this.onPlayerEliminated = null;
     this.onPlayerReviveResponse = null;
@@ -111,6 +116,7 @@ export class NetworkClient {
     this.onLevelEscaped = null;
     this.onMonsterSnapshot = null;
     this.onSoundEventBroadcast = null;
+    this.onProjectileImpact = null;
     this.onDevAiTelemetry = null;
   }
 
@@ -310,6 +316,14 @@ export class NetworkClient {
         if (this.onHealthUpdate) this.onHealthUpdate(payload);
         break;
 
+      case MSG_TYPES.PLAYER_SANITY_UPDATE:
+        if (this.onPlayerSanityUpdate) this.onPlayerSanityUpdate(payload);
+        break;
+
+      case MSG_TYPES.PLAYER_SPEED_BOOST_UPDATE:
+        if (this.onPlayerSpeedBoostUpdate) this.onPlayerSpeedBoostUpdate(payload);
+        break;
+
       case MSG_TYPES.PLAYER_DOWNED:
         if (this.onPlayerDowned) this.onPlayerDowned(payload);
         break;
@@ -360,6 +374,10 @@ export class NetworkClient {
 
       case MSG_TYPES.SOUND_EVENT_BROADCAST:
         if (this.onSoundEventBroadcast) this.onSoundEventBroadcast(payload);
+        break;
+
+      case MSG_TYPES.PROJECTILE_IMPACT:
+        if (this.onProjectileImpact) this.onProjectileImpact(payload);
         break;
 
       case MSG_TYPES.DEV_AI_TELEMETRY:
@@ -495,12 +513,20 @@ export class NetworkClient {
     return this.send(MSG_TYPES.PLAYER_UPDATE, { x, y, z, yaw, pitch, weapon, isSprinting });
   }
 
-  fireWeapon(weaponType = 'PISTOL', origin = null, direction = null) {
-    return this.send(MSG_TYPES.FIRE_WEAPON, { weaponType, origin, direction });
+  fireWeapon(weaponType = 'PISTOL', origin = null, direction = null, extra = null) {
+    const payload = { weaponType, origin, direction };
+    if (extra && typeof extra === 'object') {
+      if (Array.isArray(extra.impacts)) payload.impacts = extra.impacts;
+    }
+    return this.send(MSG_TYPES.FIRE_WEAPON, payload);
   }
 
-  attackMonster(monsterId = 'saber_alpha', damage = 50, weaponType = 'PISTOL') {
-    return this.send(MSG_TYPES.ATTACK_MONSTER, { monsterId, damage, weaponType });
+  attackMonster(monsterId = 'saber_alpha', damage = 50, weaponType = 'PISTOL', extra = null) {
+    const payload = { monsterId, damage, weaponType };
+    if (extra && typeof extra === 'object') {
+      if (Array.isArray(extra.impacts)) payload.impacts = extra.impacts;
+    }
+    return this.send(MSG_TYPES.ATTACK_MONSTER, payload);
   }
 
   disconnect() {

@@ -444,43 +444,8 @@ const server = http.createServer((req, res) => {
                 reason: p.validation.reason || p.validation.failureReason || null
               } : { status: 'valid', developerApproved: false }
             })),
-            spawnGroups: Array.isArray(payload.spawnGroups) ? payload.spawnGroups : [
-              {
-                id: 'sg_hallway_consumables_01',
-                name: 'Hallway Floor Consumables Pool',
-                eligibleTypes: ['almond_can', 'energy_drink', 'sanity_pill', 'aa_battery'],
-                candidatePoints: [
-                  [41.8, 0.0, -186.2],
-                  [42.2, 0.0, -186.1],
-                  [42.6, 0.0, -186.0],
-                  [43.1, 0.0, -186.0],
-                  [43.3, 0.0, -188.7]
-                ],
-                minCount: 2,
-                maxCount: 4,
-                surface: 'floor',
-                probability: 0.85,
-                tags: ['consumable', 'random_loot']
-              },
-              {
-                id: 'sg_tabletop_supplies_01',
-                name: 'Office Tabletop Medical & Ammo Pool',
-                eligibleTypes: ['first_aid', 'ammo_box', 'sanity_pill', 'doorKey'],
-                candidatePoints: [
-                  [44.75, 0.936, -185.45],
-                  [44.35, 0.936, -185.45],
-                  [44.00, 0.936, -185.45],
-                  [44.55, 0.936, -185.20],
-                  [44.15, 0.936, -185.20]
-                ],
-                minCount: 2,
-                maxCount: 3,
-                surface: 'table',
-                supportProp: 'prop_table_01',
-                probability: 1.0,
-                tags: ['high_tier_loot', 'loot_surface']
-              }
-            ]
+            spawnGroups: Array.isArray(payload.spawnGroups) ? payload.spawnGroups : [],
+            environmentalLoot: payload.environmentalLoot || activeDevLayout?.data?.environmentalLoot || getLayoutDataForRevision('default')?.environmentalLoot || undefined
           };
 
           const jsonStr = JSON.stringify(layoutDoc, null, 2);
@@ -677,7 +642,13 @@ roomManager.onRoomEvents = (room, events) => {
   if (!room || !room.players || !Array.isArray(events)) return;
   for (const evt of events) {
     for (const [_, p] of room.players) {
-      if (evt.type === MSG_TYPES.INVENTORY_UPDATE && evt.payload?.playerId && p.id !== evt.payload.playerId) {
+      if (
+        (evt.type === MSG_TYPES.INVENTORY_UPDATE ||
+         evt.type === MSG_TYPES.PLAYER_SANITY_UPDATE ||
+         evt.type === MSG_TYPES.PLAYER_SPEED_BOOST_UPDATE) &&
+        evt.payload?.playerId &&
+        p.id !== evt.payload.playerId
+      ) {
         continue;
       }
       send(p.ws, evt.type, evt.payload);
@@ -848,11 +819,13 @@ wss.on('connection', (ws, req) => {
       }
 
       case MSG_TYPES.FIRE_WEAPON: {
-        const session = roomManager.getPlayer(ws);
-        if (!session) return;
-        const { room, player } = session;
         const weaponType = payload?.weaponType || (payload?.weapon === 1 ? 'SHOTGUN' : 'PISTOL');
-        room.simulation?.handleWeaponFired(player.id, weaponType);
+        const res = roomManager.handleWeaponFire(ws, weaponType, payload?.impacts);
+        if (res && res.success && res.impactEvent && res.room) {
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.PROJECTILE_IMPACT, res.impactEvent.payload);
+          }
+        }
         break;
       }
 
@@ -860,9 +833,13 @@ wss.on('connection', (ws, req) => {
         const targetSaberId = payload?.monsterId || payload?.targetSaberId || payload?.targetSaberName || 'saber_alpha';
         const weaponType = payload?.weaponType || (payload?.damage >= 100 ? 'SHOTGUN' : 'PISTOL');
         const damage = (typeof payload?.damage === 'number') ? payload.damage : (weaponType === 'SHOTGUN' ? 100 : 50);
-        const res = roomManager.handleAttackMonster(ws, targetSaberId, damage, weaponType);
+        const res = roomManager.handleAttackMonster(ws, targetSaberId, damage, weaponType, payload?.impacts);
         if (res && res.error) {
           send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error });
+        } else if (res && res.success && res.impactEvent && res.room) {
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.PROJECTILE_IMPACT, res.impactEvent.payload);
+          }
         }
         break;
       }
@@ -1091,6 +1068,9 @@ wss.on('connection', (ws, req) => {
             itemName: res.itemName,
             effect: res.effect,
             ammoUpdate: res.ammoUpdate,
+            sanityUpdate: res.sanityUpdate || null,
+            staminaUpdate: res.staminaUpdate || null,
+            speedBoostUpdate: res.speedBoostUpdate || null,
             remainingQuantity: res.remainingQuantity
           };
           if (res.room?.useRequests) {
@@ -1098,6 +1078,10 @@ wss.on('connection', (ws, req) => {
             if (res.room.useRequests.size > 500) res.room.useRequests.delete(res.room.useRequests.keys().next().value);
           }
           send(ws, MSG_TYPES.ITEM_USE_RESPONSE, acceptPayload);
+
+          if (res.sanityUpdate) {
+            send(ws, MSG_TYPES.PLAYER_SANITY_UPDATE, res.sanityUpdate);
+          }
 
           send(ws, MSG_TYPES.INVENTORY_UPDATE, {
             requestId,
@@ -1289,6 +1273,22 @@ wss.on('connection', (ws, req) => {
               players: res.players || [],
               inventory: p.inventory ? p.inventory.serialize() : null,
               matchGeneration: res.matchGeneration
+            });
+            send(p.ws, MSG_TYPES.PLAYER_SANITY_UPDATE, {
+              playerId: p.id,
+              sanity: p.sanity ?? 100,
+              maxSanity: p.maxSanity ?? 100,
+              state: 'NORMAL',
+              isPaused: false,
+              isChased: false,
+              drainRatePerSecond: 0.035,
+              reason: 'MATCH_STARTED'
+            });
+            send(p.ws, MSG_TYPES.PLAYER_SPEED_BOOST_UPDATE, {
+              playerId: p.id,
+              active: false,
+              speedMultiplier: 1.0,
+              remainingSeconds: 0
             });
           }
         }

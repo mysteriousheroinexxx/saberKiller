@@ -38,6 +38,7 @@ export class MPManager {
 
     this.currentRoomCode = null;
     this.myPlayerId = null;
+    this.lastRoomSyncState = null;
 
     this._bindNetworkEvents();
     preloadPlayerAssets();
@@ -49,6 +50,22 @@ export class MPManager {
 
   setItemManager(im) {
     this.itemManager = im;
+  }
+
+  resyncWorldItems() {
+    if (!this.itemManager || !this.lastRoomSyncState) return;
+    if (typeof this.itemManager.resetRunItems === 'function') {
+      this.itemManager.resetRunItems();
+    }
+    const { spawnedItems, collectedItems } = this.lastRoomSyncState;
+    if (Array.isArray(spawnedItems)) {
+      for (const it of spawnedItems) {
+        this.itemManager.spawnWorldItem(it);
+      }
+    }
+    if (Array.isArray(collectedItems)) {
+      this.itemManager.setCollectedItems(collectedItems);
+    }
   }
 
   _bindNetworkEvents() {
@@ -100,12 +117,18 @@ export class MPManager {
         // Spawn local player at assigned spawn
         this.localPlayer.setSpawn(payload.spawn);
 
+        // Store sync state so any asynchronous layout reload preserves generated loot
+        this.lastRoomSyncState = {
+          collectedItems: payload.collectedItems || [],
+          spawnedItems: payload.spawnedItems || []
+        };
+
         // Hide any already collected world items in this room
         if (Array.isArray(payload.collectedItems) && this.itemManager) {
           this.itemManager.setCollectedItems(payload.collectedItems);
         }
 
-        // Spawn any dynamically dropped items in this room
+        // Spawn any dynamically generated or dropped items in this room
         if (Array.isArray(payload.spawnedItems) && this.itemManager) {
           for (const si of payload.spawnedItems) {
             this.itemManager.spawnWorldItem(si);
@@ -253,6 +276,19 @@ export class MPManager {
         } else if (payload.effect && this.localPlayer) {
           this.localPlayer.applyItemEffect(payload.effect);
         }
+        if (payload.sanityUpdate && window.sanityController && typeof window.sanityController.applyServerState === 'function') {
+          window.sanityController.applyServerState(payload.sanityUpdate);
+          if (window.sanityHUD && typeof window.sanityHUD.update === 'function') {
+            window.sanityHUD.update();
+          }
+        }
+        if (payload.staminaUpdate && this.localPlayer && typeof payload.staminaUpdate.stamina === 'number') {
+          this.localPlayer.stamina = Math.min(this.localPlayer.maxStamina, payload.staminaUpdate.stamina);
+          this.localPlayer._staminaExhausted = false;
+        }
+        if (payload.speedBoostUpdate && this.localPlayer) {
+          this.localPlayer.applyServerSpeedBoost(payload.speedBoostUpdate);
+        }
         if (this.localPlayer) {
           this.localPlayer.onItemUseAccepted(payload);
         }
@@ -262,6 +298,27 @@ export class MPManager {
         }
       }
       if (this.ui.onItemUseResponse) this.ui.onItemUseResponse(payload);
+    };
+
+    this.network.onPlayerSanityUpdate = (payload) => {
+      if (payload && (!payload.playerId || payload.playerId === this.myPlayerId)) {
+        if (window.sanityController && typeof window.sanityController.applyServerState === 'function') {
+          window.sanityController.applyServerState(payload);
+        }
+        if (window.sanityHUD && typeof window.sanityHUD.update === 'function') {
+          window.sanityHUD.update();
+        }
+      }
+      if (this.ui.onPlayerSanityUpdate) this.ui.onPlayerSanityUpdate(payload);
+    };
+
+    this.network.onPlayerSpeedBoostUpdate = (payload) => {
+      if (payload && (!payload.playerId || payload.playerId === this.myPlayerId)) {
+        if (this.localPlayer && typeof this.localPlayer.applyServerSpeedBoost === 'function') {
+          this.localPlayer.applyServerSpeedBoost(payload);
+        }
+      }
+      if (this.ui.onPlayerSpeedBoostUpdate) this.ui.onPlayerSpeedBoostUpdate(payload);
     };
 
     this.network.onVendingDispenseResponse = (payload) => {
@@ -436,11 +493,16 @@ export class MPManager {
         }
       }
 
-      // 6. Reset HUDs & Inventory UI
+      // 6. Reset HUDs, Sanity & Inventory UI
       if (window.inventoryUI && typeof window.inventoryUI.render === 'function') {
         window.inventoryUI.render();
       }
-      if (window.sanityHud && typeof window.sanityHud.updateSanity === 'function') {
+      if (window.sanityController && typeof window.sanityController.reset === 'function') {
+        window.sanityController.reset();
+      }
+      if (window.sanityHUD && typeof window.sanityHUD.update === 'function') {
+        window.sanityHUD.update();
+      } else if (window.sanityHud && typeof window.sanityHud.updateSanity === 'function') {
         window.sanityHud.updateSanity(100);
       }
       if (window.survivalHud && typeof window.survivalHud.updateHealth === 'function') {
@@ -486,7 +548,11 @@ export class MPManager {
         }
       }
 
-      // 8. Re-apply newly spawned items (keys) and collected items for this generation
+      // 8. Re-apply newly spawned items (loot, health packs, keys) and collected items for this generation
+      this.lastRoomSyncState = {
+        collectedItems: payload.collectedItems || [],
+        spawnedItems: payload.spawnedItems || []
+      };
       if (Array.isArray(payload.spawnedItems) && this.itemManager) {
         for (const it of payload.spawnedItems) {
           this.itemManager.spawnWorldItem(it);
@@ -520,6 +586,13 @@ export class MPManager {
         this.saberManager.handleSoundEvent(payload);
       }
       if (this.ui.onSoundEventBroadcast) this.ui.onSoundEventBroadcast(payload);
+    };
+
+    this.network.onProjectileImpact = (payload) => {
+      if (this.saberManager && typeof this.saberManager.handleProjectileImpact === 'function') {
+        this.saberManager.handleProjectileImpact(payload);
+      }
+      if (this.ui.onProjectileImpact) this.ui.onProjectileImpact(payload);
     };
 
     this.network.onDevAiTelemetry = (payload) => {
@@ -565,6 +638,7 @@ export class MPManager {
     this.itemManager?.resetRunItems();
     this.saberManager?.reset();
     this.localPlayer?.resetCombatState();
+    window.sanityController?.reset();
     window.interactionManager?.reset();
     this._updatePlayerCount();
   }
@@ -585,6 +659,7 @@ export class MPManager {
     this.itemManager?.resetRunItems();
     this.saberManager?.reset();
     this.localPlayer?.resetCombatState();
+    window.sanityController?.reset();
     window.interactionManager?.reset();
     this._updatePlayerCount();
   }

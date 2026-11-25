@@ -515,6 +515,14 @@ export class WorldItemManager {
     if (surfaceType === 'floor') {
       return { status: 'valid', isSupported: true, reason: null, overhang: 0 };
     }
+    if (surfaceType === 'vending_around' || surfaceType === 'vending' || surfaceType === 'vending_top') {
+      const supportPropId = item.anchor?.supportProp || item.supportProp;
+      const parentProp = supportPropId ? this.propMap.get(supportPropId) : null;
+      if (!parentProp && supportPropId && !String(supportPropId).startsWith('map_vending')) {
+        return { status: 'invalid', isSupported: false, reason: `Missing Vending Support (${supportPropId})`, overhang: 0 };
+      }
+      return { status: 'valid', isSupported: true, reason: null, overhang: 0 };
+    }
 
     let surf = null;
     if (surfaceType === 'table') {
@@ -744,6 +752,11 @@ export class WorldItemManager {
         throw new Error('Invalid manifest parameter supplied to loadWorldItems');
       }
       this.currentManifest = data;
+      if (data && data.level && data.iteration) {
+        this.loadedRevisionFilename = `iteration_${String(data.iteration).padStart(4, '0')}.json`;
+      } else {
+        this.loadedRevisionFilename = 'default';
+      }
       this.catalog = data.catalog || {};
       const placements = data.placements || [];
 
@@ -778,12 +791,19 @@ export class WorldItemManager {
         this._instantiatePlacement(p);
       }
 
+      this.isLoaded = true;
+      if (Array.isArray(this.pendingSpawnItems) && this.pendingSpawnItems.length > 0) {
+        const pending = this.pendingSpawnItems.splice(0, this.pendingSpawnItems.length);
+        for (const itemData of pending) {
+          await this.spawnWorldItem(itemData);
+        }
+      }
+
       this.container.updateMatrixWorld(true);
 
       // 5. Build developer debug bounding box visualization
       this.buildDebugVisuals();
 
-      this.isLoaded = true;
       console.log(`[WorldItemManager] Successfully spawned and validated ${this.items.length} items & props in Level 0`);
       return this.items;
     } catch (err) {
@@ -837,8 +857,10 @@ export class WorldItemManager {
       if (detectedSurface.isValidSupport) {
         targetY = detectedSurface.surfaceY;
       }
+    } else if (surfaceType === 'vending_around' || surfaceType === 'vending') {
+      targetY = (typeof pos[1] === 'number' && Number.isFinite(pos[1])) ? pos[1] : (this.detectFloorHeight(pos[0], pos[2]) + 0.02);
     } else if (surfaceType === 'floor') {
-      targetY = this.detectFloorHeight(pos[0], pos[2]);
+      targetY = p.preservePositionY ? pos[1] : this.detectFloorHeight(pos[0], pos[2]);
     }
 
     wrapper.position.set(pos[0], targetY, pos[2]);
@@ -878,6 +900,8 @@ export class WorldItemManager {
       surfaceName: p.surfaceName || surfaceType,
       shelfTier: p.shelfTier || anchor.tier || null,
       anchor,
+      isDropped: Boolean(p.isDropped),
+      isGenerated: Boolean(p.isGenerated),
       definition: def,
       validation
     };
@@ -891,6 +915,8 @@ export class WorldItemManager {
       surfaceName: p.surfaceName || surfaceType,
       shelfTier: p.shelfTier || anchor.tier || null,
       anchor,
+      isDropped: Boolean(p.isDropped),
+      isGenerated: Boolean(p.isGenerated),
       definition: def,
       override: isOverridden,
       userData: wrapper.userData,
@@ -922,6 +948,44 @@ export class WorldItemManager {
   }
 
   /**
+   * 2D circle-vs-OBB physical collision check against placed solid furniture props
+   * (tables, metal shelves, vending machines, crates).
+   */
+  collidesWithProps(px, pz, radius = 0.35) {
+    if (!this.propMap || this.propMap.size === 0) return false;
+    const rSq = radius * radius;
+    for (const prop of this.propMap.values()) {
+      const obj = prop?.object;
+      if (!obj || obj.visible === false) continue;
+      const modelSize = obj.userData?.modelSize;
+      if (!modelSize) continue;
+
+      const scale = obj.scale || { x: 1, y: 1, z: 1 };
+      const hx = (modelSize.x * scale.x) * 0.5;
+      const hz = (modelSize.z * scale.z) * 0.5;
+      const dx = px - obj.position.x;
+      const dz = pz - obj.position.z;
+      const maxReach = Math.hypot(hx, hz) + radius;
+      if (dx * dx + dz * dz > maxReach * maxReach) continue;
+
+      const rotY = obj.rotation?.y || 0;
+      const cos = Math.cos(rotY);
+      const sin = Math.sin(rotY);
+      // Transform world delta into prop local XZ frame (inverse of Matrix4.makeRotationY)
+      const lx = dx * cos - dz * sin;
+      const lz = dx * sin + dz * cos;
+
+      const cx = Math.max(-hx, Math.min(lx, hx));
+      const cz = Math.max(-hz, Math.min(lz, hz));
+      const distSq = (lx - cx) * (lx - cx) + (lz - cz) * (lz - cz);
+      if (distSq < rSq) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Hides a collected item from the world and marks it unavailable
    */
   hideItem(id) {
@@ -939,10 +1003,18 @@ export class WorldItemManager {
   }
 
   /**
-   * Spawns a physical world item dynamically (e.g. dropped by a player)
+   * Spawns a physical world item dynamically (e.g. generated loot, dispensed item, or dropped by a player)
    */
   async spawnWorldItem(itemData) {
     if (!itemData || !itemData.id) return null;
+
+    if (!this.isLoaded) {
+      if (!Array.isArray(this.pendingSpawnItems)) this.pendingSpawnItems = [];
+      if (!this.pendingSpawnItems.some(p => p.id === itemData.id)) {
+        this.pendingSpawnItems.push(itemData);
+      }
+      return null;
+    }
 
     // If item already exists in scene, unhide it
     const existing = this.getItemById(itemData.id);
@@ -963,20 +1035,33 @@ export class WorldItemManager {
       await this.preloadTemplate(def.modelUrl);
     }
 
+    const surfaceType = itemData.surfaceType || itemData.anchor?.surface || 'floor';
+    const anchor = itemData.anchor
+      ? { ...itemData.anchor }
+      : {
+          surface: surfaceType,
+          supportProp: itemData.supportProp || undefined,
+          supportType: itemData.supportType || undefined,
+          tier: itemData.shelfTier || undefined
+        };
+
     const placement = {
       id: itemData.id,
       type: itemData.type,
       position: itemData.position || [0, 0.02, 0],
       rotation: itemData.rotation || [0, 0, 0],
-      surfaceType: 'floor',
-      anchor: { surface: 'floor' },
-      isDropped: true
+      surfaceType,
+      shelfTier: itemData.shelfTier || anchor.tier || undefined,
+      anchor,
+      preservePositionY: true,
+      isDropped: Boolean(itemData.isDropped),
+      isGenerated: Boolean(itemData.isGenerated)
     };
 
     const entry = this._instantiatePlacement(placement);
     if (entry) {
       this.collectedItemIds.delete(itemData.id);
-      console.log(`[WorldItemManager] Spawned dropped world item: ${itemData.id} (${itemData.type}) at [${placement.position.join(', ')}]`);
+      console.log(`[WorldItemManager] Spawned world item: ${itemData.id} (${itemData.type}) on ${surfaceType} at [${placement.position.join(', ')}]`);
     }
     return entry;
   }
@@ -994,16 +1079,21 @@ export class WorldItemManager {
   /**
    * Authoritatively restores all world items to clean authored initial state:
    * - Clears collected IDs
-   * - Removes and disposes all dynamic/dropped items from previous runs
+   * - Removes and disposes all dynamic/dropped/generated loot items from previous runs
    * - Restores all authored placements to visible and uncollected
    */
   resetRunItems() {
     this.collectedItemIds.clear();
+    this.pendingSpawnItems = [];
     const remainingItems = [];
     for (const item of this.items) {
       const isDynamic = Boolean(
         item.userData?.isDropped || item.isDropped ||
-        item.id.startsWith('drop_') || item.id.startsWith('key_level0_spawn_')
+        item.userData?.isGenerated || item.isGenerated ||
+        item.id.startsWith('drop_') ||
+        item.id.startsWith('loot_') ||
+        item.id.startsWith('gen_') ||
+        item.id.startsWith('key_level0_spawn_')
       );
       if (isDynamic) {
         if (item.object && item.object.parent) {
@@ -1480,43 +1570,7 @@ export class WorldItemManager {
       description,
       catalog: this.catalog,
       placements,
-      spawnGroups: [
-        {
-          id: 'sg_hallway_consumables_01',
-          name: 'Hallway Floor Consumables Pool',
-          eligibleTypes: ['almond_can', 'energy_drink', 'sanity_pill', 'aa_battery'],
-          candidatePoints: [
-            [41.8, 0.0, -186.2],
-            [42.2, 0.0, -186.1],
-            [42.6, 0.0, -186.0],
-            [43.1, 0.0, -186.0],
-            [43.3, 0.0, -188.7]
-          ],
-          minCount: 2,
-          maxCount: 4,
-          surface: 'floor',
-          probability: 0.85,
-          tags: ['consumable', 'random_loot']
-        },
-        {
-          id: 'sg_tabletop_supplies_01',
-          name: 'Office Tabletop Medical & Ammo Pool',
-          eligibleTypes: ['first_aid', 'ammo_box', 'sanity_pill', 'doorKey'],
-          candidatePoints: [
-            [44.75, 0.936, -185.45],
-            [44.35, 0.936, -185.45],
-            [44.00, 0.936, -185.45],
-            [44.55, 0.936, -185.20],
-            [44.15, 0.936, -185.20]
-          ],
-          minCount: 2,
-          maxCount: 3,
-          surface: 'table',
-          supportProp: 'prop_table_01',
-          probability: 1.0,
-          tags: ['high_tier_loot', 'loot_surface']
-        }
-      ]
+      environmentalLoot: this.currentManifest?.environmentalLoot || undefined
     };
   }
 

@@ -25,6 +25,7 @@ import { InteractionManager } from './interaction_manager.js';
 import { InventoryUI } from './inventory_ui.js';
 import { ExitDoorManager } from './exit_door_manager.js';
 import { SaberObservationUI } from './saber_observation_ui.js';
+import { initMultiplayerImpactVFX } from './impact_vfx.js';
 
 let scene, camera, renderer, mpManager, playerLight;
 let lastTime = performance.now();
@@ -186,6 +187,7 @@ async function init() {
   container.appendChild(renderer.domElement);
 
   initPostProcessing(window.innerWidth, window.innerHeight);
+  initMultiplayerImpactVFX(scene, camera);
 
   // 2b. Initialize Survival Mode Sanity Controller and authentic Budget-Backrooms HUD
   sanityController = new SanityController();
@@ -282,11 +284,13 @@ async function init() {
         if (countEl) countEl.textContent = `PLAYERS: ${payload.totalPlayers || 1} / 2`;
 
         // Layout revision synchronization across room clients (dev mode)
-        if (devToolsEnabled && payload.layoutRevision && payload.layoutRevision !== 'default') {
+        if (devToolsEnabled && payload.layoutRevision && payload.layoutRevision !== 'default' &&
+            itemManager?.loadedRevisionFilename !== payload.layoutRevision) {
           console.log(`[ROOM LAYOUT SYNC] Synchronizing room ${payload.roomCode} to layout: ${payload.layoutRevision}`);
           const revUrl = `/api/developer/world-layout/load?file=${encodeURIComponent(payload.layoutRevision)}`;
           itemManager?.loadWorldItems(revUrl)
             .then(() => {
+              mpManager?.resyncWorldItems();
               if (worldEditor?.ui?.layoutSelect) {
                 worldEditor.ui.layoutSelect.value = payload.layoutRevision;
               }
@@ -315,9 +319,12 @@ async function init() {
       if (roomInfoEl) roomInfoEl.textContent = `ROOM: ${payload.roomCode}`;
       if (countEl) countEl.textContent = `PLAYERS: ${payload.startingPlayers || 2} / 2`;
 
-      if (devToolsEnabled && payload.layoutRevision && payload.layoutRevision !== 'default') {
+      if (devToolsEnabled && payload.layoutRevision && payload.layoutRevision !== 'default' &&
+          itemManager?.loadedRevisionFilename !== payload.layoutRevision) {
         const revUrl = `/api/developer/world-layout/load?file=${encodeURIComponent(payload.layoutRevision)}`;
-        itemManager?.loadWorldItems(revUrl).catch(e => console.warn('[ROOM LAYOUT SYNC] Error:', e));
+        itemManager?.loadWorldItems(revUrl)
+          .then(() => mpManager?.resyncWorldItems())
+          .catch(e => console.warn('[ROOM LAYOUT SYNC] Error:', e));
       }
 
       if (renderer && renderer.domElement) {
@@ -529,6 +536,9 @@ async function init() {
       const origCircleHitsWall = ch.circleHitsWall.bind(ch);
       ch.circleHitsWall = (px, pz, radius) => {
         if (exitDoorManager && exitDoorManager.collidesWithDoor(px, pz, radius)) {
+          return true;
+        }
+        if (itemManager && typeof itemManager.collidesWithProps === 'function' && itemManager.collidesWithProps(px, pz, radius)) {
           return true;
         }
         return origCircleHitsWall(px, pz, radius);
@@ -1278,7 +1288,7 @@ function initDevComparisonUI() {
     'dev-preset-spawn': { x: 48.69, y: 0.0, z: -187.65, label: 'Spawn' },
     'dev-preset-key': { x: 44.50, y: 0.0, z: -188.70, label: 'Key Shelf' },
     'dev-preset-exit': { x: 79.55, y: 0.0, z: 205.20, label: 'Exit Door' },
-    'dev-preset-pistol': { x: 44.20, y: 0.0, z: -187.50, label: 'Pistol' },
+    'dev-preset-pistol': { x: 60.594, y: 0.936, z: -183.877, label: 'Pistol' },
     'dev-preset-shotgun': { x: 40.50, y: 0.0, z: -179.80, label: 'Shotgun' }
   };
 
@@ -2113,7 +2123,9 @@ function loop(timestamp) {
 
   // Survival Mode Sanity Simulation and Visual Effects
   if (sanityController) {
-    sanityController.update(dt);
+    if (!sanityController.hasServerSync) {
+      sanityController.update(dt);
+    }
     updateSanityVisualEffects(dt);
   }
 

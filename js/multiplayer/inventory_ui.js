@@ -27,7 +27,7 @@ const ITEM_TOOLTIP_DESCRIPTIONS = {
   first_aid: 'Medical kit. Restores 50 physical health.',
   almond_can: 'Almond Water. Stabilizes sanity and restores stamina.',
   sanity_pill: 'Sedative pills. Restores 60 sanity and calms paranoia.',
-  energy_drink: 'Energy drink. Restores stamina and boosts sprint speed.',
+  energy_drink: 'Energy drink. Restores full stamina and boosts speed 1.27x.',
   aa_battery: 'Battery pack. Restores 50% flashlight charge.',
   ammo_box: 'Ammunition box. 2 rounds of .45 ACP pistol ammo.',
   pistol_ammo: 'Pistol ammo box. Grants 2 rounds to pistol reserve.',
