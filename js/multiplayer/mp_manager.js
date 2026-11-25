@@ -308,6 +308,7 @@ export class MPManager {
           if (window.sanityHUD && typeof window.sanityHUD.update === 'function') {
             window.sanityHUD.update();
           }
+          this.syncSanityHeartbeat();
         }
         if (payload.staminaUpdate && this.localPlayer && typeof payload.staminaUpdate.stamina === 'number') {
           this.localPlayer.stamina = Math.min(this.localPlayer.maxStamina, payload.staminaUpdate.stamina);
@@ -335,6 +336,7 @@ export class MPManager {
         if (window.sanityHUD && typeof window.sanityHUD.update === 'function') {
           window.sanityHUD.update();
         }
+        this.syncSanityHeartbeat();
       }
       if (this.ui.onPlayerSanityUpdate) this.ui.onPlayerSanityUpdate(payload);
     };
@@ -774,12 +776,31 @@ export class MPManager {
     this._updatePlayerCount();
   }
 
+  syncSanityHeartbeat() {
+    if (!this.audioManager || typeof this.audioManager.updateSanityHeartbeat !== 'function') return;
+    const isPlayingMatch = !this.isInStagingLobby && this.roomRunState === 'IN_PROGRESS';
+    const localAlive = Boolean(this.localPlayer && !this.localPlayer.isDead && this.localPlayer.state !== 'ELIMINATED');
+    const sc = (typeof window !== 'undefined') ? window.sanityController : null;
+    if (!isPlayingMatch || !localAlive || !sc) {
+      this.audioManager.updateSanityHeartbeat(100, { active: false });
+      return;
+    }
+    const snap = sc.getSnapshot();
+    this.audioManager.updateSanityHeartbeat(snap.currentSanity, {
+      active: true,
+      state: snap.state,
+      threshold: sc.config?.visualFxThreshold ?? 80.0,
+      panicThreshold: sc.config?.panicThreshold ?? 10.0
+    });
+  }
+
   update(dt) {
     // 1. Update local player
     this.localPlayer.update(dt);
     if (this.audioManager && this.camera) {
       this.audioManager.updateListener(this.camera);
     }
+    this.syncSanityHeartbeat();
 
     // 2. Update remote players (interpolation)
     for (const rp of this.remotePlayers.values()) {

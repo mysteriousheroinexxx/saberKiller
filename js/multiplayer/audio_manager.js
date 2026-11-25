@@ -17,6 +17,8 @@
  * and persistent client-side audio preferences.
  */
 
+import { buildSeamlessLoopBuffer } from './ambient_audio.js';
+
 export const AUDIO_CATEGORIES = Object.freeze({
   MASTER: 'master',
   ENVIRONMENT: 'environment',
@@ -78,10 +80,57 @@ export const DEFAULT_SOUND_DEFINITIONS = Object.freeze({
     minIntervalSeconds: 0.2,
     fadeInSeconds: 0.004,
     fadeOutSeconds: 0.03
+  },
+  sanity_heartbeat: {
+    id: 'sanity_heartbeat',
+    category: AUDIO_CATEGORIES.ENVIRONMENT,
+    url: 'assets/audio/heartbeat.wav',
+    defaultVolume: 0.72,
+    fadeInSeconds: 1.5,
+    fadeOutSeconds: 1.2
   }
 });
 
 export const AUDIO_PREFERENCES_STORAGE_KEY = 'saberKiller_audioPreferences_v1';
+
+/**
+ * Evaluates sanity heartbeat activation & intensity using the exact Budget-Backrooms
+ * P_Player.uasset formula:
+ *   Clamped = Clamp(LocalSanity, 0, SanityPercentFXThreshold [80.0])
+ *   BlendWeight = 1.0 - (Clamped / 80.0)
+ * Active while sanity <= 80.0 (intensity > 0); 0.0 above 80%.
+ */
+export function computeSanityHeartbeatIntensity(sanity, options = {}) {
+  const threshold = (typeof options.threshold === 'number' && options.threshold > 0)
+    ? options.threshold
+    : 80.0;
+  const panicThreshold = (typeof options.panicThreshold === 'number' && options.panicThreshold >= 0)
+    ? options.panicThreshold
+    : 10.0;
+
+  if (typeof sanity !== 'number' || !Number.isFinite(sanity) || options.active === false || options.bypass === true) {
+    return {
+      active: false,
+      shouldPlay: false,
+      intensity: 0.0,
+      state: 'NORMAL'
+    };
+  }
+
+  const clamped = Math.max(0, Math.min(threshold, sanity));
+  const intensity = +(1.0 - (clamped / threshold)).toFixed(6);
+  const state = sanity <= 0
+    ? 'DEPLETED'
+    : (sanity <= panicThreshold ? 'PANIC' : (sanity <= threshold ? 'MILD_PARANOIA' : 'NORMAL'));
+  const shouldPlay = sanity <= threshold && intensity > 0;
+
+  return {
+    active: true,
+    shouldPlay,
+    intensity: shouldPlay ? intensity : 0.0,
+    state
+  };
+}
 
 function clampGain(v, fallback = 1.0) {
   if (typeof v !== 'number' || !Number.isFinite(v)) return fallback;
@@ -238,6 +287,16 @@ export class MultiplayerAudioManager {
     this.totalWeaponVoicesCreated = 0;
     this._soundVolumeListeners = new Map();
 
+    // Dynamic sanity heartbeat state (single looping local instance)
+    this._heartbeatEntry = null;
+    this._heartbeatShouldPlay = false;
+    this._heartbeatToken = 0;
+    this._heartbeatIntensity = 0.0;
+    this._heartbeatSanity = 100.0;
+    this._heartbeatState = 'NORMAL';
+    this._heartbeatTotalInstances = 0;
+    this._heartbeatLoopBuffer = null;
+
     this._unlockBound = false;
     this._unlockHandler = null;
   }
@@ -327,6 +386,14 @@ export class MultiplayerAudioManager {
     const fallback = def ? def.defaultVolume : 1.0;
     const next = clampGain(volume, this.soundVolumes[soundId] ?? fallback);
     this.soundVolumes[soundId] = next;
+    if (soundId === 'sanity_heartbeat' && this._heartbeatEntry?.soundGain?.gain && this.ctx) {
+      const now = this.ctx.currentTime || 0;
+      if (typeof this._heartbeatEntry.soundGain.gain.setTargetAtTime === 'function') {
+        this._heartbeatEntry.soundGain.gain.setTargetAtTime(next, now, 0.03);
+      } else {
+        this._heartbeatEntry.soundGain.gain.value = next;
+      }
+    }
     const listeners = this._soundVolumeListeners.get(soundId);
     if (listeners) {
       for (const fn of listeners) {
@@ -481,6 +548,8 @@ export class MultiplayerAudioManager {
           );
         } else if (soundId === 'weapon_pistol_fire' || soundId === 'weapon_reload') {
           this.soundTrimBounds.set(soundId, extractSoundTrimBounds(decoded));
+        } else if (soundId === 'sanity_heartbeat') {
+          this._heartbeatLoopBuffer = buildSeamlessLoopBuffer(ctx, decoded, 0.12);
         }
         return decoded;
       } catch (err) {
@@ -506,7 +575,8 @@ export class MultiplayerAudioManager {
       this.loadSound('player_walk'),
       this.loadSound('player_run'),
       this.loadSound('weapon_pistol_fire'),
-      this.loadSound('weapon_reload')
+      this.loadSound('weapon_reload'),
+      this.loadSound('sanity_heartbeat')
     ]);
   }
 
@@ -957,9 +1027,166 @@ export class MultiplayerAudioManager {
     this.lastEmitterPlayTime.clear();
   }
 
+  /**
+   * Drives local sanity heartbeat audio continuously using the Budget Backrooms model:
+   * silent above 80% sanity, scaling continuously via 1 - clamp(sanity, 0, 80) / 80
+   * down to 1.0 at 0% sanity, smoothly fading in/out with strictly one active loop.
+   */
+  updateSanityHeartbeat(sanity, options = {}) {
+    const evalRes = computeSanityHeartbeatIntensity(sanity, options);
+    this._heartbeatSanity = typeof sanity === 'number' && Number.isFinite(sanity) ? sanity : this._heartbeatSanity;
+    this._heartbeatState = evalRes.state;
+    this._heartbeatIntensity = evalRes.intensity;
+
+    if (!evalRes.shouldPlay) {
+      this.stopSanityHeartbeat({ immediate: Boolean(options.immediate) });
+      return evalRes;
+    }
+
+    this._heartbeatShouldPlay = true;
+    const ctx = this.getContext();
+    if (!ctx) return evalRes;
+    this.resumeIfSuspended();
+
+    const now = ctx.currentTime || 0;
+    if (this._heartbeatEntry) {
+      const { envGain, soundGain } = this._heartbeatEntry;
+      const targetInd = this.getSoundVolume('sanity_heartbeat');
+      if (typeof envGain.gain?.setTargetAtTime === 'function') {
+        envGain.gain.setTargetAtTime(evalRes.intensity, now, 0.25);
+      } else if (envGain.gain) {
+        envGain.gain.value = evalRes.intensity;
+      }
+      if (soundGain?.gain) {
+        if (typeof soundGain.gain.setTargetAtTime === 'function') {
+          soundGain.gain.setTargetAtTime(targetInd, now, 0.04);
+        } else {
+          soundGain.gain.value = targetInd;
+        }
+      }
+      return evalRes;
+    }
+
+    const token = ++this._heartbeatToken;
+    const readyBuffer = this._heartbeatLoopBuffer || this.buffers.get('sanity_heartbeat');
+    if (readyBuffer) {
+      this._startHeartbeatInstance(readyBuffer, token);
+    } else if (!this.bufferLoads.has('sanity_heartbeat')) {
+      this.loadSound('sanity_heartbeat').then((decoded) => {
+        if (!decoded) return;
+        const buf = this._heartbeatLoopBuffer || decoded;
+        if (this._heartbeatShouldPlay && this._heartbeatToken === token && !this._heartbeatEntry) {
+          this._startHeartbeatInstance(buf, token);
+        }
+      });
+    }
+    return evalRes;
+  }
+
+  _startHeartbeatInstance(buffer, token) {
+    if (!this._heartbeatShouldPlay || this._heartbeatToken !== token || this._heartbeatEntry) return false;
+    const ctx = this.getContext();
+    if (!ctx) return false;
+
+    const def = this.soundDefs.get('sanity_heartbeat');
+    const bus = this.getCategoryBus(def ? def.category : AUDIO_CATEGORIES.ENVIRONMENT);
+    const now = ctx.currentTime || 0;
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+
+    const envGain = ctx.createGain();
+    const soundGain = ctx.createGain();
+    const indVol = this.getSoundVolume('sanity_heartbeat');
+
+    if (typeof soundGain.gain?.setValueAtTime === 'function') {
+      soundGain.gain.setValueAtTime(indVol, now);
+    } else if (soundGain.gain) {
+      soundGain.gain.value = indVol;
+    }
+
+    // Smooth fade-in from near-zero to current sanity intensity
+    if (typeof envGain.gain?.setValueAtTime === 'function' && typeof envGain.gain?.setTargetAtTime === 'function') {
+      envGain.gain.setValueAtTime(0.0001, now);
+      envGain.gain.setTargetAtTime(Math.max(0.0001, this._heartbeatIntensity), now, 0.35);
+    } else if (envGain.gain) {
+      envGain.gain.value = this._heartbeatIntensity;
+    }
+
+    source.connect(envGain);
+    envGain.connect(soundGain);
+    soundGain.connect(bus);
+
+    const entry = {
+      source,
+      envGain,
+      soundGain,
+      stopTimer: null
+    };
+    this._heartbeatEntry = entry;
+    this._heartbeatTotalInstances++;
+
+    source.onended = () => {
+      if (this._heartbeatEntry === entry) {
+        this._heartbeatEntry = null;
+      }
+      try { source.disconnect(); } catch {}
+      try { envGain.disconnect(); } catch {}
+      try { soundGain.disconnect(); } catch {}
+    };
+
+    source.start(0);
+    return true;
+  }
+
+  stopSanityHeartbeat({ immediate = false } = {}) {
+    this._heartbeatShouldPlay = false;
+    this._heartbeatToken++;
+    this._heartbeatIntensity = 0.0;
+
+    const entry = this._heartbeatEntry;
+    if (!entry) return;
+    this._heartbeatEntry = null;
+
+    const finalize = () => {
+      if (entry.stopTimer) {
+        clearTimeout(entry.stopTimer);
+        entry.stopTimer = null;
+      }
+      try { entry.source.stop(); } catch {}
+      try { entry.source.disconnect(); } catch {}
+      try { entry.envGain.disconnect(); } catch {}
+      try { entry.soundGain.disconnect(); } catch {}
+    };
+
+    if (immediate || !this.ctx || typeof entry.envGain?.gain?.linearRampToValueAtTime !== 'function') {
+      finalize();
+      return;
+    }
+
+    const fadeSec = 0.65;
+    const now = this.ctx.currentTime || 0;
+    try {
+      entry.envGain.gain.cancelScheduledValues?.(now);
+      entry.envGain.gain.setValueAtTime(Math.max(0.0001, entry.envGain.gain.value || 0.1), now);
+      entry.envGain.gain.linearRampToValueAtTime(0.0001, now + fadeSec);
+      entry.source.stop(now + fadeSec + 0.03);
+    } catch {
+      finalize();
+      return;
+    }
+
+    entry.stopTimer = setTimeout(finalize, Math.ceil((fadeSec + 0.08) * 1000));
+    if (typeof entry.stopTimer.unref === 'function') {
+      entry.stopTimer.unref();
+    }
+  }
+
   stopAllAudio({ immediate = true } = {}) {
     this.stopAllMovementAudio({ immediate });
     this.stopAllWeaponAudio({ immediate });
+    this.stopSanityHeartbeat({ immediate });
   }
 
   getStatus() {
@@ -992,6 +1219,11 @@ export class MultiplayerAudioManager {
       totalWeaponVoicesCreated: this.totalWeaponVoicesCreated,
       pistolTrimBounds: this.soundTrimBounds.get('weapon_pistol_fire') || null,
       reloadTrimBounds: this.soundTrimBounds.get('weapon_reload') || null,
+      heartbeatIsPlaying: Boolean(this._heartbeatEntry),
+      heartbeatIntensity: this._heartbeatIntensity,
+      heartbeatSanity: this._heartbeatSanity,
+      heartbeatState: this._heartbeatState,
+      heartbeatTotalInstances: this._heartbeatTotalInstances,
       walkSlicesCount: this.footstepSlices.get('player_walk')?.length || 0,
       runSlicesCount: this.footstepSlices.get('player_run')?.length || 0
     };
