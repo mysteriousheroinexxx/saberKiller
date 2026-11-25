@@ -69,6 +69,15 @@ export const DEFAULT_SOUND_DEFINITIONS = Object.freeze({
     minIntervalSeconds: 0.04,
     fadeInSeconds: 0.003,
     fadeOutSeconds: 0.03
+  },
+  weapon_reload: {
+    id: 'weapon_reload',
+    category: AUDIO_CATEGORIES.WEAPONS,
+    url: 'assets/audio/reload.wav',
+    defaultVolume: 0.56,
+    minIntervalSeconds: 0.2,
+    fadeInSeconds: 0.004,
+    fadeOutSeconds: 0.03
   }
 });
 
@@ -470,7 +479,7 @@ export class MultiplayerAudioManager {
               maxSliceSeconds: soundId === 'player_run' ? 0.27 : 0.35
             })
           );
-        } else if (soundId === 'weapon_pistol_fire') {
+        } else if (soundId === 'weapon_pistol_fire' || soundId === 'weapon_reload') {
           this.soundTrimBounds.set(soundId, extractSoundTrimBounds(decoded));
         }
         return decoded;
@@ -496,7 +505,8 @@ export class MultiplayerAudioManager {
     return Promise.all([
       this.loadSound('player_walk'),
       this.loadSound('player_run'),
-      this.loadSound('weapon_pistol_fire')
+      this.loadSound('weapon_pistol_fire'),
+      this.loadSound('weapon_reload')
     ]);
   }
 
@@ -759,10 +769,39 @@ export class MultiplayerAudioManager {
 
   /**
    * Plays a one-shot weapon discharge sound (e.g. 'weapon_pistol_fire') routed through the
-   * 'weapons' category bus -> Master bus. Allows overlapping tails during rapid semi-auto fire
-   * while enforcing a brief dedupe window and polyphony cap.
+   * 'weapons' category bus -> Master bus.
    */
   playWeaponFire(emitterId, soundId = 'weapon_pistol_fire', options = {}) {
+    return this._playOneShotWeaponSound(emitterId, soundId, {
+      ...options,
+      replaceSameSound: false,
+      pitchVariance: options.pitchVariance ?? 0.04
+    });
+  }
+
+  /**
+   * Plays a weapon reload sound ('weapon_reload') routed through the 'weapons' category bus.
+   * Ensures at most one active reload sound per emitter and cleans up cleanly if interrupted.
+   */
+  playWeaponReload(emitterId, options = {}) {
+    return this._playOneShotWeaponSound(emitterId, 'weapon_reload', {
+      ...options,
+      replaceSameSound: true,
+      pitchVariance: options.pitchVariance ?? 0.02,
+      weaponType: options.weaponType || null
+    });
+  }
+
+  stopEmitterWeaponReload(emitterId) {
+    if (!emitterId) return;
+    for (const entry of [...this.activeWeaponVoices]) {
+      if (entry.emitterId === emitterId && entry.soundId === 'weapon_reload') {
+        this._stopWeaponVoiceEntry(entry, { immediate: true });
+      }
+    }
+  }
+
+  _playOneShotWeaponSound(emitterId, soundId, options = {}) {
     const def = this.soundDefs.get(soundId);
     if (!def) return false;
 
@@ -772,7 +811,7 @@ export class MultiplayerAudioManager {
 
     const buffer = this.buffers.get(soundId);
     if (!buffer) {
-      // Trigger async preload for upcoming shots without playing delayed gunshots
+      // Trigger async preload for upcoming actions without queuing delayed playback
       this.loadSound(soundId);
       return false;
     }
@@ -785,6 +824,14 @@ export class MultiplayerAudioManager {
     const lastT = this.lastWeaponFireTime.get(rateKey) ?? -Infinity;
     if (!options.ignoreRateLimit && (now - lastT) < minInterval) {
       return false;
+    }
+
+    if (options.replaceSameSound) {
+      for (const existing of [...this.activeWeaponVoices]) {
+        if (existing.emitterId === emitterId && existing.soundId === soundId) {
+          this._stopWeaponVoiceEntry(existing, { immediate: true });
+        }
+      }
     }
 
     // Cap concurrent active weapon tails at 8 (gracefully retire oldest if exceeded)
@@ -802,7 +849,8 @@ export class MultiplayerAudioManager {
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     if (source.playbackRate) {
-      source.playbackRate.value = 0.98 + Math.random() * 0.04;
+      const variance = options.pitchVariance ?? 0.04;
+      source.playbackRate.value = (1 - variance * 0.5) + Math.random() * variance;
     }
 
     const voiceGain = ctx.createGain();
@@ -844,6 +892,7 @@ export class MultiplayerAudioManager {
     const entry = {
       emitterId,
       soundId,
+      weaponType: options.weaponType || null,
       positional: Boolean(panner),
       position: initialPos ? { ...initialPos } : null,
       attachTarget: typeof options.attachTarget === 'function' ? options.attachTarget : null,
@@ -942,6 +991,7 @@ export class MultiplayerAudioManager {
       activeWeaponEmitters,
       totalWeaponVoicesCreated: this.totalWeaponVoicesCreated,
       pistolTrimBounds: this.soundTrimBounds.get('weapon_pistol_fire') || null,
+      reloadTrimBounds: this.soundTrimBounds.get('weapon_reload') || null,
       walkSlicesCount: this.footstepSlices.get('player_walk')?.length || 0,
       runSlicesCount: this.footstepSlices.get('player_run')?.length || 0
     };

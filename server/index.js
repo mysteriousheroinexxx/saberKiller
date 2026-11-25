@@ -830,6 +830,19 @@ wss.on('connection', (ws, req) => {
         break;
       }
 
+      case MSG_TYPES.WEAPON_RELOAD: {
+        const weaponType = payload?.weaponType || (payload?.weapon === 1 ? 'SHOTGUN' : 'PISTOL');
+        const res = roomManager.handleWeaponReload(ws, weaponType);
+        if (res && res.success && res.reloadEvent && res.room) {
+          for (const [_, p] of res.room.players) {
+            if (p.id !== res.player.id) {
+              send(p.ws, MSG_TYPES.WEAPON_RELOAD, res.reloadEvent.payload);
+            }
+          }
+        }
+        break;
+      }
+
       case MSG_TYPES.ATTACK_MONSTER: {
         const targetSaberId = payload?.monsterId || payload?.targetSaberId || payload?.targetSaberName || 'saber_alpha';
         const weaponType = payload?.weaponType || (payload?.damage >= 100 ? 'SHOTGUN' : 'PISTOL');

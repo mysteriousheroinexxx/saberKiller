@@ -525,6 +525,9 @@ export class LocalPlayerController {
     this.weapon = idx;
     this.reloadT = 0;
     this.reloadWeapon = -1;
+    if (this.audioManager && typeof this.audioManager.stopEmitterWeaponReload === 'function') {
+      this.audioManager.stopEmitterWeaponReload('local');
+    }
     this._updateViewmodelVisibility();
   }
 
@@ -976,6 +979,10 @@ export class LocalPlayerController {
   }
 
   startReload() {
+    if (window.mpManager && window.mpManager.isInStagingLobby) {
+      this.firingDiagnostics.lastRejectionReason = 'STAGING_LOBBY';
+      return false;
+    }
     if (this.isEditorActive) {
       this.firingDiagnostics.lastRejectionReason = 'EDITOR_ACTIVE';
       return false;
@@ -984,7 +991,7 @@ export class LocalPlayerController {
       this.firingDiagnostics.lastRejectionReason = 'INVENTORY_OPEN';
       return false;
     }
-    if (this.isDowned || this.isDead || this.hp <= 0) {
+    if (this.isDowned || this.isDead || this.hp <= 0 || (this.state && this.state !== 'ACTIVE')) {
       this.firingDiagnostics.lastRejectionReason = 'PLAYER_DOWNED_OR_ELIMINATED';
       return false;
     }
@@ -1006,6 +1013,7 @@ export class LocalPlayerController {
       this.reloadT = 1.15;
       this.reloadWeapon = 0;
       this.firingDiagnostics.lastRejectionReason = 'NONE';
+      this._triggerReloadAudio('PISTOL');
       this._notifyStateChange();
       return true;
     } else if (this.weapon === 1) {
@@ -1021,10 +1029,27 @@ export class LocalPlayerController {
       this.reloadT = 1.6;
       this.reloadWeapon = 1;
       this.firingDiagnostics.lastRejectionReason = 'NONE';
+      this._triggerReloadAudio('SHOTGUN');
       this._notifyStateChange();
       return true;
     }
     return false;
+  }
+
+  _triggerReloadAudio(weaponType = 'PISTOL') {
+    const weaponPos = this.getWeaponWorldPosition();
+    if (this.audioManager && typeof this.audioManager.playWeaponReload === 'function') {
+      const attachTarget = () => this.getWeaponWorldPosition();
+      this.audioManager.playWeaponReload('local', {
+        weaponType,
+        positional: true,
+        position: weaponPos,
+        attachTarget
+      });
+    }
+    if (this.networkClient && this.networkClient.isConnected && typeof this.networkClient.reloadWeapon === 'function') {
+      this.networkClient.reloadWeapon(weaponType, weaponPos);
+    }
   }
 
   _finishReload() {
@@ -1050,11 +1075,13 @@ export class LocalPlayerController {
       this.isDead = false;
       this.cameraTargetY = 0.42;
       this._resetMovementAudio();
+      this.audioManager?.stopEmitterWeaponReload?.('local');
     } else if (state === 'ELIMINATED') {
       this.isDead = true;
       this.isDowned = false;
       this.cameraTargetY = 0.25;
       this._resetMovementAudio();
+      this.audioManager?.stopEmitterWeaponReload?.('local');
     } else if (state === 'ACTIVE') {
       this.isDowned = false;
       this.isDead = false;

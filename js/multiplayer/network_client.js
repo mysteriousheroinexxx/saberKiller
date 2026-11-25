@@ -52,6 +52,7 @@ export const MSG_TYPES = {
   SOUND_EVENT_BROADCAST: 'SOUND_EVENT_BROADCAST',
   DEV_AI_TELEMETRY: 'DEV_AI_TELEMETRY',
   FIRE_WEAPON: 'FIRE_WEAPON',
+  WEAPON_RELOAD: 'WEAPON_RELOAD',
   ATTACK_MONSTER: 'ATTACK_MONSTER',
   PROJECTILE_IMPACT: 'PROJECTILE_IMPACT'
 };
@@ -117,6 +118,7 @@ export class NetworkClient {
     this.onMonsterSnapshot = null;
     this.onSoundEventBroadcast = null;
     this.onProjectileImpact = null;
+    this.onWeaponReload = null;
     this.onDevAiTelemetry = null;
   }
 
@@ -380,6 +382,10 @@ export class NetworkClient {
         if (this.onProjectileImpact) this.onProjectileImpact(payload);
         break;
 
+      case MSG_TYPES.WEAPON_RELOAD:
+        if (this.onWeaponReload) this.onWeaponReload(payload);
+        break;
+
       case MSG_TYPES.DEV_AI_TELEMETRY:
         if (this.onDevAiTelemetry) this.onDevAiTelemetry(payload);
         break;
@@ -519,6 +525,10 @@ export class NetworkClient {
       if (Array.isArray(extra.impacts)) payload.impacts = extra.impacts;
     }
     return this.send(MSG_TYPES.FIRE_WEAPON, payload);
+  }
+
+  reloadWeapon(weaponType = 'PISTOL', origin = null) {
+    return this.send(MSG_TYPES.WEAPON_RELOAD, { weaponType, origin });
   }
 
   attackMonster(monsterId = 'saber_alpha', damage = 50, weaponType = 'PISTOL', extra = null) {
