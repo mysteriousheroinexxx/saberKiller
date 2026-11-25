@@ -819,11 +819,13 @@ wss.on('connection', (ws, req) => {
       }
 
       case MSG_TYPES.FIRE_WEAPON: {
-        const session = roomManager.getPlayer(ws);
-        if (!session) return;
-        const { room, player } = session;
         const weaponType = payload?.weaponType || (payload?.weapon === 1 ? 'SHOTGUN' : 'PISTOL');
-        room.simulation?.handleWeaponFired(player.id, weaponType);
+        const res = roomManager.handleWeaponFire(ws, weaponType, payload?.impacts);
+        if (res && res.success && res.impactEvent && res.room) {
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.PROJECTILE_IMPACT, res.impactEvent.payload);
+          }
+        }
         break;
       }
 
@@ -831,9 +833,13 @@ wss.on('connection', (ws, req) => {
         const targetSaberId = payload?.monsterId || payload?.targetSaberId || payload?.targetSaberName || 'saber_alpha';
         const weaponType = payload?.weaponType || (payload?.damage >= 100 ? 'SHOTGUN' : 'PISTOL');
         const damage = (typeof payload?.damage === 'number') ? payload.damage : (weaponType === 'SHOTGUN' ? 100 : 50);
-        const res = roomManager.handleAttackMonster(ws, targetSaberId, damage, weaponType);
+        const res = roomManager.handleAttackMonster(ws, targetSaberId, damage, weaponType, payload?.impacts);
         if (res && res.error) {
           send(ws, MSG_TYPES.SERVER_ERROR, { message: res.error });
+        } else if (res && res.success && res.impactEvent && res.room) {
+          for (const [_, p] of res.room.players) {
+            send(p.ws, MSG_TYPES.PROJECTILE_IMPACT, res.impactEvent.payload);
+          }
         }
         break;
       }

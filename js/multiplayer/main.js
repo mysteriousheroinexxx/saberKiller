@@ -25,6 +25,7 @@ import { InteractionManager } from './interaction_manager.js';
 import { InventoryUI } from './inventory_ui.js';
 import { ExitDoorManager } from './exit_door_manager.js';
 import { SaberObservationUI } from './saber_observation_ui.js';
+import { initMultiplayerImpactVFX } from './impact_vfx.js';
 
 let scene, camera, renderer, mpManager, playerLight;
 let lastTime = performance.now();
@@ -186,6 +187,7 @@ async function init() {
   container.appendChild(renderer.domElement);
 
   initPostProcessing(window.innerWidth, window.innerHeight);
+  initMultiplayerImpactVFX(scene, camera);
 
   // 2b. Initialize Survival Mode Sanity Controller and authentic Budget-Backrooms HUD
   sanityController = new SanityController();

@@ -164,31 +164,134 @@ export class LocalPlayerController {
     this.saberManager = saberManager;
   }
 
-  _performMonsterHitscan(weaponType) {
-    if (!this.saberManager || !this.networkClient) return;
-    const hitboxes = this.saberManager.getHitboxes();
-    if (!hitboxes || hitboxes.length === 0) return;
+  _extractSurfaceNormal(hit, rayDir) {
+    let normal = null;
+    if (hit.face && hit.face.normal) {
+      if (hit.object.isInstancedMesh && typeof hit.instanceId === 'number') {
+        const instM = new THREE.Matrix4();
+        hit.object.getMatrixAt(hit.instanceId, instM);
+        const normalM = new THREE.Matrix3().getNormalMatrix(
+          new THREE.Matrix4().multiplyMatrices(hit.object.matrixWorld, instM)
+        );
+        normal = hit.face.normal.clone().applyMatrix3(normalM).normalize();
+      } else {
+        normal = hit.face.normal.clone()
+          .applyMatrix3(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld))
+          .normalize();
+      }
+      if (normal.dot(rayDir) > 0) {
+        normal.negate();
+      }
+    } else {
+      normal = rayDir.clone().negate().normalize();
+    }
+    return normal;
+  }
+
+  _performWeaponHitscan(weaponType) {
+    const wallImpacts = [];
+    const saberHitsByMonster = new Map();
+
+    if (!this.camera) {
+      return { wallImpacts, saberHitsByMonster, centerDir: { x: 0, y: 0, z: -1 } };
+    }
+
+    const hitboxes = this.saberManager ? this.saberManager.getHitboxes() : [];
+    const wallTargets = (this.collisionHandler && typeof this.collisionHandler.getRaycastTargets === 'function')
+      ? this.collisionHandler.getRaycastTargets()
+      : [];
+    const targets = wallTargets.concat(hitboxes);
+
+    const isShotgun = (weaponType === 'SHOTGUN');
+    const pellets = isShotgun ? 7 : 1;
+    const spread = isShotgun ? 0.055 : 0.0;
+    const maxRange = isShotgun ? 28.0 : 45.0;
 
     const raycaster = new THREE.Raycaster();
-    const eyePos = new THREE.Vector3(this.pos.x, (this.currentCameraY || 1.62), this.pos.z);
-    const dir = new THREE.Vector3();
-    this.camera.getWorldDirection(dir);
-    raycaster.set(eyePos, dir);
-    raycaster.far = (weaponType === 'SHOTGUN') ? 28.0 : 45.0;
+    raycaster.far = maxRange;
 
-    const intersects = raycaster.intersectObjects(hitboxes, false);
-    if (intersects.length > 0) {
-      const hit = intersects[0];
-      const targetMonsterId = hit.object.userData?.monsterId;
-      if (targetMonsterId) {
-        // Combat balance: Beretta Px4 pistol = 50 damage (2 shots to stagger), Coach Gun = 100 damage (1 blast to stagger)
-        const dmg = (weaponType === 'SHOTGUN') ? 100 : 50;
-        this.networkClient.attackMonster(targetMonsterId, dmg, weaponType);
-        if (typeof this.saberManager.triggerHitEffect === 'function') {
-          this.saberManager.triggerHitEffect(targetMonsterId, hit.point);
+    const eyePos = new THREE.Vector3(this.pos.x, (this.currentCameraY || 1.62), this.pos.z);
+    const baseDir = new THREE.Vector3();
+    this.camera.getWorldDirection(baseDir);
+
+    if (targets.length > 0) {
+      for (let i = 0; i < pellets; i++) {
+        const dir = baseDir.clone();
+        if (i > 0 && spread > 0) {
+          dir.x += (Math.random() - 0.5) * 2 * spread;
+          dir.y += (Math.random() - 0.5) * 2 * spread;
+          dir.z += (Math.random() - 0.5) * 2 * spread;
+        }
+        dir.normalize();
+        raycaster.set(eyePos, dir);
+
+        const hits = raycaster.intersectObjects(targets, false);
+        if (hits.length === 0) continue;
+
+        const h = hits[0];
+        if (h.object.userData?.isMonster) {
+          const targetMonsterId = h.object.userData.monsterId;
+          const saber = h.object.userData.saber;
+          if (!targetMonsterId) continue;
+
+          // Refine impact point & normal onto Saber's rendered body mesh when available
+          let bodyHit = h;
+          if (saber && saber.isModelLoaded && saber.visualGroup) {
+            const bodyIntersects = raycaster.intersectObject(saber.visualGroup, true);
+            if (bodyIntersects.length > 0) {
+              bodyHit = bodyIntersects[0];
+            }
+          }
+
+          const hitNorm = this._extractSurfaceNormal(bodyHit, dir);
+          const saberBaseY = saber ? (saber.group.position.y || 0) : 0;
+          const isHeadshot = bodyHit.point.y > (saberBaseY + 1.45);
+
+          if (!saberHitsByMonster.has(targetMonsterId)) {
+            saberHitsByMonster.set(targetMonsterId, []);
+          }
+          saberHitsByMonster.get(targetMonsterId).push({
+            kind: 'saber',
+            monsterId: targetMonsterId,
+            weaponType: isShotgun ? 'shotgun' : 'pistol',
+            point: { x: bodyHit.point.x, y: bodyHit.point.y, z: bodyHit.point.z },
+            normal: { x: hitNorm.x, y: hitNorm.y, z: hitNorm.z },
+            isHeadshot
+          });
+        } else {
+          const wallNormal = this._extractSurfaceNormal(h, dir);
+          wallImpacts.push({
+            kind: 'wall',
+            weaponType: isShotgun ? 'shotgun' : 'pistol',
+            point: { x: h.point.x, y: h.point.y, z: h.point.z },
+            normal: { x: wallNormal.x, y: wallNormal.y, z: wallNormal.z }
+          });
         }
       }
     }
+
+    const centerDir = { x: baseDir.x, y: baseDir.y, z: baseDir.z };
+    const origin = { x: this.pos.x, y: this.pos.y, z: this.pos.z };
+    const dmg = isShotgun ? 100 : 50;
+
+    if (this.networkClient && this.networkClient.isConnected) {
+      // Server-synchronized path: broadcast PROJECTILE_IMPACT once per shot/hit so all clients match with zero duplicates
+      this.networkClient.fireWeapon(weaponType, origin, centerDir, { impacts: wallImpacts });
+      for (const [monsterId, saberImpacts] of saberHitsByMonster) {
+        this.networkClient.attackMonster(monsterId, dmg, weaponType, { impacts: saberImpacts });
+      }
+    } else if (this.saberManager && typeof this.saberManager.handleProjectileImpact === 'function') {
+      // Offline preview fallback
+      const allImpacts = [...wallImpacts];
+      for (const impacts of saberHitsByMonster.values()) {
+        allImpacts.push(...impacts);
+      }
+      if (allImpacts.length > 0) {
+        this.saberManager.handleProjectileImpact({ weaponType, impacts: allImpacts });
+      }
+    }
+
+    return { wallImpacts, saberHitsByMonster, centerDir };
   }
 
   _buildLocalViewmodels() {
@@ -775,10 +878,7 @@ export class LocalPlayerController {
       this.pitch = Math.max(-1.48, Math.min(1.48, this.pitch + 0.016));
       this._triggerMuzzleFlash(0);
 
-      if (this.networkClient) {
-        this.networkClient.fireWeapon('PISTOL', { x: this.pos.x, y: this.pos.y, z: this.pos.z });
-      }
-      this._performMonsterHitscan('PISTOL');
+      this._performWeaponHitscan('PISTOL');
 
       this.firingDiagnostics.lastRejectionReason = 'NONE';
 
@@ -804,10 +904,7 @@ export class LocalPlayerController {
       this.pitch = Math.max(-1.48, Math.min(1.48, this.pitch + 0.038));
       this._triggerMuzzleFlash(1);
 
-      if (this.networkClient) {
-        this.networkClient.fireWeapon('SHOTGUN', { x: this.pos.x, y: this.pos.y, z: this.pos.z });
-      }
-      this._performMonsterHitscan('SHOTGUN');
+      this._performWeaponHitscan('SHOTGUN');
 
       this.firingDiagnostics.lastRejectionReason = 'NONE';
 

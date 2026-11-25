@@ -588,6 +588,13 @@ export class MPManager {
       if (this.ui.onSoundEventBroadcast) this.ui.onSoundEventBroadcast(payload);
     };
 
+    this.network.onProjectileImpact = (payload) => {
+      if (this.saberManager && typeof this.saberManager.handleProjectileImpact === 'function') {
+        this.saberManager.handleProjectileImpact(payload);
+      }
+      if (this.ui.onProjectileImpact) this.ui.onProjectileImpact(payload);
+    };
+
     this.network.onDevAiTelemetry = (payload) => {
       if (this.ui.onDevAiTelemetry) this.ui.onDevAiTelemetry(payload);
     };

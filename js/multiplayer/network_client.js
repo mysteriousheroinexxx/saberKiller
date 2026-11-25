@@ -52,7 +52,8 @@ export const MSG_TYPES = {
   SOUND_EVENT_BROADCAST: 'SOUND_EVENT_BROADCAST',
   DEV_AI_TELEMETRY: 'DEV_AI_TELEMETRY',
   FIRE_WEAPON: 'FIRE_WEAPON',
-  ATTACK_MONSTER: 'ATTACK_MONSTER'
+  ATTACK_MONSTER: 'ATTACK_MONSTER',
+  PROJECTILE_IMPACT: 'PROJECTILE_IMPACT'
 };
 
 function resolveWebSocketUrl(input) {
@@ -115,6 +116,7 @@ export class NetworkClient {
     this.onLevelEscaped = null;
     this.onMonsterSnapshot = null;
     this.onSoundEventBroadcast = null;
+    this.onProjectileImpact = null;
     this.onDevAiTelemetry = null;
   }
 
@@ -374,6 +376,10 @@ export class NetworkClient {
         if (this.onSoundEventBroadcast) this.onSoundEventBroadcast(payload);
         break;
 
+      case MSG_TYPES.PROJECTILE_IMPACT:
+        if (this.onProjectileImpact) this.onProjectileImpact(payload);
+        break;
+
       case MSG_TYPES.DEV_AI_TELEMETRY:
         if (this.onDevAiTelemetry) this.onDevAiTelemetry(payload);
         break;
@@ -507,12 +513,20 @@ export class NetworkClient {
     return this.send(MSG_TYPES.PLAYER_UPDATE, { x, y, z, yaw, pitch, weapon, isSprinting });
   }
 
-  fireWeapon(weaponType = 'PISTOL', origin = null, direction = null) {
-    return this.send(MSG_TYPES.FIRE_WEAPON, { weaponType, origin, direction });
+  fireWeapon(weaponType = 'PISTOL', origin = null, direction = null, extra = null) {
+    const payload = { weaponType, origin, direction };
+    if (extra && typeof extra === 'object') {
+      if (Array.isArray(extra.impacts)) payload.impacts = extra.impacts;
+    }
+    return this.send(MSG_TYPES.FIRE_WEAPON, payload);
   }
 
-  attackMonster(monsterId = 'saber_alpha', damage = 50, weaponType = 'PISTOL') {
-    return this.send(MSG_TYPES.ATTACK_MONSTER, { monsterId, damage, weaponType });
+  attackMonster(monsterId = 'saber_alpha', damage = 50, weaponType = 'PISTOL', extra = null) {
+    const payload = { monsterId, damage, weaponType };
+    if (extra && typeof extra === 'object') {
+      if (Array.isArray(extra.impacts)) payload.impacts = extra.impacts;
+    }
+    return this.send(MSG_TYPES.ATTACK_MONSTER, payload);
   }
 
   disconnect() {

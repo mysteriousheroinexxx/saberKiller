@@ -4,6 +4,14 @@
 // hitboxes, and developer Three.js debug aids.
 
 import { TransformInterpolator } from './interpolation.js';
+import {
+  spawnSaberBloodImpact,
+  spawnSaberStaggerBloodDecal,
+  spawnMultiplayerWallDecal,
+  updateMultiplayerImpactVFX,
+  detachBloodImpactsFrom,
+  cleanupMultiplayerImpactVFX
+} from './impact_vfx.js';
 
 let sharedSaberTemplatePromise = null;
 
@@ -131,6 +139,7 @@ class SaberEntity {
     this.targetId = null;
     this.currentSpeed = 0;
     this.debugVisible = false;
+    this._staggerDecalSpawned = false;
 
     // Animation & GLB state
     this.mixer = null;
@@ -412,6 +421,16 @@ class SaberEntity {
     this.targetId = data.targetId || null;
     this.currentSpeed = (typeof data.speed === 'number') ? data.speed : (data.currentSpeed || 0);
 
+    // Spawn Story Mode blood_decals_psx pool ONCE per STAGGERED entry (floor-aligned)
+    if (this.state === 'STAGGERED') {
+      if (!this._staggerDecalSpawned) {
+        this._staggerDecalSpawned = true;
+        spawnSaberStaggerBloodDecal({ x: posX, y: posY, z: posZ });
+      }
+    } else {
+      this._staggerDecalSpawned = false;
+    }
+
     // Trigger state-specific animation transitions
     if (this.isModelLoaded && this.actions.walk) {
       if (prevState === 'STAGGERED' && this.state !== 'STAGGERED') {
@@ -452,6 +471,8 @@ class SaberEntity {
     this.targetId = null;
     this.currentSpeed = 0;
     this.currentClipName = 'idle';
+    this._staggerDecalSpawned = false;
+    detachBloodImpactsFrom(this.group);
 
     if (spawnPos) {
       this.group.position.set(spawnPos.x, spawnPos.y, spawnPos.z);
@@ -569,7 +590,7 @@ class SaberEntity {
     }
   }
 
-  triggerHitEffect(point) {
+  triggerHitEffect(point, normal = null, isHeadshot = false, spawnBlood = true) {
     if (this.visorMat) this.visorMat.color.setHex(0xffffff);
     if (this.eyeLight) this.eyeLight.intensity = 5.0;
     setTimeout(() => {
@@ -578,6 +599,10 @@ class SaberEntity {
         if (this.eyeLight) this.eyeLight.intensity = 2.2;
       }
     }, 120);
+
+    if (spawnBlood && point) {
+      spawnSaberBloodImpact(point, isHeadshot, normal, this.group);
+    }
   }
 
   destroy() {
@@ -622,6 +647,8 @@ export class SaberManager {
 
     if (this.saberAlpha) this.saberAlpha.reset(defaultAlphaSpawn);
     if (this.saberBeta) this.saberBeta.reset(defaultBetaSpawn);
+
+    cleanupMultiplayerImpactVFX();
 
     for (const p of this.soundPulses) {
       this.scene.remove(p.mesh);
@@ -690,10 +717,30 @@ export class SaberManager {
     return boxes;
   }
 
-  triggerHitEffect(monsterId, worldPoint) {
+  triggerHitEffect(monsterId, worldPoint, normal = null, isHeadshot = false, spawnBlood = true) {
     const saber = this.sabers.get(monsterId);
     if (saber) {
-      saber.triggerHitEffect(worldPoint);
+      saber.triggerHitEffect(worldPoint, normal, isHeadshot, spawnBlood);
+    }
+  }
+
+  /**
+   * Handles server-synchronized projectile impact events for blood splashes & wall decals.
+   */
+  handleProjectileImpact(payload) {
+    if (!payload || !Array.isArray(payload.impacts)) return;
+    const defaultWeapon = payload.weaponType || 'pistol';
+
+    for (const impact of payload.impacts) {
+      if (!impact || !impact.point) continue;
+      if (impact.kind === 'saber') {
+        const saber = this.sabers.get(impact.monsterId);
+        if (saber) {
+          saber.triggerHitEffect(impact.point, impact.normal || null, Boolean(impact.isHeadshot), true);
+        }
+      } else if (impact.kind === 'wall') {
+        spawnMultiplayerWallDecal(impact.point, impact.normal || null, impact.weaponType || defaultWeapon);
+      }
     }
   }
 
@@ -715,6 +762,9 @@ export class SaberManager {
     for (const saber of this.sabers.values()) {
       saber.update(dt, localPlayerPos);
     }
+
+    // Update blood splash sprite animations, stagger pool fades, and wall bullet decals
+    updateMultiplayerImpactVFX(dt);
 
     // Update sound pulse ripples
     if (this.soundPulses.length > 0) {

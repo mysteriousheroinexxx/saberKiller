@@ -2775,14 +2775,134 @@ export class RoomManager {
     return diff;
   }
 
+  sanitizeProjectileImpacts(rawImpacts, allowedKinds = ['wall', 'saber'], defaultWeaponType = 'PISTOL') {
+    if (!Array.isArray(rawImpacts) || rawImpacts.length === 0) return [];
+    const allowed = new Set(allowedKinds);
+    const fallbackWeapon = (typeof defaultWeaponType === 'string' && defaultWeaponType.toUpperCase() === 'SHOTGUN')
+      ? 'shotgun'
+      : 'pistol';
+    const sanitized = [];
+
+    for (const item of rawImpacts) {
+      if (sanitized.length >= 12) break;
+      if (!item || typeof item !== 'object') continue;
+      const kind = (item.kind === 'saber' || item.kind === 'wall') ? item.kind : null;
+      if (!kind || !allowed.has(kind)) continue;
+
+      const pt = item.point;
+      if (!pt || !isValidNumber(pt.x) || !isValidNumber(pt.y) || !isValidNumber(pt.z)) continue;
+
+      const n = item.normal;
+      let norm = { x: 0, y: 0, z: 1 };
+      if (n && isValidNumber(n.x) && isValidNumber(n.y) && isValidNumber(n.z)) {
+        const len = Math.hypot(n.x, n.y, n.z);
+        if (len > 0.0001) {
+          norm = { x: +(n.x / len).toFixed(4), y: +(n.y / len).toFixed(4), z: +(n.z / len).toFixed(4) };
+        }
+      }
+
+      const wType = (typeof item.weaponType === 'string' && item.weaponType.toLowerCase() === 'shotgun')
+        ? 'shotgun'
+        : ((typeof item.weaponType === 'string' && item.weaponType.toLowerCase() === 'pistol') ? 'pistol' : fallbackWeapon);
+
+      const entry = {
+        kind,
+        weaponType: wType,
+        point: { x: +pt.x.toFixed(4), y: +pt.y.toFixed(4), z: +pt.z.toFixed(4) },
+        normal: norm
+      };
+
+      if (kind === 'saber') {
+        entry.monsterId = (typeof item.monsterId === 'string' && item.monsterId) ? item.monsterId : 'saber_alpha';
+        entry.isHeadshot = Boolean(item.isHeadshot);
+      }
+
+      sanitized.push(entry);
+    }
+
+    return sanitized;
+  }
+
   /**
-   * Handles player weapon hit against Saber
+   * Handles player weapon discharge sound and validated wall bullet impacts.
    */
-  handleAttackMonster(ws, monsterId = 'saber_alpha', damage = 50, weaponType = 'PISTOL') {
+  handleWeaponFire(ws, weaponType = 'PISTOL', rawImpacts = null) {
+    const session = this.getPlayer(ws);
+    if (!session) return { error: 'Client not associated with any active room session' };
+    const { room, player } = session;
+    if (player.state === 'DOWNED' || player.state === 'ELIMINATED') {
+      return { error: `Player is ${player.state.toLowerCase()} and cannot fire`, room, player };
+    }
+
+    const normalizedWeapon = (typeof weaponType === 'string' && weaponType.toUpperCase() === 'SHOTGUN') ? 'SHOTGUN' : 'PISTOL';
+    room.simulation?.handleWeaponFired(player.id, normalizedWeapon);
+
+    const wallImpacts = this.sanitizeProjectileImpacts(rawImpacts, ['wall'], normalizedWeapon);
+    const impactEvent = wallImpacts.length > 0
+      ? {
+          type: 'PROJECTILE_IMPACT',
+          payload: {
+            shooterId: player.id,
+            weaponType: normalizedWeapon,
+            impacts: wallImpacts
+          }
+        }
+      : null;
+
+    return {
+      success: true,
+      room,
+      player,
+      weaponType: normalizedWeapon,
+      impactEvent
+    };
+  }
+
+  /**
+   * Handles player weapon hit against Saber and produces synchronized blood impact event.
+   */
+  handleAttackMonster(ws, monsterId = 'saber_alpha', damage = 50, weaponType = 'PISTOL', rawImpacts = null) {
     const session = this.getPlayer(ws);
     if (!session) return { error: 'Client not associated with any active room session' };
     const { room, player } = session;
     if (!room.simulation) return { error: 'Room simulation not active' };
-    return room.simulation.handleAttackMonster(player.id, monsterId, damage, weaponType);
+    const res = room.simulation.handleAttackMonster(player.id, monsterId, damage, weaponType);
+    if (!res || !res.success) return res;
+
+    let impactEvent = null;
+    if (res.damageDealt > 0) {
+      let saberImpacts = this.sanitizeProjectileImpacts(rawImpacts, ['saber'], weaponType);
+      if (saberImpacts.length === 0) {
+        const saber = (monsterId === 'saber_beta' || monsterId === 'Saber Beta')
+          ? room.simulation.sim?.saberBeta
+          : room.simulation.sim?.saberAlpha;
+        if (saber) {
+          saberImpacts = [{
+            kind: 'saber',
+            monsterId: (saber === room.simulation.sim?.saberBeta) ? 'saber_beta' : 'saber_alpha',
+            weaponType: (typeof weaponType === 'string' && weaponType.toLowerCase() === 'shotgun') ? 'shotgun' : 'pistol',
+            point: { x: +saber.position.x.toFixed(4), y: +((saber.position.y || 0) + 1.1).toFixed(4), z: +saber.position.z.toFixed(4) },
+            normal: { x: 0, y: 0, z: 1 },
+            isHeadshot: false
+          }];
+        }
+      }
+      if (saberImpacts.length > 0) {
+        impactEvent = {
+          type: 'PROJECTILE_IMPACT',
+          payload: {
+            shooterId: player.id,
+            weaponType: (typeof weaponType === 'string' && weaponType.toUpperCase() === 'SHOTGUN') ? 'SHOTGUN' : 'PISTOL',
+            impacts: saberImpacts
+          }
+        };
+      }
+    }
+
+    return {
+      ...res,
+      room,
+      impactEvent
+    };
   }
 }
