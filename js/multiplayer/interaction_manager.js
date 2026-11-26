@@ -140,8 +140,8 @@ export class InteractionManager {
         }
       }
 
-      // 2. Suppress interaction when World Placement Editor is in active Edit mode
-      if (window.worldEditor && window.worldEditor.editorMode === 'edit') {
+      // 2. Suppress interaction when World Placement Editor or Audio Settings modal is active
+      if ((window.worldEditor && window.worldEditor.editorMode === 'edit') || window.audioSettingsUI?.isOpen) {
         return;
       }
 

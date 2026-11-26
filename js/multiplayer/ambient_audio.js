@@ -86,14 +86,24 @@ export class MultiplayerAmbientAudio {
     this.soundId = options.soundId || 'level0_hum';
     this.category = options.category || 'environment';
 
+    const hasExplicitVolume = typeof options.volume === 'number' && Number.isFinite(options.volume);
+    const managerInitialVol = (this.audioManager && typeof this.audioManager.getSoundVolume === 'function')
+      ? this.audioManager.getSoundVolume(this.soundId)
+      : DEFAULT_AMBIENT_AUDIO_CONFIG.volume;
+
     this.config = {
       ...DEFAULT_AMBIENT_AUDIO_CONFIG,
       ...options,
-      volume: clampVolume(options.volume, DEFAULT_AMBIENT_AUDIO_CONFIG.volume)
+      volume: clampVolume(
+        hasExplicitVolume ? options.volume : managerInitialVol,
+        DEFAULT_AMBIENT_AUDIO_CONFIG.volume
+      )
     };
 
     if (this.audioManager && typeof this.audioManager.setSoundVolume === 'function') {
-      this.audioManager.setSoundVolume(this.soundId, this.config.volume);
+      if (hasExplicitVolume) {
+        this.audioManager.setSoundVolume(this.soundId, this.config.volume);
+      }
       if (typeof this.audioManager.onSoundVolumeChange === 'function') {
         this.audioManager.onSoundVolumeChange(this.soundId, (v) => {
           this.config.volume = v;

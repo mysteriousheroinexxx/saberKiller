@@ -38,15 +38,26 @@ export const AUDIO_BUS_NAMES = Object.freeze([
   AUDIO_CATEGORIES.UI
 ]);
 
+export const AUDIO_CATEGORY_META = Object.freeze([
+  { id: AUDIO_CATEGORIES.ENVIRONMENT, label: 'Environment' },
+  { id: AUDIO_CATEGORIES.PLAYER_MOVEMENT, label: 'Player Movement' },
+  { id: AUDIO_CATEGORIES.WEAPONS, label: 'Weapons' },
+  { id: AUDIO_CATEGORIES.INTERACTIONS, label: 'Interactions' },
+  { id: AUDIO_CATEGORIES.ENEMIES, label: 'Enemies' },
+  { id: AUDIO_CATEGORIES.UI, label: 'UI' }
+]);
+
 export const DEFAULT_SOUND_DEFINITIONS = Object.freeze({
   level0_hum: {
     id: 'level0_hum',
+    label: 'Level 0 Electrical Hum',
     category: AUDIO_CATEGORIES.ENVIRONMENT,
     url: 'assets/audio/background60HzElectricHum.wav',
     defaultVolume: 0.14
   },
   player_walk: {
     id: 'player_walk',
+    label: 'Walking Footsteps',
     category: AUDIO_CATEGORIES.PLAYER_MOVEMENT,
     url: 'assets/audio/walking.wav',
     defaultVolume: 0.34,
@@ -56,6 +67,7 @@ export const DEFAULT_SOUND_DEFINITIONS = Object.freeze({
   },
   player_run: {
     id: 'player_run',
+    label: 'Running Footsteps',
     category: AUDIO_CATEGORIES.PLAYER_MOVEMENT,
     url: 'assets/audio/running.wav',
     defaultVolume: 0.42,
@@ -65,6 +77,7 @@ export const DEFAULT_SOUND_DEFINITIONS = Object.freeze({
   },
   weapon_pistol_fire: {
     id: 'weapon_pistol_fire',
+    label: 'Beretta Px4 Fire',
     category: AUDIO_CATEGORIES.WEAPONS,
     url: 'assets/audio/pistolFire.wav',
     defaultVolume: 0.62,
@@ -74,6 +87,7 @@ export const DEFAULT_SOUND_DEFINITIONS = Object.freeze({
   },
   weapon_reload: {
     id: 'weapon_reload',
+    label: 'Weapon Reload',
     category: AUDIO_CATEGORIES.WEAPONS,
     url: 'assets/audio/reload.wav',
     defaultVolume: 0.56,
@@ -83,6 +97,7 @@ export const DEFAULT_SOUND_DEFINITIONS = Object.freeze({
   },
   sanity_heartbeat: {
     id: 'sanity_heartbeat',
+    label: 'Sanity Heartbeat',
     category: AUDIO_CATEGORIES.ENVIRONMENT,
     url: 'assets/audio/heartbeat.wav',
     defaultVolume: 0.72,
@@ -91,6 +106,7 @@ export const DEFAULT_SOUND_DEFINITIONS = Object.freeze({
   },
   interaction_pickup: {
     id: 'interaction_pickup',
+    label: 'Item Pickup',
     category: AUDIO_CATEGORIES.INTERACTIONS,
     url: 'assets/audio/pickingUp.wav',
     defaultVolume: 0.6,
@@ -100,6 +116,7 @@ export const DEFAULT_SOUND_DEFINITIONS = Object.freeze({
   },
   interaction_drink: {
     id: 'interaction_drink',
+    label: 'Drink Consumable',
     category: AUDIO_CATEGORIES.INTERACTIONS,
     url: 'assets/audio/drinkingDrink.wav',
     defaultVolume: 0.62,
@@ -109,6 +126,7 @@ export const DEFAULT_SOUND_DEFINITIONS = Object.freeze({
   },
   interaction_pill_eat: {
     id: 'interaction_pill_eat',
+    label: 'Sanity Pill',
     category: AUDIO_CATEGORIES.INTERACTIONS,
     url: 'assets/audio/pillBottleEat.wav',
     defaultVolume: 0.62,
@@ -444,6 +462,18 @@ export class MultiplayerAudioManager {
     const def = this.soundDefs.get(soundId);
     const cat = categoryOverride || def?.category || AUDIO_CATEGORIES.UI;
     return this.getSoundVolume(soundId) * this.getCategoryVolume(cat) * this.getMasterVolume();
+  }
+
+  getSoundsByCategory() {
+    const grouped = {};
+    for (const meta of AUDIO_CATEGORY_META) {
+      grouped[meta.id] = [];
+    }
+    for (const def of this.soundDefs.values()) {
+      const cat = (def.category && (def.category in grouped)) ? def.category : AUDIO_CATEGORIES.UI;
+      grouped[cat].push({ ...def });
+    }
+    return grouped;
   }
 
   exportPreferences() {

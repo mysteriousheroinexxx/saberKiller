@@ -26,6 +26,7 @@ import { InventoryUI } from './inventory_ui.js';
 import { ExitDoorManager } from './exit_door_manager.js';
 import { SaberObservationUI } from './saber_observation_ui.js';
 import { initMultiplayerImpactVFX } from './impact_vfx.js';
+import { AudioSettingsUI } from './audio_settings_ui.js';
 
 let scene, camera, renderer, mpManager, playerLight;
 let lastTime = performance.now();
@@ -35,6 +36,7 @@ let itemManager = null;
 let worldEditor = null;
 let interactionManager = null;
 let inventoryUI = null;
+let audioSettingsUI = null;
 let exitDoorManager = null;
 let saberObservationUI = null;
 let devToolsEnabled = false;
@@ -303,7 +305,7 @@ async function init() {
           try { renderer.domElement.focus(); } catch (e) {}
         }
 
-        if (!mpManager.localPlayer.isEditorActive && (!worldEditor || !worldEditor.isOpen)) {
+        if (!mpManager.localPlayer.isEditorActive && (!worldEditor || !worldEditor.isOpen) && !audioSettingsUI?.isOpen) {
           mpManager.localPlayer.requestPointerLock(renderer.domElement);
         }
       }
@@ -332,7 +334,7 @@ async function init() {
         try { renderer.domElement.focus(); } catch (e) {}
       }
 
-      if (!mpManager.localPlayer.isEditorActive && (!worldEditor || !worldEditor.isOpen)) {
+      if (!mpManager.localPlayer.isEditorActive && (!worldEditor || !worldEditor.isOpen) && !audioSettingsUI?.isOpen) {
         mpManager.localPlayer.requestPointerLock(renderer.domElement);
       }
     },
@@ -361,6 +363,23 @@ async function init() {
 
   inventoryUI = new InventoryUI(mpManager.inventory, mpManager.localPlayer, mpManager.network, document.body);
   window.inventoryUI = inventoryUI;
+
+  audioSettingsUI = new AudioSettingsUI(mpManager.audioManager, {
+    player: mpManager.localPlayer
+  });
+  window.audioSettingsUI = audioSettingsUI;
+
+  ['btn-lobby-audio-settings', 'btn-staging-audio-settings', 'btn-hud-audio-settings'].forEach((btnId) => {
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        try { btn.blur(); } catch {}
+        audioSettingsUI?.open();
+      });
+    }
+  });
 
   if (mpManager.stagingLobby) {
     mpManager.stagingLobby.setOnLeave(() => leaveMultiplayerSession());
@@ -419,7 +438,7 @@ async function init() {
   renderer.domElement.tabIndex = 0;
   renderer.domElement.addEventListener('click', () => {
     try { renderer.domElement.focus(); } catch (e) {}
-    if (isGameActive && mpManager && !mpManager.localPlayer.isEditorActive && (!worldEditor || !worldEditor.isOpen) && !window.inventoryUI?.isOpen) {
+    if (isGameActive && mpManager && !mpManager.localPlayer.isEditorActive && (!worldEditor || !worldEditor.isOpen) && !window.inventoryUI?.isOpen && !window.audioSettingsUI?.isOpen) {
       mpManager.localPlayer.requestPointerLock(renderer.domElement);
     }
   });
@@ -489,6 +508,7 @@ async function init() {
     if (elimOverlay) elimOverlay.style.display = 'none';
     const goOverlay = document.getElementById('bb-gameover-overlay');
     if (goOverlay) goOverlay.style.display = 'none';
+    if (audioSettingsUI && audioSettingsUI.isOpen) audioSettingsUI.close();
     if (document.pointerLockElement) {
       try { document.exitPointerLock(); } catch (err) {}
     }

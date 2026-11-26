@@ -20,6 +20,7 @@ export class MPManager {
     this.remotePlayers = new Map(); // playerId -> RemotePlayer
     this.saberManager = new SaberManager(this.scene);
     this.audioManager = new MultiplayerAudioManager({ camera });
+    this.audioManager.loadPreferences();
     this.localPlayer = new LocalPlayerController(camera, scene, this.network, null);
     this.localPlayer.setSaberManager(this.saberManager);
     this.localPlayer.setAudioManager(this.audioManager);

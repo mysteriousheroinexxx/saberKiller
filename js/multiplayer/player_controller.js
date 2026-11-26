@@ -82,6 +82,7 @@ export class LocalPlayerController {
     this.selectedHotbarSlot = 0;
     this.inventory = null;
     this.isInventoryOpen = false;
+    this.isAudioSettingsOpen = false;
     this.speedBoostTimer = 0.0;
     this.speedMultiplier = 1.0;
 
@@ -644,7 +645,7 @@ export class LocalPlayerController {
   }
 
   consumeHeldItem() {
-    if (this.isEditorActive || this.isInventoryOpen) return;
+    if (this.isEditorActive || this.isInventoryOpen || this.isAudioSettingsOpen) return;
     if (this.selectedHotbarSlot < 0 || this.selectedHotbarSlot > 9) return;
     const item = this.inventory ? this.inventory.getItem(this.selectedHotbarSlot) : null;
     if (!item) return;
@@ -658,7 +659,7 @@ export class LocalPlayerController {
   }
 
   dropHeldItem() {
-    if (this.isEditorActive || this.isInventoryOpen) return;
+    if (this.isEditorActive || this.isInventoryOpen || this.isAudioSettingsOpen) return;
     if (this.selectedHotbarSlot < 0 || this.selectedHotbarSlot > 9) return;
     const item = this.inventory ? this.inventory.getItem(this.selectedHotbarSlot) : null;
     if (!item) return;
@@ -889,8 +890,8 @@ export class LocalPlayerController {
       this.firingDiagnostics.lastRejectionReason = 'EDITOR_ACTIVE';
       return false;
     }
-    if (this.isInventoryOpen) {
-      this.firingDiagnostics.lastRejectionReason = 'INVENTORY_OPEN';
+    if (this.isInventoryOpen || this.isAudioSettingsOpen) {
+      this.firingDiagnostics.lastRejectionReason = this.isAudioSettingsOpen ? 'AUDIO_SETTINGS_OPEN' : 'INVENTORY_OPEN';
       return false;
     }
     if (this.isDowned || this.isDead || this.hp <= 0 || (this.state && this.state !== 'ACTIVE')) {
@@ -987,8 +988,8 @@ export class LocalPlayerController {
       this.firingDiagnostics.lastRejectionReason = 'EDITOR_ACTIVE';
       return false;
     }
-    if (this.isInventoryOpen) {
-      this.firingDiagnostics.lastRejectionReason = 'INVENTORY_OPEN';
+    if (this.isInventoryOpen || this.isAudioSettingsOpen) {
+      this.firingDiagnostics.lastRejectionReason = this.isAudioSettingsOpen ? 'AUDIO_SETTINGS_OPEN' : 'INVENTORY_OPEN';
       return false;
     }
     if (this.isDowned || this.isDead || this.hp <= 0 || (this.state && this.state !== 'ACTIVE')) {
@@ -1154,7 +1155,7 @@ export class LocalPlayerController {
 
   _bindEvents() {
     this._onKeyDown = (e) => {
-      if (this.isEditorActive || this.isInventoryOpen || (window.mpManager && window.mpManager.isInStagingLobby)) {
+      if (this.isEditorActive || this.isInventoryOpen || this.isAudioSettingsOpen || (window.mpManager && window.mpManager.isInStagingLobby)) {
         return;
       }
       // Allow regular typing in visible input/textarea elements when not in active pointer lock
@@ -1214,7 +1215,7 @@ export class LocalPlayerController {
     };
 
     this._onMouseMove = (e) => {
-      if (!this.isPointerLocked || this.isInventoryOpen) return;
+      if (!this.isPointerLocked || this.isInventoryOpen || this.isAudioSettingsOpen) return;
       this.yaw -= e.movementX * this.mouseSensitivity;
       this.pitch -= e.movementY * this.mouseSensitivity;
       this.pitch = Math.max(-1.48, Math.min(1.48, this.pitch));
@@ -1230,6 +1231,10 @@ export class LocalPlayerController {
       }
       if (this.isInventoryOpen) {
         this.firingDiagnostics.lastRejectionReason = 'INVENTORY_OPEN';
+        return;
+      }
+      if (this.isAudioSettingsOpen) {
+        this.firingDiagnostics.lastRejectionReason = 'AUDIO_SETTINGS_OPEN';
         return;
       }
       if (this.isDowned || this.isDead || this.hp <= 0) {
@@ -1255,7 +1260,7 @@ export class LocalPlayerController {
     };
 
     this._onWheel = (e) => {
-      if (this.isEditorActive || this.isInventoryOpen) return;
+      if (this.isEditorActive || this.isInventoryOpen || this.isAudioSettingsOpen) return;
       if (this.isPointerLocked) {
         e.preventDefault(); // Prevent page scrolling during weapon selection wheel
         if (e.deltaY > 0) {
@@ -1310,7 +1315,7 @@ export class LocalPlayerController {
 
     this._updateThrowAnimations(dt);
 
-    if (this.isEditorActive || this.isInventoryOpen || this.isDowned || this.isDead || this.state !== 'ACTIVE') {
+    if (this.isEditorActive || this.isInventoryOpen || this.isAudioSettingsOpen || this.isDowned || this.isDead || this.state !== 'ACTIVE') {
       this._resetMovementAudio();
       // Suspend movement and firing, but maintain 20Hz network sync
       // If downed or dead, smoothly transition camera height to prone
