@@ -7,3 +7,5 @@ Thumbs.db
 node_modules/
 # Hermes scratch
 .hermes/
+# Local dev artifact output
+.dev-artifacts/

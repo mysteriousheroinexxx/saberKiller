@@ -1,4 +1,4 @@
-import * as YUKA from '../../yuka/build/yuka.module.js';
+import * as YUKA from 'yuka';
 
 export const DIRECTOR_PHASES = {
   RELEASE: 'RELEASE',

@@ -1,4 +1,4 @@
-import * as YUKA from '../../yuka/build/yuka.module.js';
+import * as YUKA from 'yuka';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';

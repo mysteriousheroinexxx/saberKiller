@@ -4,11 +4,14 @@ Provenance and licensing for every non-original-code asset in `assets/` and `ven
 The game is offline-capable; world textures, audio, and most props are generated
 procedurally at runtime and carry no external license.
 
-## Vendored libraries (`vendor/`)
-- **three.js r147** (`three.min.js`), **GLTFLoader.js**, **SkeletonUtils.js**
+## Vendored & Server Libraries (`vendor/`, `server/`)
+- **three.js r147** (`three.min.js`), **GLTFLoader.js**, **SkeletonUtils.js**, **TransformControls.js** (`vendor/`)
   - License: MIT (three.js authors, https://github.com/mrdoob/three.js).
   - Vendored locally so the game runs offline; r147 is the last global-loader release
     (required for cloned SkinnedMesh locomotion).
+- **Yuka** (`yuka@0.7.8`, installed via `server/package.json`)
+  - License: MIT (Mugen87, https://github.com/Mugen87/yuka).
+  - Powers server-side Saber AI navigation, vision, memory, and steering simulation.
 
 ## Procedural / original (no external license)
 - **All wall/floor/ceiling/prop textures** (yellow wallpaper, damp carpet, ceiling tiles,

@@ -1,4 +1,4 @@
-import * as YUKA from '../../yuka/build/yuka.module.js';
+import * as YUKA from 'yuka';
 import { SoundStimulusSystem, SoundStimulus } from './sound_system.js';
 import { Level0PrototypeMap } from './environment.js';
 import { SaberAgent, SABER_STATES } from './saber_agent.js';

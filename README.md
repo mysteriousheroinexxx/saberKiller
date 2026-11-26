@@ -73,10 +73,16 @@ Saber Killer is under active development toward an initial **0.1.0** milestone a
 ## Running the Game
 
 ### Prerequisites
-- **Node.js** (v18+ recommended, with ES module and `node:test` support)
+- **Git** and **Node.js** (v18+ recommended, with ES module and `node:test` support)
 
-### 1. Install Server Dependencies
-From the repository root:
+### 1. Clone the Repository
+```bash
+git clone https://github.com/mysteriousheroinexxx/saberKiller.git
+cd saberKiller
+```
+
+### 2. Install Server Dependencies
+Install Node.js dependencies (`ws` and `yuka`) inside `server/`:
 
 ```bash
 cd server
@@ -84,7 +90,7 @@ npm install
 cd ..
 ```
 
-### 2. Start the Multiplayer Server
+### 3. Start the Multiplayer Server
 Standard mode (default port `8749`, configurable via `PORT`):
 
 ```bash
@@ -99,13 +105,13 @@ node server/index.js --dev-rendering
 
 Optional vending stock override: `--vending-stock=<count>` (defaults to `5`).
 
-### 3. Open the Game
+### 4. Open the Game
 With the server running, open a modern WebGL-capable browser:
 
 - **Multiplayer Survival Mode**: `http://localhost:8749/multiplayer.html`
 - **Legacy Story Mode**: `http://localhost:8749/`
 
-### 4. Controls (Multiplayer)
+### 5. Controls (Multiplayer)
 - `W A S D` — Move (`Shift` to sprint)
 - `Mouse` — Aim (click viewport for pointer lock; `Esc` unlocks cursor or closes open modals)
 - `Left Click` — Fire equipped weapon or use held consumable

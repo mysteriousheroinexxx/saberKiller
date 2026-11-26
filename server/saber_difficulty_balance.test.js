@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import * as YUKA from '../yuka/build/yuka.module.js';
+import * as YUKA from 'yuka';
 import {
   RoomManager,
   SURVIVAL_CONFIG,

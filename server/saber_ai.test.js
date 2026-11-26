@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import * as YUKA from '../yuka/build/yuka.module.js';
+import * as YUKA from 'yuka';
 import { RoomSimulation, AI_PACKET_TYPES } from './ai/room_simulation.js';
 import { SaberSimulation, PlayerEntity } from './ai/simulation.js';
 import { SABER_STATES } from './ai/saber_agent.js';

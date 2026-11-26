@@ -1,4 +1,4 @@
-import * as YUKA from '../../yuka/build/yuka.module.js';
+import * as YUKA from 'yuka';
 import { SaberSimulation, PlayerEntity } from './simulation.js';
 import { Level0Environment, Level0PrototypeMap } from './environment.js';
 import { SABER_STATES } from './saber_agent.js';

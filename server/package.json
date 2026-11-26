@@ -8,6 +8,7 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "ws": "^8.23.0"
+    "ws": "^8.23.0",
+    "yuka": "0.7.8"
   }
 }

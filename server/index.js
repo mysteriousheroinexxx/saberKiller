@@ -522,12 +522,16 @@ const server = http.createServer((req, res) => {
       try {
         const payload = JSON.parse(body);
         const data = payload.shot.replace(/^data:image\/png;base64,/, '');
-        const label = payload.label || 'screenshot';
-        const outPath = `/home/mhxxx/.gemini/antigravity-cli/brain/1f289c44-ad8c-4627-87d0-a5464314d899/${label}.png`;
+        const label = path.basename(String(payload.label || 'screenshot')).replace(/[^a-zA-Z0-9_.-]/g, '_') || 'screenshot';
+        const screenshotDir = process.env.DEV_SCREENSHOT_DIR
+          ? path.resolve(process.env.DEV_SCREENSHOT_DIR)
+          : path.join(CLIENT_DIR, '.dev-artifacts', 'screenshots');
+        fs.mkdirSync(screenshotDir, { recursive: true });
+        const outPath = path.join(screenshotDir, `${label}.png`);
         fs.writeFileSync(outPath, Buffer.from(data, 'base64'));
         console.log(`[TEST ARTIFACT] Saved screenshot [${label}] to: ${outPath}`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true }));
+        res.end(JSON.stringify({ ok: true, path: outPath }));
       } catch (e) {
         res.writeHead(500); res.end();
       }
@@ -541,11 +545,16 @@ const server = http.createServer((req, res) => {
     req.on('end', () => {
       try {
         const payload = JSON.parse(body);
-        const outPath = `/home/mhxxx/.gemini/antigravity-cli/brain/1f289c44-ad8c-4627-87d0-a5464314d899/scratch/mp_telemetry_${payload.client || 'client'}.json`;
+        const clientName = path.basename(String(payload.client || 'client')).replace(/[^a-zA-Z0-9_.-]/g, '_') || 'client';
+        const telemetryDir = process.env.DEV_TELEMETRY_DIR
+          ? path.resolve(process.env.DEV_TELEMETRY_DIR)
+          : path.join(CLIENT_DIR, '.dev-artifacts', 'telemetry');
+        fs.mkdirSync(telemetryDir, { recursive: true });
+        const outPath = path.join(telemetryDir, `mp_telemetry_${clientName}.json`);
         fs.writeFileSync(outPath, JSON.stringify(payload, null, 2));
         console.log(`[TEST TELEMETRY] Received for ${payload.client}:`, JSON.stringify(payload));
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true }));
+        res.end(JSON.stringify({ ok: true, path: outPath }));
       } catch (e) {
         res.writeHead(500); res.end();
       }

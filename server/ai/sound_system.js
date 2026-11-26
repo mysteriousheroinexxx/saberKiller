@@ -1,4 +1,4 @@
-import * as YUKA from '../../yuka/build/yuka.module.js';
+import * as YUKA from 'yuka';
 
 /**
  * SoundStimulus represents an auditory event in the environment.
