@@ -706,6 +706,9 @@ async function init() {
     renderer.setSize(w, h);
     if (postRenderTarget) postRenderTarget.setSize(w, h);
     if (postMat) postMat.uniforms.uResolution.value.set(w, h);
+    if (mpManager?.isInStagingLobby && mpManager.stagingLobby) {
+      mpManager.stagingLobby.updateCameraFraming();
+    }
   });
 
   // Check URL query parameters for automated comparison or autotest
@@ -2119,6 +2122,10 @@ function updateSanityVisualEffects(dt) {
 }
 
 function renderScene() {
+  if (mpManager?.isInStagingLobby) {
+    renderer.render(scene, camera);
+    return;
+  }
   if (postRenderTarget && postScene) {
     renderer.setRenderTarget(postRenderTarget);
     renderer.render(scene, camera);

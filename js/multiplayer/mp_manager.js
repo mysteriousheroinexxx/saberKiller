@@ -883,6 +883,9 @@ export class MPManager {
   update(dt) {
     // 1. Update local player
     this.localPlayer.update(dt);
+    if (this.stagingLobby && this.isInStagingLobby) {
+      this.stagingLobby.update(dt);
+    }
     if (this.audioManager && this.camera) {
       this.audioManager.updateListener(this.camera);
     }

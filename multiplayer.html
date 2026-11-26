@@ -261,52 +261,99 @@
       flex-direction: column;
       justify-content: space-between;
       align-items: center;
-      padding: 40px;
+      padding: 28px 32px 34px;
       box-sizing: border-box;
+    }
+
+    #staging-utility {
+      position: absolute;
+      top: 28px;
+      right: 32px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      pointer-events: auto;
     }
 
     #staging-header {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 6px;
-      background: rgba(18, 17, 16, 0.75);
-      border: 1px solid rgba(212, 175, 55, 0.4);
-      padding: 12px 28px;
-      border-radius: 4px;
+      gap: 10px;
+      background: rgba(14, 15, 17, 0.86);
+      border: 1px solid rgba(212, 175, 55, 0.34);
+      padding: 12px 24px;
+      border-radius: 3px;
       backdrop-filter: blur(8px);
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65);
       pointer-events: auto;
-    }
-
-    .staging-title {
-      font-size: 11px;
-      letter-spacing: 2.5px;
-      color: #9c9a92;
-      text-transform: uppercase;
-      font-weight: 500;
+      max-width: calc(100vw - 32px);
     }
 
     #staging-room-code {
-      font-size: 24px;
+      font-size: 18px;
       font-weight: 600;
       letter-spacing: 3px;
       color: #d4af37;
       text-transform: uppercase;
+      line-height: 1.1;
+    }
+
+    #staging-roster {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px 14px;
+      border-top: 1px solid rgba(156, 154, 146, 0.16);
+      padding-top: 8px;
+    }
+
+    .staging-player-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: #f2f1eb;
+    }
+
+    .staging-player-chip.ready {
+      color: #4ade80;
+    }
+
+    .staging-player-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: rgba(242, 241, 235, 0.55);
+      flex: 0 0 auto;
+    }
+
+    .staging-player-chip.ready .staging-player-dot {
+      background: #4ade80;
+      box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
+    }
+
+    .staging-player-state {
+      font-size: 10px;
+      opacity: 0.78;
+      letter-spacing: 1px;
     }
 
     #staging-status-msg {
       display: none;
-      background: rgba(180, 40, 40, 0.92);
-      color: #ffffff;
-      padding: 12px 28px;
-      font-size: 13px;
-      letter-spacing: 1.5px;
+      background: rgba(130, 28, 28, 0.92);
+      color: #f8eaea;
+      padding: 9px 20px;
+      font-size: 12px;
+      letter-spacing: 1.4px;
       font-weight: 500;
       text-transform: uppercase;
-      border-radius: 4px;
-      border: 1px solid rgba(255, 120, 120, 0.6);
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
+      border-radius: 3px;
+      border: 1px solid rgba(235, 100, 100, 0.55);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.7);
       pointer-events: auto;
       animation: staging-shake 0.35s ease;
     }
@@ -319,80 +366,120 @@
 
     #staging-actions {
       display: flex;
-      gap: 16px;
+      gap: 12px;
       align-items: center;
+      justify-content: center;
       pointer-events: auto;
-      margin-bottom: 24px;
     }
 
     .staging-btn-action {
-      min-width: 220px;
-      padding: 14px 32px;
-      font-size: 14px;
+      min-width: 210px;
+      padding: 13px 32px;
+      font-size: 13px;
       font-weight: 600;
-      letter-spacing: 2px;
+      letter-spacing: 2.2px;
       text-transform: uppercase;
-      border-radius: 4px;
+      border-radius: 3px;
       cursor: pointer;
-      transition: all 0.2s ease;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+      transition: all 0.18s ease;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.65);
       font-family: 'Rubik', sans-serif;
     }
 
     .staging-btn-start {
-      background: rgba(212, 175, 55, 0.25);
-      border: 1px solid #d4af37;
-      color: #fff4cc;
+      background: rgba(24, 22, 18, 0.92);
+      border: 1px solid rgba(212, 175, 55, 0.75);
+      color: #f3e2a6;
     }
 
     .staging-btn-start:hover {
-      background: rgba(212, 175, 55, 0.45);
-      box-shadow: 0 0 24px rgba(212, 175, 55, 0.5);
+      background: rgba(212, 175, 55, 0.22);
+      border-color: #d4af37;
+      box-shadow: 0 0 18px rgba(212, 175, 55, 0.28);
       color: #ffffff;
     }
 
     .staging-btn-ready-off {
-      background: rgba(40, 40, 45, 0.85);
-      border: 1px solid rgba(156, 154, 146, 0.5);
-      color: #edece6;
+      background: rgba(24, 25, 28, 0.92);
+      border: 1px solid rgba(200, 200, 195, 0.45);
+      color: #f2f1eb;
     }
 
     .staging-btn-ready-off:hover {
-      background: rgba(60, 60, 70, 0.95);
-      border-color: #edece6;
+      background: rgba(45, 48, 54, 0.95);
+      border-color: #f2f1eb;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.75);
     }
 
     .staging-btn-ready-on {
-      background: rgba(46, 204, 113, 0.3);
-      border: 1px solid #2ecc71;
-      color: #a3ffc7;
-      box-shadow: 0 0 16px rgba(46, 204, 113, 0.35);
+      background: rgba(22, 62, 39, 0.9);
+      border: 1px solid #4ade80;
+      color: #b7ffd1;
+      box-shadow: 0 0 16px rgba(74, 222, 128, 0.25);
     }
 
     .staging-btn-ready-on:hover {
-      background: rgba(46, 204, 113, 0.45);
+      background: rgba(30, 82, 52, 0.95);
       color: #ffffff;
-      box-shadow: 0 0 24px rgba(46, 204, 113, 0.5);
+      box-shadow: 0 0 22px rgba(74, 222, 128, 0.4);
+    }
+
+    .staging-btn-util {
+      padding: 8px 14px;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      background: rgba(16, 17, 19, 0.85);
+      border: 1px solid rgba(156, 154, 146, 0.3);
+      color: #b8b6ae;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      font-family: 'Rubik', sans-serif;
+      flex: 0 0 auto;
+    }
+
+    .staging-btn-util:hover {
+      border-color: #d4af37;
+      color: #edece6;
+      background: rgba(28, 26, 22, 0.92);
+      box-shadow: none;
     }
 
     .staging-btn-leave {
-      padding: 14px 24px;
-      font-size: 12px;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-      background: rgba(25, 20, 20, 0.7);
-      border: 1px solid rgba(180, 60, 60, 0.5);
-      color: #ffaaaa;
-      border-radius: 4px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      font-family: 'Rubik', sans-serif;
+      border-color: rgba(185, 68, 68, 0.45);
+      color: #e4a1a1;
     }
 
     .staging-btn-leave:hover {
-      background: rgba(180, 40, 40, 0.4);
-      border-color: #ff6666;
+      background: rgba(150, 38, 38, 0.42);
+      border-color: #ef6b6b;
       color: #ffffff;
+    }
+
+    @media (max-width: 680px) {
+      #staging-lobby-overlay {
+        padding: 16px 14px 24px;
+      }
+      #staging-utility {
+        position: static;
+        align-self: flex-end;
+        margin-bottom: 6px;
+      }
+      #staging-header {
+        width: 100%;
+        padding: 10px 14px;
+      }
+      #staging-room-code {
+        font-size: 16px;
+        letter-spacing: 2.2px;
+      }
+      .staging-btn-action {
+        min-width: 180px;
+        padding: 12px 24px;
+        font-size: 12px;
+      }
     }
 
     /* Survival Mode Downed, Eliminated & Game Over Overlays */
@@ -1214,15 +1301,17 @@
 
   <!-- Pre-Game Staging Lobby Overlay -->
   <div id="staging-lobby-overlay">
+    <div id="staging-utility">
+      <button id="btn-staging-audio-settings" type="button" class="staging-btn-util">Audio</button>
+      <button id="btn-staging-leave" type="button" class="staging-btn-util staging-btn-leave">Leave</button>
+    </div>
     <div id="staging-header">
-      <div class="staging-title">STAGING LOBBY</div>
       <div id="staging-room-code">ROOM: ----</div>
+      <div id="staging-roster"></div>
     </div>
     <div id="staging-status-msg">Waiting for all players to ready up.</div>
     <div id="staging-actions">
-      <button id="btn-staging-action" class="staging-btn-action staging-btn-start">START MATCH</button>
-      <button id="btn-staging-audio-settings" type="button" class="staging-btn-leave" style="background: rgba(24, 22, 20, 0.82); border-color: rgba(212, 175, 55, 0.45); color: #edece6;">AUDIO</button>
-      <button id="btn-staging-leave" class="staging-btn-leave">LEAVE</button>
+      <button id="btn-staging-action" class="staging-btn-action staging-btn-start">START</button>
     </div>
   </div>
 
