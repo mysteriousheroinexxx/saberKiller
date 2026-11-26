@@ -18,6 +18,7 @@ export const MSG_TYPES = {
   ROOM_ITEMS_STATE: 'ROOM_ITEMS_STATE',
   ITEM_USE_REQUEST: 'ITEM_USE_REQUEST',
   ITEM_USE_RESPONSE: 'ITEM_USE_RESPONSE',
+  ITEM_CONSUMED: 'ITEM_CONSUMED',
   ITEM_DROP_REQUEST: 'ITEM_DROP_REQUEST',
   ITEM_DROP_RESPONSE: 'ITEM_DROP_RESPONSE',
   ITEM_SPAWNED: 'ITEM_SPAWNED',
@@ -52,6 +53,7 @@ export const MSG_TYPES = {
   SOUND_EVENT_BROADCAST: 'SOUND_EVENT_BROADCAST',
   DEV_AI_TELEMETRY: 'DEV_AI_TELEMETRY',
   FIRE_WEAPON: 'FIRE_WEAPON',
+  WEAPON_RELOAD: 'WEAPON_RELOAD',
   ATTACK_MONSTER: 'ATTACK_MONSTER',
   PROJECTILE_IMPACT: 'PROJECTILE_IMPACT'
 };
@@ -97,6 +99,7 @@ export class NetworkClient {
     this.onPickupRejected = null;
     this.onRoomItemsState = null;
     this.onItemUseResponse = null;
+    this.onItemConsumed = null;
     this.onItemDropResponse = null;
     this.onItemSpawned = null;
     this.onVendingDispenseResponse = null;
@@ -117,6 +120,7 @@ export class NetworkClient {
     this.onMonsterSnapshot = null;
     this.onSoundEventBroadcast = null;
     this.onProjectileImpact = null;
+    this.onWeaponReload = null;
     this.onDevAiTelemetry = null;
   }
 
@@ -300,6 +304,10 @@ export class NetworkClient {
         if (this.onItemUseResponse) this.onItemUseResponse(payload);
         break;
 
+      case MSG_TYPES.ITEM_CONSUMED:
+        if (this.onItemConsumed) this.onItemConsumed(payload);
+        break;
+
       case MSG_TYPES.ITEM_DROP_RESPONSE:
         if (this.onItemDropResponse) this.onItemDropResponse(payload);
         break;
@@ -378,6 +386,10 @@ export class NetworkClient {
 
       case MSG_TYPES.PROJECTILE_IMPACT:
         if (this.onProjectileImpact) this.onProjectileImpact(payload);
+        break;
+
+      case MSG_TYPES.WEAPON_RELOAD:
+        if (this.onWeaponReload) this.onWeaponReload(payload);
         break;
 
       case MSG_TYPES.DEV_AI_TELEMETRY:
@@ -519,6 +531,10 @@ export class NetworkClient {
       if (Array.isArray(extra.impacts)) payload.impacts = extra.impacts;
     }
     return this.send(MSG_TYPES.FIRE_WEAPON, payload);
+  }
+
+  reloadWeapon(weaponType = 'PISTOL', origin = null) {
+    return this.send(MSG_TYPES.WEAPON_RELOAD, { weaponType, origin });
   }
 
   attackMonster(monsterId = 'saber_alpha', damage = 50, weaponType = 'PISTOL', extra = null) {

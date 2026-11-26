@@ -10,6 +10,10 @@ export class LocalPlayerController {
     this.networkClient = networkClient;
     this.collisionHandler = collisionHandler;
     this.saberManager = null;
+    this.audioManager = null;
+    this._stepDistAccum = 0.0;
+    this._wasMoving = false;
+    this._lastMoveMode = 'idle';
 
     this.pos = new THREE.Vector3(48.69, 0.0, -187.65);
     this.yaw = 0.0;
@@ -78,6 +82,7 @@ export class LocalPlayerController {
     this.selectedHotbarSlot = 0;
     this.inventory = null;
     this.isInventoryOpen = false;
+    this.isAudioSettingsOpen = false;
     this.speedBoostTimer = 0.0;
     this.speedMultiplier = 1.0;
 
@@ -162,6 +167,40 @@ export class LocalPlayerController {
 
   setSaberManager(saberManager) {
     this.saberManager = saberManager;
+  }
+
+  setAudioManager(audioManager) {
+    this.audioManager = audioManager;
+  }
+
+  _resetMovementAudio() {
+    if (this._wasMoving && this.audioManager) {
+      this.audioManager.stopEmitter('local');
+    }
+    this._wasMoving = false;
+    this._lastMoveMode = 'idle';
+    this._stepDistAccum = 0.0;
+  }
+
+  getWeaponWorldPosition() {
+    const base = this.camera?.position || {
+      x: this.pos.x,
+      y: this.currentCameraY || ((this.pos.y || 0) + 1.62),
+      z: this.pos.z
+    };
+    const cosY = Math.cos(this.yaw || 0);
+    const sinY = Math.sin(this.yaw || 0);
+    const cosP = Math.cos(this.pitch || 0);
+    const sinP = Math.sin(this.pitch || 0);
+    // Weapon muzzle offset in camera frame: +0.25 right, -0.18 down, -0.85 forward
+    const rx = 0.25;
+    const ry = -0.18 * cosP - (-0.85) * sinP;
+    const rz = -0.18 * sinP + (-0.85) * cosP;
+    return {
+      x: (base.x || 0) + rx * cosY + rz * sinY,
+      y: (base.y || 0) + ry,
+      z: (base.z || 0) - rx * sinY + rz * cosY
+    };
   }
 
   _extractSurfaceNormal(hit, rayDir) {
@@ -487,6 +526,9 @@ export class LocalPlayerController {
     this.weapon = idx;
     this.reloadT = 0;
     this.reloadWeapon = -1;
+    if (this.audioManager && typeof this.audioManager.stopEmitterWeaponReload === 'function') {
+      this.audioManager.stopEmitterWeaponReload('local');
+    }
     this._updateViewmodelVisibility();
   }
 
@@ -603,7 +645,7 @@ export class LocalPlayerController {
   }
 
   consumeHeldItem() {
-    if (this.isEditorActive || this.isInventoryOpen) return;
+    if (this.isEditorActive || this.isInventoryOpen || this.isAudioSettingsOpen) return;
     if (this.selectedHotbarSlot < 0 || this.selectedHotbarSlot > 9) return;
     const item = this.inventory ? this.inventory.getItem(this.selectedHotbarSlot) : null;
     if (!item) return;
@@ -617,7 +659,7 @@ export class LocalPlayerController {
   }
 
   dropHeldItem() {
-    if (this.isEditorActive || this.isInventoryOpen) return;
+    if (this.isEditorActive || this.isInventoryOpen || this.isAudioSettingsOpen) return;
     if (this.selectedHotbarSlot < 0 || this.selectedHotbarSlot > 9) return;
     const item = this.inventory ? this.inventory.getItem(this.selectedHotbarSlot) : null;
     if (!item) return;
@@ -840,15 +882,19 @@ export class LocalPlayerController {
   fire() {
     this.firingDiagnostics.lastFiringInput = 'LMB at ' + new Date().toTimeString().split(' ')[0];
 
+    if (window.mpManager && window.mpManager.isInStagingLobby) {
+      this.firingDiagnostics.lastRejectionReason = 'STAGING_LOBBY';
+      return false;
+    }
     if (this.isEditorActive) {
       this.firingDiagnostics.lastRejectionReason = 'EDITOR_ACTIVE';
       return false;
     }
-    if (this.isInventoryOpen) {
-      this.firingDiagnostics.lastRejectionReason = 'INVENTORY_OPEN';
+    if (this.isInventoryOpen || this.isAudioSettingsOpen) {
+      this.firingDiagnostics.lastRejectionReason = this.isAudioSettingsOpen ? 'AUDIO_SETTINGS_OPEN' : 'INVENTORY_OPEN';
       return false;
     }
-    if (this.isDowned || this.isDead || this.hp <= 0) {
+    if (this.isDowned || this.isDead || this.hp <= 0 || (this.state && this.state !== 'ACTIVE')) {
       this.firingDiagnostics.lastRejectionReason = 'PLAYER_DOWNED_OR_ELIMINATED';
       return false;
     }
@@ -879,6 +925,15 @@ export class LocalPlayerController {
       this._triggerMuzzleFlash(0);
 
       this._performWeaponHitscan('PISTOL');
+
+      if (this.audioManager && typeof this.audioManager.playWeaponFire === 'function') {
+        const attachTarget = () => this.getWeaponWorldPosition();
+        this.audioManager.playWeaponFire('local', 'weapon_pistol_fire', {
+          positional: true,
+          position: attachTarget(),
+          attachTarget
+        });
+      }
 
       this.firingDiagnostics.lastRejectionReason = 'NONE';
 
@@ -925,15 +980,19 @@ export class LocalPlayerController {
   }
 
   startReload() {
+    if (window.mpManager && window.mpManager.isInStagingLobby) {
+      this.firingDiagnostics.lastRejectionReason = 'STAGING_LOBBY';
+      return false;
+    }
     if (this.isEditorActive) {
       this.firingDiagnostics.lastRejectionReason = 'EDITOR_ACTIVE';
       return false;
     }
-    if (this.isInventoryOpen) {
-      this.firingDiagnostics.lastRejectionReason = 'INVENTORY_OPEN';
+    if (this.isInventoryOpen || this.isAudioSettingsOpen) {
+      this.firingDiagnostics.lastRejectionReason = this.isAudioSettingsOpen ? 'AUDIO_SETTINGS_OPEN' : 'INVENTORY_OPEN';
       return false;
     }
-    if (this.isDowned || this.isDead || this.hp <= 0) {
+    if (this.isDowned || this.isDead || this.hp <= 0 || (this.state && this.state !== 'ACTIVE')) {
       this.firingDiagnostics.lastRejectionReason = 'PLAYER_DOWNED_OR_ELIMINATED';
       return false;
     }
@@ -955,6 +1014,7 @@ export class LocalPlayerController {
       this.reloadT = 1.15;
       this.reloadWeapon = 0;
       this.firingDiagnostics.lastRejectionReason = 'NONE';
+      this._triggerReloadAudio('PISTOL');
       this._notifyStateChange();
       return true;
     } else if (this.weapon === 1) {
@@ -970,10 +1030,27 @@ export class LocalPlayerController {
       this.reloadT = 1.6;
       this.reloadWeapon = 1;
       this.firingDiagnostics.lastRejectionReason = 'NONE';
+      this._triggerReloadAudio('SHOTGUN');
       this._notifyStateChange();
       return true;
     }
     return false;
+  }
+
+  _triggerReloadAudio(weaponType = 'PISTOL') {
+    const weaponPos = this.getWeaponWorldPosition();
+    if (this.audioManager && typeof this.audioManager.playWeaponReload === 'function') {
+      const attachTarget = () => this.getWeaponWorldPosition();
+      this.audioManager.playWeaponReload('local', {
+        weaponType,
+        positional: true,
+        position: weaponPos,
+        attachTarget
+      });
+    }
+    if (this.networkClient && this.networkClient.isConnected && typeof this.networkClient.reloadWeapon === 'function') {
+      this.networkClient.reloadWeapon(weaponType, weaponPos);
+    }
   }
 
   _finishReload() {
@@ -998,10 +1075,14 @@ export class LocalPlayerController {
       this.isDowned = true;
       this.isDead = false;
       this.cameraTargetY = 0.42;
+      this._resetMovementAudio();
+      this.audioManager?.stopEmitterWeaponReload?.('local');
     } else if (state === 'ELIMINATED') {
       this.isDead = true;
       this.isDowned = false;
       this.cameraTargetY = 0.25;
+      this._resetMovementAudio();
+      this.audioManager?.stopEmitterWeaponReload?.('local');
     } else if (state === 'ACTIVE') {
       this.isDowned = false;
       this.isDead = false;
@@ -1014,6 +1095,7 @@ export class LocalPlayerController {
 
   resetCombatState() {
     this.setState('ACTIVE', 0);
+    this._resetMovementAudio();
     this.setHp(100);
     this.camera.position.y = 1.62;
     this.currentCameraY = 1.62;
@@ -1073,7 +1155,7 @@ export class LocalPlayerController {
 
   _bindEvents() {
     this._onKeyDown = (e) => {
-      if (this.isEditorActive || this.isInventoryOpen || (window.mpManager && window.mpManager.isInStagingLobby)) {
+      if (this.isEditorActive || this.isInventoryOpen || this.isAudioSettingsOpen || (window.mpManager && window.mpManager.isInStagingLobby)) {
         return;
       }
       // Allow regular typing in visible input/textarea elements when not in active pointer lock
@@ -1133,7 +1215,7 @@ export class LocalPlayerController {
     };
 
     this._onMouseMove = (e) => {
-      if (!this.isPointerLocked || this.isInventoryOpen) return;
+      if (!this.isPointerLocked || this.isInventoryOpen || this.isAudioSettingsOpen) return;
       this.yaw -= e.movementX * this.mouseSensitivity;
       this.pitch -= e.movementY * this.mouseSensitivity;
       this.pitch = Math.max(-1.48, Math.min(1.48, this.pitch));
@@ -1149,6 +1231,10 @@ export class LocalPlayerController {
       }
       if (this.isInventoryOpen) {
         this.firingDiagnostics.lastRejectionReason = 'INVENTORY_OPEN';
+        return;
+      }
+      if (this.isAudioSettingsOpen) {
+        this.firingDiagnostics.lastRejectionReason = 'AUDIO_SETTINGS_OPEN';
         return;
       }
       if (this.isDowned || this.isDead || this.hp <= 0) {
@@ -1174,7 +1260,7 @@ export class LocalPlayerController {
     };
 
     this._onWheel = (e) => {
-      if (this.isEditorActive || this.isInventoryOpen) return;
+      if (this.isEditorActive || this.isInventoryOpen || this.isAudioSettingsOpen) return;
       if (this.isPointerLocked) {
         e.preventDefault(); // Prevent page scrolling during weapon selection wheel
         if (e.deltaY > 0) {
@@ -1223,12 +1309,14 @@ export class LocalPlayerController {
   update(dt) {
     if (window.mpManager && window.mpManager.isInStagingLobby) {
       if (this.gunGroup) this.gunGroup.visible = false;
+      this._resetMovementAudio();
       return;
     }
 
     this._updateThrowAnimations(dt);
 
-    if (this.isEditorActive || this.isInventoryOpen || this.isDowned || this.isDead || this.state !== 'ACTIVE') {
+    if (this.isEditorActive || this.isInventoryOpen || this.isAudioSettingsOpen || this.isDowned || this.isDead || this.state !== 'ACTIVE') {
+      this._resetMovementAudio();
       // Suspend movement and firing, but maintain 20Hz network sync
       // If downed or dead, smoothly transition camera height to prone
       if (this.isDowned || this.isDead) {
@@ -1313,6 +1401,8 @@ export class LocalPlayerController {
     }
 
     const curSpeed = this.getEffectiveMoveSpeed();
+    const prevPosX = this.pos.x;
+    const prevPosZ = this.pos.z;
 
     if (len > 0) {
       fx /= len; fz /= len;
@@ -1331,6 +1421,32 @@ export class LocalPlayerController {
       }
 
       this.bob += dt * (this.isSprinting ? 11 : 8);
+    }
+
+    // 1b. Local movement footstep cadence tied to real horizontal displacement
+    const movedDist = Math.hypot(this.pos.x - prevPosX, this.pos.z - prevPosZ);
+    const isActuallyMoving = (len > 0 && movedDist > 0.0005);
+    if (!isActuallyMoving) {
+      this._resetMovementAudio();
+    } else {
+      const mode = this.isSprinting ? 'run' : 'walk';
+      const stride = this.isSprinting ? 2.2 : 2.4;
+      if (!this._wasMoving || mode !== this._lastMoveMode) {
+        const switchedMode = this._wasMoving && mode !== this._lastMoveMode;
+        this._stepDistAccum = 0.0;
+        this._wasMoving = true;
+        this._lastMoveMode = mode;
+        this.audioManager?.playFootstep('local', mode, {
+          positional: false,
+          immediateSwitch: switchedMode,
+          ignoreRateLimit: switchedMode
+        });
+      }
+      this._stepDistAccum += movedDist;
+      while (this._stepDistAccum >= stride) {
+        this._stepDistAccum -= stride;
+        this.audioManager?.playFootstep('local', mode, { positional: false });
+      }
     }
 
     // 2. Camera positioning & bobbing

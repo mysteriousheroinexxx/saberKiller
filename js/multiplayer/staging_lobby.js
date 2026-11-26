@@ -1,7 +1,6 @@
 // Pre-Game Staging Lobby Module for Multiplayer Survival Mode
-// Manages the 3D floating rectangular metallic platform, atmospheric lighting,
-// 3D character models standing on the platform with synchronized name labels,
-// collision and grounding integration, and the authoritative Ready / Start match flow.
+// Minimalist industrial brushed-steel staging environment with engineered overhead
+// and 3-point lighting, grounded T-800 character presentation, and clean readiness HUD.
 
 import { preloadPlayerAssets } from './remote_player.js';
 
@@ -17,18 +16,20 @@ export class StagingLobby {
     this.myPlayerId = null;
     this.isLeader = false;
     this.localReady = false;
+    this.cachedPlayers = [];
+    this._idleClock = 0;
 
     // Platform Physical Dimensions and Collision Volume
     this.platformBounds = {
-      width: 6.8,
-      depth: 4.2,
-      thickness: 0.5,
+      width: 5.4,
+      depth: 3.4,
+      thickness: 0.42,
       topY: 0.0,
-      bottomY: -0.5,
-      minX: -3.4,
-      maxX: 3.4,
-      minZ: -2.1,
-      maxZ: 2.1
+      bottomY: -0.42,
+      minX: -2.7,
+      maxX: 2.7,
+      minZ: -1.7,
+      maxZ: 1.7
     };
 
     this.collisionBox = new THREE.Box3(
@@ -45,22 +46,25 @@ export class StagingLobby {
     this.platformMesh = null;
     this.subChassisMesh = null;
     this.lobbyLights = [];
-    this.characterSlots = new Map(); // playerId -> { id, name, isReady, group, visualPivot, mesh, nameSprite }
+    this.characterSlots = new Map(); // playerId -> { id, name, isReady, group, visualPivot, mesh, nameSprite, padMesh, phase }
 
     // Preloaded assets cache
     this.t800Template = null;
     this.pistolTemplate = null;
     this._assetsLoaded = false;
 
-    // Studio Environment Map for metallic PBR reflections
+    // Studio Environment Map & saved scene state
     this.lobbyEnvMap = null;
     this.savedEnvironment = undefined;
     this.savedExposure = undefined;
     this.savedBackground = undefined;
+    this.savedFog = undefined;
+    this.savedCameraFov = undefined;
 
     // UI DOM Elements
     this.overlayEl = null;
     this.roomCodeEl = null;
+    this.rosterEl = null;
     this.statusMsgEl = null;
     this.actionBtn = null;
     this.leaveBtn = null;
@@ -91,61 +95,102 @@ export class StagingLobby {
   }
 
   /**
-   * Generates a procedural brushed-metal canvas texture with fine directional micro-streaks
+   * Generates a crisp brushed-steel albedo/bump/roughness map with subtle machined panel seams
    */
-  _createBrushedMetalTexture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 512;
-    const ctx = canvas.getContext('2d');
+  _createBrushedMetalTextures() {
+    const size = 1024;
+    const colorCanvas = document.createElement('canvas');
+    colorCanvas.width = size;
+    colorCanvas.height = size;
+    const cctx = colorCanvas.getContext('2d');
 
-    // Base neutral silver-grey tone
-    ctx.fillStyle = '#b4bac2';
-    ctx.fillRect(0, 0, 512, 512);
+    const roughCanvas = document.createElement('canvas');
+    roughCanvas.width = size;
+    roughCanvas.height = size;
+    const rctx = roughCanvas.getContext('2d');
 
-    // Directional brushed streaks in X direction with variable transparency
-    for (let i = 0; i < 5000; i++) {
-      const y = Math.random() * 512;
-      const len = 35 + Math.random() * 150;
-      const x = Math.random() * 512;
-      const alpha = 0.025 + Math.random() * 0.06;
-      const bright = Math.random() > 0.46;
-      ctx.strokeStyle = bright ? `rgba(255, 255, 255, ${alpha})` : `rgba(28, 34, 44, ${alpha})`;
-      ctx.lineWidth = 0.75 + Math.random() * 1.5;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + len, y);
-      ctx.stroke();
+    // Dark gunmetal brushed-steel base
+    cctx.fillStyle = '#4f5762';
+    cctx.fillRect(0, 0, size, size);
 
-      // Wrap around horizontally for seamless tiling
-      if (x + len > 512) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo((x + len) - 512, y);
-        ctx.stroke();
+    rctx.fillStyle = '#5e5e5e'; // ~0.37 roughness center
+    rctx.fillRect(0, 0, size, size);
+
+    // Directional micro-brushed horizontal steel grain
+    for (let i = 0; i < 12000; i++) {
+      const y = Math.random() * size;
+      const x = Math.random() * size;
+      const len = 40 + Math.random() * 200;
+      const bright = Math.random() > 0.48;
+      const alpha = 0.02 + Math.random() * 0.055;
+
+      cctx.strokeStyle = bright ? `rgba(225, 232, 240, ${alpha})` : `rgba(18, 22, 28, ${alpha})`;
+      cctx.lineWidth = 0.6 + Math.random() * 1.3;
+      cctx.beginPath();
+      cctx.moveTo(x, y);
+      cctx.lineTo(x + len, y);
+      cctx.stroke();
+
+      rctx.strokeStyle = bright ? `rgba(220, 220, 220, ${alpha * 1.4})` : `rgba(40, 40, 40, ${alpha * 1.4})`;
+      rctx.lineWidth = cctx.lineWidth;
+      rctx.beginPath();
+      rctx.moveTo(x, y);
+      rctx.lineTo(x + len, y);
+      rctx.stroke();
+
+      if (x + len > size) {
+        cctx.beginPath();
+        cctx.moveTo(0, y);
+        cctx.lineTo((x + len) - size, y);
+        cctx.stroke();
       }
     }
 
-    // Fine surface micro-grain
-    const imgData = ctx.getImageData(0, 0, 512, 512);
+    // Clean architectural machined deck plate seams (4x2 plate grid feel)
+    const drawSeam = (ctx, x1, y1, x2, y2) => {
+      ctx.strokeStyle = 'rgba(12, 15, 20, 0.72)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(185, 198, 214, 0.16)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x1 + 2, y1 + 2);
+      ctx.lineTo(x2 + 2, y2 + 2);
+      ctx.stroke();
+    };
+
+    for (const gx of [size * 0.25, size * 0.5, size * 0.75]) {
+      drawSeam(cctx, gx, 0, gx, size);
+    }
+    drawSeam(cctx, 0, size * 0.5, size, size * 0.5);
+
+    // Subtle surface grain
+    const imgData = cctx.getImageData(0, 0, size, size);
     const d = imgData.data;
     for (let i = 0; i < d.length; i += 4) {
-      const n = (Math.random() - 0.5) * 8;
+      const n = (Math.random() - 0.5) * 6;
       d[i] = Math.min(255, Math.max(0, d[i] + n));
       d[i + 1] = Math.min(255, Math.max(0, d[i + 1] + n));
       d[i + 2] = Math.min(255, Math.max(0, d[i + 2] + n));
     }
-    ctx.putImageData(imgData, 0, 0);
+    cctx.putImageData(imgData, 0, 0);
 
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(3, 2);
-    return texture;
+    const colorTex = new THREE.CanvasTexture(colorCanvas);
+    colorTex.encoding = THREE.sRGBEncoding;
+    colorTex.anisotropy = 8;
+
+    const roughTex = new THREE.CanvasTexture(roughCanvas);
+    roughTex.anisotropy = 8;
+
+    return { colorTex, roughTex };
   }
 
   /**
-   * Generates a 3D rectangular geometry with beveled/chamfered edges
+   * Generates a 3D rectangular deck with precision chamfered/beveled edges
    */
   _createBeveledPlatformGeometry(width, depth, thickness, bevelSize, bevelThickness) {
     const hw = (width / 2) - bevelSize;
@@ -168,12 +213,10 @@ export class StagingLobby {
       bevelThickness: bevelThickness
     });
 
-    // Rotate so depth is vertical along Y axis
     geom.rotateX(Math.PI / 2);
     geom.computeVertexNormals();
     geom.computeBoundingBox();
 
-    // Translate so top surface is at Y = 0.0 and bottom surface is at Y = -thickness
     const topY = geom.boundingBox.max.y;
     geom.translate(0, -topY, 0);
     geom.computeBoundingBox();
@@ -182,29 +225,45 @@ export class StagingLobby {
   }
 
   /**
-   * Creates an HDR studio environment map for metallic PBR reflections
+   * Generates a high-contrast studio reflection map for metallic T-800s and brushed steel
    */
   _ensureStudioEnvironmentMap() {
     if (this.lobbyEnvMap) return this.lobbyEnvMap;
 
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 256;
+    canvas.width = 1024;
+    canvas.height = 512;
     const ctx = canvas.getContext('2d');
 
-    // Soft studio lighting gradient (overhead bright softbox, cool horizon fill, soft dark floor)
-    const grad = ctx.createLinearGradient(0, 0, 0, 256);
-    grad.addColorStop(0.0, '#ffffff'); // bright overhead key light
-    grad.addColorStop(0.2, '#f0f4f9');
-    grad.addColorStop(0.45, '#b4c4d6'); // cool blue-grey horizon
-    grad.addColorStop(0.7, '#425368');
-    grad.addColorStop(1.0, '#101720'); // dark floor
+    // Deep industrial architectural ambient gradient
+    const grad = ctx.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0.0, '#1e2530');
+    grad.addColorStop(0.28, '#2b3544');
+    grad.addColorStop(0.50, '#181e27');
+    grad.addColorStop(0.75, '#0e1217');
+    grad.addColorStop(1.0, '#07090c');
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 512, 256);
+    ctx.fillRect(0, 0, 1024, 512);
 
-    // Studio softbox highlight panels
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
-    ctx.fillRect(160, 20, 192, 60);
+    // Overhead main industrial diffuser strip (drives crisp shoulder/crown highlights)
+    const drawSoftbox = (x, y, w, h, innerColor, outerColor = 'rgba(255,255,255,0)') => {
+      const g = ctx.createRadialGradient(
+        x + w / 2, y + h / 2, Math.min(w, h) * 0.1,
+        x + w / 2, y + h / 2, Math.max(w, h) * 0.6
+      );
+      g.addColorStop(0, innerColor);
+      g.addColorStop(1, outerColor);
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, w, h);
+    };
+
+    // Ceiling bright studio strip
+    drawSoftbox(180, 14, 664, 110, 'rgba(248, 251, 255, 0.95)');
+    // Left & right mid-horizon sculpting strips (crucial for metallic ribs, arms & skull contours)
+    drawSoftbox(70, 155, 220, 185, 'rgba(220, 232, 248, 0.85)');
+    drawSoftbox(734, 155, 220, 185, 'rgba(218, 228, 242, 0.80)');
+    // Subtle restrained warm architectural reflection strip front-right
+    drawSoftbox(420, 170, 184, 130, 'rgba(255, 238, 205, 0.62)');
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.mapping = THREE.EquirectangularReflectionMapping;
@@ -217,6 +276,7 @@ export class StagingLobby {
         const renderTarget = pmrem.fromEquirectangular(tex);
         this.lobbyEnvMap = renderTarget.texture;
         pmrem.dispose();
+        tex.dispose();
       } catch (e) {
         console.warn('[StagingLobby] PMREMGenerator fallback:', e);
         this.lobbyEnvMap = tex;
@@ -229,21 +289,22 @@ export class StagingLobby {
   }
 
   _build3DEnvironment() {
-    // -------------------------------------------------------------
-    // 1. Rectangular Floating Metallic Platform with Beveled Edges
-    // -------------------------------------------------------------
     const { width, depth, thickness } = this.platformBounds;
-    const platformGeom = this._createBeveledPlatformGeometry(width, depth, thickness, 0.08, 0.08);
+    const { colorTex, roughTex } = this._createBrushedMetalTextures();
 
-    const brushedTexture = this._createBrushedMetalTexture();
+    // -------------------------------------------------------------
+    // 1. Brushed-Steel Floating Deck + Heavy Industrial Underframe
+    // -------------------------------------------------------------
+    const platformGeom = this._createBeveledPlatformGeometry(width, depth, thickness, 0.06, 0.06);
     const platformMat = new THREE.MeshStandardMaterial({
-      color: 0x9ca3ab, // Silver-grey metallic
-      roughness: 0.32,
-      metalness: 0.82,
-      bumpMap: brushedTexture,
-      bumpScale: 0.005,
-      roughnessMap: brushedTexture,
-      envMapIntensity: 1.4
+      color: 0xb6bec8,
+      map: colorTex,
+      roughnessMap: roughTex,
+      bumpMap: roughTex,
+      bumpScale: 0.004,
+      roughness: 0.36,
+      metalness: 0.84,
+      envMapIntensity: 1.55
     });
 
     this.platformMesh = new THREE.Mesh(platformGeom, platformMat);
@@ -253,88 +314,161 @@ export class StagingLobby {
     this.platformMesh.castShadow = true;
     this.lobbyGroup.add(this.platformMesh);
 
-    // Recessed dark industrial sub-chassis / support base
-    const subGeom = new THREE.BoxGeometry(width - 0.3, 0.14, depth - 0.3);
-    const subMat = new THREE.MeshStandardMaterial({
-      color: 0x1b1f26,
-      roughness: 0.55,
-      metalness: 0.75
+    // Anodized gunmetal perimeter collar framing the brushed deck
+    const collarMat = new THREE.MeshStandardMaterial({
+      color: 0x1e232a,
+      roughness: 0.42,
+      metalness: 0.78,
+      envMapIntensity: 1.2
     });
+    const borderThick = 0.14;
+    const collarH = 0.055;
+    const frontCollar = new THREE.Mesh(new THREE.BoxGeometry(width + 0.04, collarH, borderThick), collarMat);
+    frontCollar.position.set(0, -0.015, depth / 2 + borderThick / 2 - 0.05);
+    const backCollar = frontCollar.clone();
+    backCollar.position.z = -(depth / 2 + borderThick / 2 - 0.05);
+    const leftCollar = new THREE.Mesh(new THREE.BoxGeometry(borderThick, collarH, depth + borderThick * 2 - 0.06), collarMat);
+    leftCollar.position.set(-(width / 2 + borderThick / 2 - 0.05), -0.015, 0);
+    const rightCollar = leftCollar.clone();
+    rightCollar.position.x = (width / 2 + borderThick / 2 - 0.05);
+    [frontCollar, backCollar, leftCollar, rightCollar].forEach(m => {
+      m.receiveShadow = true;
+      m.castShadow = true;
+      this.lobbyGroup.add(m);
+    });
+
+    // Subtle restrained metallic accent strip recessed along front chamfer edge
+    const edgeAccentMat = new THREE.MeshStandardMaterial({
+      color: 0x8d7432,
+      emissive: 0x3b2e10,
+      emissiveIntensity: 0.65,
+      roughness: 0.35,
+      metalness: 0.85
+    });
+    const edgeAccent = new THREE.Mesh(new THREE.BoxGeometry(width - 1.2, 0.014, 0.02), edgeAccentMat);
+    edgeAccent.position.set(0, -0.08, depth / 2 + 0.036);
+    this.lobbyGroup.add(edgeAccent);
+
+    // Stepped Heavy Industrial Sub-Chassis & Support Cross-Beams
+    const subMat = new THREE.MeshStandardMaterial({
+      color: 0x15181e,
+      roughness: 0.56,
+      metalness: 0.72,
+      envMapIntensity: 0.9
+    });
+    const subGeom = new THREE.BoxGeometry(width - 0.45, 0.18, depth - 0.45);
     this.subChassisMesh = new THREE.Mesh(subGeom, subMat);
     this.subChassisMesh.name = 'StagingLobby_SubChassis';
-    this.subChassisMesh.position.set(0, -thickness - 0.06, 0);
+    this.subChassisMesh.position.set(0, -thickness - 0.07, 0);
     this.subChassisMesh.receiveShadow = true;
     this.lobbyGroup.add(this.subChassisMesh);
 
-    // -------------------------------------------------------------
-    // 2. Comprehensive Staging Lighting
-    // -------------------------------------------------------------
-    // Main light source ~50 metres above platform directed towards its centre
-    const mainLight = new THREE.DirectionalLight(0xf8fbff, 4.2);
-    mainLight.position.set(0, 50, 0);
-    mainLight.target.position.set(0, 0, 0);
-    this.lobbyGroup.add(mainLight.target);
-    this.lobbyGroup.add(mainLight);
-    this.lobbyLights.push(mainLight);
+    const lowerPlinth = new THREE.Mesh(
+      new THREE.BoxGeometry(width - 1.2, 0.22, depth - 1.1),
+      new THREE.MeshStandardMaterial({ color: 0x0f1217, roughness: 0.65, metalness: 0.65 })
+    );
+    lowerPlinth.position.set(0, -thickness - 0.25, 0);
+    this.lobbyGroup.add(lowerPlinth);
 
-    // Dedicated overhead light source directly above the centre of the staging platform
-    // Casts a conical downward pool of illumination directly onto the platform and models,
-    // illuminating player characters vividly while preserving the dark surrounding environment
-    const overheadSpot = new THREE.SpotLight(0xffffff, 14.0, 32, Math.PI / 4.2, 0.5, 1.2);
+    for (const bx of [-2.1, 0, 2.1]) {
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.26, depth - 0.36), collarMat);
+      rib.position.set(bx, -thickness - 0.14, 0);
+      this.lobbyGroup.add(rib);
+    }
+
+    // -------------------------------------------------------------
+    // 2. Overhead Architectural Light Rig (high above frame on desktop, subtle luminaire)
+    // -------------------------------------------------------------
+    const rigGroup = new THREE.Group();
+    rigGroup.name = 'StagingLobby_OverheadRig';
+    rigGroup.position.set(0, 3.65, -0.15);
+
+    const beamMat = new THREE.MeshStandardMaterial({
+      color: 0x161920,
+      roughness: 0.5,
+      metalness: 0.78
+    });
+    const gantryBeam = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.1, 0.24), beamMat);
+    rigGroup.add(gantryBeam);
+
+    const diffuserMat = new THREE.MeshStandardMaterial({
+      color: 0xeaf0f8,
+      emissive: 0xcfe0f2,
+      emissiveIntensity: 1.15,
+      roughness: 0.25
+    });
+    const diffuserBar = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.022, 0.12), diffuserMat);
+    diffuserBar.position.set(0, -0.052, 0);
+    rigGroup.add(diffuserBar);
+
+    this.lobbyGroup.add(rigGroup);
+
+    // -------------------------------------------------------------
+    // 3. Engineered 3-Point & Overhead Conical Lighting
+    // -------------------------------------------------------------
+    // High-resolution overhead key spotlight positioned slightly behind midpoint
+    // so specular floor bounce frames characters cleanly without glaring under the front UI
+    const overheadSpot = new THREE.SpotLight(0xf6f9ff, 20.0, 18, Math.PI / 3.4, 0.7, 1.35);
     overheadSpot.name = 'StagingLobby_OverheadSpot';
-    overheadSpot.position.set(0, 7.5, 0);
-    overheadSpot.target.position.set(0, 0, 0);
+    overheadSpot.position.set(0, 5.8, -0.25);
+    overheadSpot.target.position.set(0, 0.45, 0.2);
     overheadSpot.castShadow = true;
+    overheadSpot.shadow.mapSize.width = 2048;
+    overheadSpot.shadow.mapSize.height = 2048;
+    overheadSpot.shadow.camera.near = 1.5;
+    overheadSpot.shadow.camera.far = 12.0;
+    overheadSpot.shadow.bias = -0.0004;
+    overheadSpot.shadow.normalBias = 0.02;
     this.lobbyGroup.add(overheadSpot.target);
     this.lobbyGroup.add(overheadSpot);
     this.lobbyLights.push(overheadSpot);
 
-    // Overhead fill light directly above character heads for crisp facial/chest definition
-    const overheadFill = new THREE.PointLight(0xfff4e8, 3.5, 12, 1.4);
+    // Overhead character-level fill so skull, shoulders, and chest actuators read crisply
+    const overheadFill = new THREE.PointLight(0xf3f7ff, 5.0, 10, 1.4);
     overheadFill.name = 'StagingLobby_OverheadFill';
-    overheadFill.position.set(0, 3.8, 0.3);
+    overheadFill.position.set(0, 2.9, 1.15);
     this.lobbyGroup.add(overheadFill);
     this.lobbyLights.push(overheadFill);
 
-    // Front key/fill light to ensure character faces, chests, and legs are brightly illuminated
-    const frontFill = new THREE.DirectionalLight(0xecf3fd, 2.6);
-    frontFill.position.set(0, 3.5, 4.8);
-    frontFill.target.position.set(0, 0.9, 0);
-    this.lobbyGroup.add(frontFill.target);
-    this.lobbyGroup.add(frontFill);
-    this.lobbyLights.push(frontFill);
+    // Front sculptural key light illuminating character faces & chest endoskeleton
+    const frontKey = new THREE.DirectionalLight(0xf4f7fc, 2.4);
+    frontKey.position.set(0.35, 2.15, 4.8);
+    frontKey.target.position.set(0, 1.0, 0.15);
+    this.lobbyGroup.add(frontKey.target);
+    this.lobbyGroup.add(frontKey);
+    this.lobbyLights.push(frontKey);
 
-    // Left and right cross-fill lights for rich sculptural metallic highlights
-    const leftFill = new THREE.DirectionalLight(0xd9e5f5, 1.5);
-    leftFill.position.set(-4.5, 2.8, 3.0);
-    leftFill.target.position.set(-0.5, 0.9, 0);
-    this.lobbyGroup.add(leftFill.target);
-    this.lobbyGroup.add(leftFill);
-    this.lobbyLights.push(leftFill);
+    // Crisp left/right steel edge fills
+    const leftEdge = new THREE.DirectionalLight(0xcfe0f5, 1.55);
+    leftEdge.position.set(-4.2, 2.2, 2.4);
+    leftEdge.target.position.set(-0.4, 1.0, 0.15);
+    this.lobbyGroup.add(leftEdge.target);
+    this.lobbyGroup.add(leftEdge);
+    this.lobbyLights.push(leftEdge);
 
-    const rightFill = new THREE.DirectionalLight(0xd9e5f5, 1.5);
-    rightFill.position.set(4.5, 2.8, 3.0);
-    rightFill.target.position.set(0.5, 0.9, 0);
-    this.lobbyGroup.add(rightFill.target);
-    this.lobbyGroup.add(rightFill);
-    this.lobbyLights.push(rightFill);
+    const rightEdge = new THREE.DirectionalLight(0xf5ead2, 1.35);
+    rightEdge.position.set(4.2, 2.2, 2.4);
+    rightEdge.target.position.set(0.4, 1.0, 0.15);
+    this.lobbyGroup.add(rightEdge.target);
+    this.lobbyGroup.add(rightEdge);
+    this.lobbyLights.push(rightEdge);
 
-    // Rim backlight to give characters and platform edges crisp silhouette separation from void
-    const rimLight = new THREE.DirectionalLight(0x7da8db, 2.2);
-    rimLight.position.set(0, 4.0, -4.5);
-    rimLight.target.position.set(0, 0.9, 0);
-    this.lobbyGroup.add(rimLight.target);
-    this.lobbyGroup.add(rimLight);
-    this.lobbyLights.push(rimLight);
+    // Backlight separation rim so dark metal shoulders/head pop sharply against dark space
+    const rimBack = new THREE.DirectionalLight(0x8bb4e3, 2.2);
+    rimBack.position.set(0, 3.2, -3.8);
+    rimBack.target.position.set(0, 1.0, 0.15);
+    this.lobbyGroup.add(rimBack.target);
+    this.lobbyGroup.add(rimBack);
+    this.lobbyLights.push(rimBack);
 
-    // Soft ambient hemisphere light filling shadows
-    const hemiLight = new THREE.HemisphereLight(0xddeeff, 0x161e28, 1.8);
+    // Controlled ambient hemisphere preventing pitch-black shadow crush
+    const hemiLight = new THREE.HemisphereLight(0xc7d7ea, 0x161b22, 0.85);
     this.lobbyGroup.add(hemiLight);
     this.lobbyLights.push(hemiLight);
 
-    // Under-chassis soft glow emphasizing the floating platform thickness
-    const underGlow = new THREE.PointLight(0x386898, 2.0, 9, 1.5);
-    underGlow.position.set(0, -1.1, 0);
+    // Subtle under-chassis edge separation glow
+    const underGlow = new THREE.PointLight(0x415b76, 1.6, 8.5, 1.5);
+    underGlow.position.set(0, -1.05, 0.3);
     this.lobbyGroup.add(underGlow);
     this.lobbyLights.push(underGlow);
   }
@@ -344,6 +478,7 @@ export class StagingLobby {
     if (!this.overlayEl) return;
 
     this.roomCodeEl = document.getElementById('staging-room-code');
+    this.rosterEl = document.getElementById('staging-roster');
     this.statusMsgEl = document.getElementById('staging-status-msg');
     this.actionBtn = document.getElementById('btn-staging-action');
     this.leaveBtn = document.getElementById('btn-staging-leave');
@@ -371,16 +506,10 @@ export class StagingLobby {
     this._onMatchStartedCallback = callback;
   }
 
-  /**
-   * Collision Query: Returns the platform collision bounding box
-   */
   getCollisionBox() {
     return this.collisionBox.clone();
   }
 
-  /**
-   * Grounding Query: Returns the top surface height if (x, z) is on the platform, or null
-   */
   getGroundHeightAt(x, z) {
     const { minX, maxX, minZ, maxZ, topY } = this.platformBounds;
     if (x >= minX && x <= maxX && z >= minZ && z <= maxZ) {
@@ -389,49 +518,69 @@ export class StagingLobby {
     return null;
   }
 
-  /**
-   * Checks if a point is within the platform boundary
-   */
   isPointOnPlatform(x, z) {
     return this.getGroundHeightAt(x, z) !== null;
   }
 
   /**
-   * Enters the Staging Lobby mode
+   * Computes balanced desktop & mobile camera distance so players and platform
+   * always remain framed inside the viewport without horizontal clipping.
    */
+  updateCameraFraming() {
+    if (!this.isActive || !this.camera) return;
+
+    const aspect = Math.max(0.4, this.camera.aspect || (typeof window !== 'undefined' ? window.innerWidth / Math.max(1, window.innerHeight) : 1.6));
+    const targetFov = aspect < 0.85 ? 54 : 48;
+    if (Math.abs(this.camera.fov - targetFov) > 0.05) {
+      this.camera.fov = targetFov;
+      this.camera.updateProjectionMatrix();
+    }
+
+    const vFovRad = (this.camera.fov * Math.PI) / 180;
+    const tanHalfV = Math.tan(vFovRad / 2);
+    const halfSpanX = this.characterSlots.size >= 3 ? 2.45 : (this.characterSlots.size === 2 ? 1.65 : 1.15);
+    const requiredDistForWidth = (halfSpanX * 1.18) / (tanHalfV * aspect);
+
+    const baseZ = 5.95;
+    const camZ = Math.max(baseZ, Math.min(8.6, requiredDistForWidth + 0.45));
+    const camY = aspect < 0.85 ? 1.82 : 1.72;
+    const lookY = aspect < 0.85 ? 0.82 : 0.82;
+
+    this.camera.position.set(0, camY, camZ);
+    this.camera.lookAt(0, lookY, 0.05);
+  }
+
   enterLobby(roomCode, isLeader, myPlayerId) {
     this.isActive = true;
     this.roomCode = roomCode;
     this.myPlayerId = myPlayerId;
     this.isLeader = isLeader;
-    this.localReady = isLeader; // Leader is ready by default
+    this.localReady = isLeader;
+    this._idleClock = 0;
 
-    // Set dark empty surrounding space
+    // Dark industrial void surrounding space
     this.savedBackground = this.scene.background;
-    this.scene.background = new THREE.Color(0x07090c);
+    this.scene.background = new THREE.Color(0x080a0d);
 
-    // Apply studio environment map for metallic PBR reflections
+    this.savedFog = this.scene.fog;
+    this.scene.fog = new THREE.FogExp2(0x080a0d, 0.035);
+
     this.savedEnvironment = this.scene.environment;
     const envMap = this._ensureStudioEnvironmentMap();
     if (envMap) {
       this.scene.environment = envMap;
     }
 
-    // Set exposure for clean, well-illuminated staging visuals
     const renderer = this.getRenderer();
     if (renderer) {
       this.savedExposure = renderer.toneMappingExposure;
-      renderer.toneMappingExposure = 0.92;
+      renderer.toneMappingExposure = 1.08;
     }
 
-    // Show floating platform and staging lights
+    this.savedCameraFov = this.camera.fov;
     this.lobbyGroup.visible = true;
+    this.updateCameraFraming();
 
-    // Position camera overlooking the rectangular platform and character models
-    this.camera.position.set(0, 1.65, 4.6);
-    this.camera.lookAt(0, 0.95, 0);
-
-    // Display Staging UI Overlay
     if (this.overlayEl) {
       this.overlayEl.style.display = 'flex';
     }
@@ -443,6 +592,7 @@ export class StagingLobby {
       this.statusMsgEl.textContent = '';
     }
 
+    this._renderRoster(this.cachedPlayers);
     this._updateActionButton();
   }
 
@@ -450,7 +600,7 @@ export class StagingLobby {
     if (!this.actionBtn) return;
 
     if (this.isLeader) {
-      this.actionBtn.textContent = 'START MATCH';
+      this.actionBtn.textContent = 'START';
       this.actionBtn.className = 'staging-btn-action staging-btn-start';
     } else {
       if (this.localReady) {
@@ -465,12 +615,10 @@ export class StagingLobby {
 
   _handleActionClick() {
     if (this.isLeader) {
-      // Authoritative start request to server
       if (this.networkClient) {
         this.networkClient.requestMatchStart();
       }
     } else {
-      // Toggle ready state
       this.localReady = !this.localReady;
       this._updateActionButton();
       if (this.networkClient) {
@@ -479,9 +627,6 @@ export class StagingLobby {
     }
   }
 
-  /**
-   * Updates lobby with authoritative state received from server
-   */
   handleLobbyStateUpdate(state) {
     if (!state || !this.isActive) return;
 
@@ -492,7 +637,6 @@ export class StagingLobby {
       }
     }
 
-    // Check if leadership changed
     if (state.leaderId) {
       const wasLeader = this.isLeader;
       this.isLeader = (state.leaderId === this.myPlayerId);
@@ -501,17 +645,16 @@ export class StagingLobby {
       }
     }
 
-    // Clear any previous error/rejected banner upon state change
     if (this.statusMsgEl && this.statusMsgEl.style.display !== 'none') {
       this.statusMsgEl.style.display = 'none';
     }
 
-    // Synchronize connected player models and ready status
     if (Array.isArray(state.players)) {
       this.cachedPlayers = state.players;
       this._syncPlayers(state.players);
+      this._renderRoster(state.players);
+      this.updateCameraFraming();
 
-      // Synchronize local player ready state if non-leader
       const me = state.players.find(p => p.id === this.myPlayerId);
       if (me && !this.isLeader) {
         this.localReady = Boolean(me.isReady);
@@ -520,9 +663,33 @@ export class StagingLobby {
     }
   }
 
-  /**
-   * Handles start rejection from server (e.g. unready players)
-   */
+  _renderRoster(players) {
+    if (!this.rosterEl) return;
+    this.rosterEl.innerHTML = '';
+    if (!Array.isArray(players) || players.length === 0) return;
+
+    for (const p of players) {
+      const chip = document.createElement('div');
+      chip.className = p.isReady ? 'staging-player-chip ready' : 'staging-player-chip';
+      chip.setAttribute('data-player-id', p.id || '');
+
+      const dot = document.createElement('span');
+      dot.className = 'staging-player-dot';
+
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = p.name || `Player_${p.id}`;
+
+      const stateSpan = document.createElement('span');
+      stateSpan.className = 'staging-player-state';
+      stateSpan.textContent = p.isReady ? 'READY' : 'NOT READY';
+
+      chip.appendChild(dot);
+      chip.appendChild(nameSpan);
+      chip.appendChild(stateSpan);
+      this.rosterEl.appendChild(chip);
+    }
+  }
+
   handleMatchStartRejected(payload) {
     const reason = payload?.reason || 'Waiting for all players to ready up.';
     if (this.statusMsgEl) {
@@ -531,24 +698,65 @@ export class StagingLobby {
     }
   }
 
-  /**
-   * Precise vertical foot grounding: aligns model's soles exactly with local Y = 0
-   */
   _alignModelFeetToOrigin(model) {
     model.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(model);
-    // If box.min.y is the lowest vertex, offsetting model.position.y by -box.min.y
-    // guarantees that the lowest vertex sits exactly at local Y = 0.000.
     model.position.y = -box.min.y;
   }
 
   /**
-   * Synchronizes 3D player character models and floating name labels on platform
+   * Clones materials for the lobby preview character so PBR steel highlights
+   * read clearly under studio lighting without mutating shared Level 0 assets.
    */
+  _prepareLobbyCharacterMesh(model) {
+    model.traverse((obj) => {
+      if (!obj.isMesh) return;
+      obj.castShadow = true;
+      obj.receiveShadow = true;
+      if (!obj.material) return;
+
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      const cloned = mats.map((m) => {
+        const cm = m.clone();
+        cm.envMapIntensity = 2.2;
+        if (typeof cm.metalness === 'number' && cm.metalness > 0.4) {
+          cm.roughness = Math.min(0.44, Math.max(0.22, cm.roughness || 0.34));
+          if (cm.color) {
+            // Prevent pitch-black metallic albedo collapse in shadow pockets
+            const lum = cm.color.r * 0.299 + cm.color.g * 0.587 + cm.color.b * 0.114;
+            if (lum < 0.28) {
+              cm.color.lerp(new THREE.Color(0x6d7785), 0.55);
+            }
+          }
+        }
+        return cm;
+      });
+      obj.material = Array.isArray(obj.material) ? cloned : cloned[0];
+    });
+  }
+
+  _computeSlotTransform(index, count, player) {
+    let x = 0;
+    let facingOffset = 0;
+    if (count === 2) {
+      const isLeft = (player.slot === 0 || index === 0);
+      x = isLeft ? -1.04 : 1.04;
+      facingOffset = isLeft ? 0.16 : -0.16;
+    } else if (count === 3) {
+      const xs = [-1.75, 0.0, 1.75];
+      x = xs[index] !== undefined ? xs[index] : 0;
+      facingOffset = x < 0 ? 0.16 : (x > 0 ? -0.16 : 0);
+    } else if (count > 3) {
+      const span = 4.6;
+      x = -span / 2 + (index / (count - 1)) * span;
+      facingOffset = -x * 0.08;
+    }
+    return { x, z: 0.20, facingOffset };
+  }
+
   _syncPlayers(players) {
     const currentIds = new Set(players.map(p => p.id));
 
-    // Remove disconnected players
     for (const [id, slot] of this.characterSlots) {
       if (!currentIds.has(id)) {
         if (slot.group && slot.group.parent) {
@@ -558,64 +766,96 @@ export class StagingLobby {
       }
     }
 
-    // Position slots on rectangular platform:
-    // Feet are grounded at platformBounds.topY (Y = 0.0)
-    // Z position is 0.0 (comfortably centered on the 4.2m depth)
     const count = players.length;
     players.forEach((p, index) => {
-      let targetX = 0;
-      if (count === 2) {
-        targetX = (p.slot === 0 || index === 0) ? -1.35 : 1.35;
-      } else if (count === 3) {
-        const xs = [-2.0, 0.0, 2.0];
-        targetX = xs[index] !== undefined ? xs[index] : 0;
-      } else if (count > 3) {
-        const span = 4.8;
-        targetX = -span / 2 + (index / (count - 1)) * span;
-      }
+      const { x, z, facingOffset } = this._computeSlotTransform(index, count, p);
 
       let slotObj = this.characterSlots.get(p.id);
       if (!slotObj) {
-        slotObj = this._createCharacterSlot(p, targetX, 0.0);
+        slotObj = this._createCharacterSlot(p, x, z, facingOffset, index);
         this.characterSlots.set(p.id, slotObj);
       } else {
-        // Update position if count changed (grounded exactly at topY)
-        slotObj.group.position.set(targetX, this.platformBounds.topY, 0.0);
-        // Update ready state and name label
+        slotObj.group.position.set(x, this.platformBounds.topY, z);
+        slotObj.baseFacingY = facingOffset;
+        slotObj.visualPivot.rotation.y = facingOffset;
+
         if (slotObj.isReady !== p.isReady || slotObj.name !== p.name) {
-          slotObj.isReady = p.isReady;
+          slotObj.isReady = Boolean(p.isReady);
           slotObj.name = p.name;
           this._updateNameSprite(slotObj, p.name, p.isReady);
+          this._updateStandPadState(slotObj);
         }
       }
     });
   }
 
-  _createCharacterSlot(player, posX, posZ = 0.0) {
+  _createStandPad(isReady) {
+    const padGroup = new THREE.Group();
+    padGroup.name = 'StagingPlayerPad';
+
+    // Machined circular steel floor plate
+    const plateGeom = new THREE.CylinderGeometry(0.46, 0.49, 0.014, 32);
+    const plateMat = new THREE.MeshStandardMaterial({
+      color: 0x262c34,
+      roughness: 0.34,
+      metalness: 0.85,
+      envMapIntensity: 1.4
+    });
+    const plate = new THREE.Mesh(plateGeom, plateMat);
+    plate.position.y = 0.007;
+    plate.receiveShadow = true;
+    padGroup.add(plate);
+
+    // Subtle status indicator ring (restrained green when ready, cool gunmetal when unready)
+    const ringGeom = new THREE.RingGeometry(0.44, 0.468, 40);
+    ringGeom.rotateX(-Math.PI / 2);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: isReady ? 0x4ade80 : 0x5c6672,
+      transparent: true,
+      opacity: isReady ? 0.72 : 0.45
+    });
+    const ring = new THREE.Mesh(ringGeom, ringMat);
+    ring.position.y = 0.0155;
+    padGroup.add(ring);
+    padGroup.userData.ringMat = ringMat;
+
+    return padGroup;
+  }
+
+  _updateStandPadState(slotObj) {
+    const ringMat = slotObj?.padGroup?.userData?.ringMat;
+    if (!ringMat) return;
+    ringMat.color.setHex(slotObj.isReady ? 0x4ade80 : 0x5c6672);
+    ringMat.opacity = slotObj.isReady ? 0.72 : 0.45;
+  }
+
+  _createCharacterSlot(player, posX, posZ = 0.20, facingOffset = 0, index = 0) {
     const group = new THREE.Group();
     group.name = `StagingPlayer_${player.id}`;
-    // Position group on top surface of the platform (Y = platformBounds.topY)
     group.position.set(posX, this.platformBounds.topY, posZ);
     this.lobbyGroup.add(group);
 
-    // Inner visual container facing camera
+    const padGroup = this._createStandPad(Boolean(player.isReady));
+    group.add(padGroup);
+
     const visualPivot = new THREE.Group();
-    visualPivot.rotation.y = 0; // Faces forward toward camera at +Z
+    visualPivot.rotation.y = facingOffset;
     group.add(visualPivot);
 
     let charMesh = null;
     if (this.t800Template) {
       charMesh = this.t800Template.clone(true);
+      this._prepareLobbyCharacterMesh(charMesh);
       this._alignModelFeetToOrigin(charMesh);
+      charMesh.position.y += 0.014; // Ground soles cleanly atop the 1.4cm machined pad
       visualPivot.add(charMesh);
     } else {
-      // Fallback procedural figure with grounded feet
       charMesh = this._createFallbackFigure();
       this._alignModelFeetToOrigin(charMesh);
+      charMesh.position.y += 0.014;
       visualPivot.add(charMesh);
     }
 
-    // Name label sprite above head (at Y = 2.15m, 0.30m above 1.85m character head)
     const nameSprite = this._createNameSprite(player.name || `Player_${player.id}`, player.isReady);
     group.add(nameSprite);
 
@@ -624,9 +864,12 @@ export class StagingLobby {
       name: player.name || `Player_${player.id}`,
       isReady: Boolean(player.isReady),
       group,
+      padGroup,
       visualPivot,
       mesh: charMesh,
-      nameSprite
+      nameSprite,
+      baseFacingY: facingOffset,
+      phase: index * 1.4
     };
   }
 
@@ -636,7 +879,9 @@ export class StagingLobby {
       if (slotObj.mesh && slotObj.visualPivot) {
         slotObj.visualPivot.remove(slotObj.mesh);
         const clone = this.t800Template.clone(true);
+        this._prepareLobbyCharacterMesh(clone);
         this._alignModelFeetToOrigin(clone);
+        clone.position.y += 0.014;
         slotObj.visualPivot.add(clone);
         slotObj.mesh = clone;
       }
@@ -645,8 +890,8 @@ export class StagingLobby {
 
   _createNameSprite(name, isReady) {
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 128;
+    canvas.width = 640;
+    canvas.height = 160;
     const ctx = canvas.getContext('2d');
 
     this._drawNameOnCanvas(ctx, canvas, name, isReady);
@@ -659,8 +904,8 @@ export class StagingLobby {
       depthTest: false
     });
     const sprite = new THREE.Sprite(spriteMat);
-    sprite.scale.set(2.4, 0.6, 1);
-    sprite.position.set(0, 2.15, 0);
+    sprite.scale.set(2.15, 0.54, 1);
+    sprite.position.set(0, 2.08, 0);
     sprite.userData = { canvas, ctx, texture };
     return sprite;
   }
@@ -677,16 +922,16 @@ export class StagingLobby {
   _drawNameOnCanvas(ctx, canvas, name, isReady) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    ctx.font = 'bold 36px "Rubik", -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.font = '600 40px "Rubik", -apple-system, BlinkMacSystemFont, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // Green text for ready players; white text for unready players
-    const textColor = isReady ? '#44ff88' : '#ffffff';
-    const glowColor = isReady ? 'rgba(68, 255, 136, 0.85)' : 'rgba(0, 0, 0, 0.75)';
+    // Green names for ready players; crisp white names for unready players
+    const textColor = isReady ? '#4ade80' : '#f4f3ee';
+    const glowColor = isReady ? 'rgba(74, 222, 128, 0.55)' : 'rgba(0, 0, 0, 0.85)';
 
     ctx.shadowColor = glowColor;
-    ctx.shadowBlur = isReady ? 14 : 6;
+    ctx.shadowBlur = isReady ? 10 : 6;
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 2;
     ctx.fillStyle = textColor;
@@ -699,16 +944,13 @@ export class StagingLobby {
     const mat = new THREE.MeshStandardMaterial({
       color: 0x9ca3ab,
       roughness: 0.35,
-      metalness: 0.75
+      metalness: 0.78
     });
 
-    // Torso
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.8, 0.3), mat);
     body.position.y = 1.2;
-    // Head
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.28, 0.24), mat);
     head.position.y = 1.74;
-    // Left & right legs grounded to Y = 0.0
     const legGeom = new THREE.BoxGeometry(0.18, 0.8, 0.2);
     const leftLeg = new THREE.Mesh(legGeom, mat);
     leftLeg.position.set(-0.14, 0.4, 0);
@@ -722,9 +964,17 @@ export class StagingLobby {
     return g;
   }
 
-  /**
-   * Transitions from staging lobby into Level 0 match
-   */
+  update(dt) {
+    if (!this.isActive) return;
+    this._idleClock += dt || 0;
+    for (const slot of this.characterSlots.values()) {
+      if (slot.visualPivot) {
+        slot.visualPivot.rotation.y = (slot.baseFacingY || 0) + Math.sin(this._idleClock * 0.8 + (slot.phase || 0)) * 0.025;
+        slot.visualPivot.position.y = Math.sin(this._idleClock * 1.6 + (slot.phase || 0)) * 0.004;
+      }
+    }
+  }
+
   exitToGame() {
     this.leaveLobby();
     if (typeof this._onMatchStartedCallback === 'function') {
@@ -732,13 +982,9 @@ export class StagingLobby {
     }
   }
 
-  /**
-   * Cleans up staging lobby visuals and UI
-   */
   leaveLobby() {
     this.isActive = false;
 
-    // Hide staging 3D platform and player models
     this.lobbyGroup.visible = false;
     for (const [, slotObj] of this.characterSlots) {
       if (slotObj.group && slotObj.group.parent) {
@@ -746,29 +992,43 @@ export class StagingLobby {
       }
     }
     this.characterSlots.clear();
+    this.cachedPlayers = [];
 
-    // Hide Staging UI
     if (this.overlayEl) {
       this.overlayEl.style.display = 'none';
     }
     if (this.statusMsgEl) {
       this.statusMsgEl.style.display = 'none';
     }
+    if (this.rosterEl) {
+      this.rosterEl.innerHTML = '';
+    }
 
-    // Restore background if set
     if (this.savedBackground !== undefined) {
       this.scene.background = this.savedBackground;
+      this.savedBackground = undefined;
     }
 
-    // Restore environment map if set
+    if (this.savedFog !== undefined) {
+      this.scene.fog = this.savedFog;
+      this.savedFog = undefined;
+    }
+
     if (this.savedEnvironment !== undefined) {
       this.scene.environment = this.savedEnvironment;
+      this.savedEnvironment = undefined;
     }
 
-    // Restore exposure if set
+    if (this.camera && this.savedCameraFov !== undefined) {
+      this.camera.fov = this.savedCameraFov;
+      this.camera.updateProjectionMatrix();
+      this.savedCameraFov = undefined;
+    }
+
     const renderer = this.getRenderer();
     if (renderer && this.savedExposure !== undefined) {
       renderer.toneMappingExposure = this.savedExposure;
+      this.savedExposure = undefined;
     }
   }
 

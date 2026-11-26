@@ -57,7 +57,8 @@ const MIME_TYPES = {
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
   '.mov': 'video/quicktime',
-  '.webm': 'video/webm'
+  '.webm': 'video/webm',
+  '.wav': 'audio/wav'
 };
 
 // Server-side active layout revision lifecycle
@@ -829,6 +830,19 @@ wss.on('connection', (ws, req) => {
         break;
       }
 
+      case MSG_TYPES.WEAPON_RELOAD: {
+        const weaponType = payload?.weaponType || (payload?.weapon === 1 ? 'SHOTGUN' : 'PISTOL');
+        const res = roomManager.handleWeaponReload(ws, weaponType);
+        if (res && res.success && res.reloadEvent && res.room) {
+          for (const [_, p] of res.room.players) {
+            if (p.id !== res.player.id) {
+              send(p.ws, MSG_TYPES.WEAPON_RELOAD, res.reloadEvent.payload);
+            }
+          }
+        }
+        break;
+      }
+
       case MSG_TYPES.ATTACK_MONSTER: {
         const targetSaberId = payload?.monsterId || payload?.targetSaberId || payload?.targetSaberName || 'saber_alpha';
         const weaponType = payload?.weaponType || (payload?.damage >= 100 ? 'SHOTGUN' : 'PISTOL');
@@ -928,6 +942,13 @@ wss.on('connection', (ws, req) => {
           console.log(`[STAGE 11/19] [SERVER] Inventory update executed for player '${res.player.id}', added '${res.item.type}'`);
           console.log(`[STAGE 12/19] [SERVER] Pickup ACCEPTED: reqId=${requestId}, item='${res.item.id}', player='${res.player.id}'`);
 
+          const rawItemPos = res.item.position;
+          const itemPos = Array.isArray(rawItemPos)
+            ? { x: rawItemPos[0] || 0, y: rawItemPos[1] || 0, z: rawItemPos[2] || 0 }
+            : (rawItemPos && typeof rawItemPos === 'object'
+              ? { x: rawItemPos.x || 0, y: rawItemPos.y || 0, z: rawItemPos.z || 0 }
+              : (res.player.position ? { x: res.player.position.x || 0, y: res.player.position.y || 0, z: res.player.position.z || 0 } : null));
+
           const acceptPayload = {
             requestId,
             success: true,
@@ -935,6 +956,7 @@ wss.on('connection', (ws, req) => {
             itemType: res.item.type,
             playerId: res.player.id,
             roomCode: res.room.code,
+            position: itemPos,
             ammoUpdate: res.ammoUpdate
           };
           if (res.room.pickupRequests) {
@@ -951,7 +973,8 @@ wss.on('connection', (ws, req) => {
               requestId,
               itemId: res.item.id,
               itemType: res.item.type,
-              collectedBy: res.player.id
+              collectedBy: res.player.id,
+              position: itemPos
             });
           }
 
@@ -1060,9 +1083,14 @@ wss.on('connection', (ws, req) => {
           send(ws, MSG_TYPES.ITEM_USE_RESPONSE, rejectPayload);
         } else {
           console.log(`[ITEM USE ${requestId}] Accepted for player=${res.player.id}, item=${res.itemType}`);
+          const consumerPos = res.player?.position
+            ? { x: res.player.position.x || 0, y: res.player.position.y || 0, z: res.player.position.z || 0 }
+            : { x: 0, y: 0, z: 0 };
           const acceptPayload = {
             requestId,
             success: true,
+            playerId: res.player.id,
+            position: consumerPos,
             slotIndex: res.slotIndex,
             itemType: res.itemType,
             itemName: res.itemName,
@@ -1078,6 +1106,21 @@ wss.on('connection', (ws, req) => {
             if (res.room.useRequests.size > 500) res.room.useRequests.delete(res.room.useRequests.keys().next().value);
           }
           send(ws, MSG_TYPES.ITEM_USE_RESPONSE, acceptPayload);
+
+          if (res.room?.players) {
+            for (const [_, p] of res.room.players) {
+              if (p.id !== res.player.id) {
+                send(p.ws, MSG_TYPES.ITEM_CONSUMED, {
+                  requestId,
+                  playerId: res.player.id,
+                  sourceEntityId: res.player.id,
+                  itemType: res.itemType,
+                  position: consumerPos,
+                  timestamp: Date.now()
+                });
+              }
+            }
+          }
 
           if (res.sanityUpdate) {
             send(ws, MSG_TYPES.PLAYER_SANITY_UPDATE, res.sanityUpdate);

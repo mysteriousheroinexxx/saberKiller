@@ -2859,6 +2859,41 @@ export class RoomManager {
   }
 
   /**
+   * Handles player weapon reload broadcast to teammates without altering Saber AI sound stimuli.
+   */
+  handleWeaponReload(ws, weaponType = 'PISTOL') {
+    const session = this.getPlayer(ws);
+    if (!session) return { error: 'Client not associated with any active room session' };
+    const { room, player } = session;
+    if (room.runState === 'LOBBY') {
+      return { error: 'Cannot reload while in staging lobby', room, player };
+    }
+    if (player.state === 'DOWNED' || player.state === 'ELIMINATED') {
+      return { error: `Player is ${player.state.toLowerCase()} and cannot reload`, room, player };
+    }
+
+    const normalizedWeapon = (typeof weaponType === 'string' && weaponType.toUpperCase() === 'SHOTGUN') ? 'SHOTGUN' : 'PISTOL';
+    const pos = player.position ? { ...player.position } : { x: 0, y: 0, z: 0 };
+
+    return {
+      success: true,
+      room,
+      player,
+      weaponType: normalizedWeapon,
+      reloadEvent: {
+        type: 'WEAPON_RELOAD',
+        payload: {
+          playerId: player.id,
+          sourceEntityId: player.id,
+          weaponType: normalizedWeapon,
+          position: pos,
+          timestamp: Date.now()
+        }
+      }
+    };
+  }
+
+  /**
    * Handles player weapon hit against Saber and produces synchronized blood impact event.
    */
   handleAttackMonster(ws, monsterId = 'saber_alpha', damage = 50, weaponType = 'PISTOL', rawImpacts = null) {

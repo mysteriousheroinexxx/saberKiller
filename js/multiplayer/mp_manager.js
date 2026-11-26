@@ -7,6 +7,8 @@ import { LocalPlayerController } from './player_controller.js';
 import { InventoryController } from './inventory_controller.js';
 import { StagingLobby } from './staging_lobby.js';
 import { SaberManager } from './saber_manager.js';
+import { MultiplayerAudioManager } from './audio_manager.js';
+import { MultiplayerAmbientAudio } from './ambient_audio.js';
 
 export class MPManager {
   constructor(scene, camera, uiCallbacks = {}) {
@@ -17,8 +19,11 @@ export class MPManager {
     this.network = new NetworkClient();
     this.remotePlayers = new Map(); // playerId -> RemotePlayer
     this.saberManager = new SaberManager(this.scene);
+    this.audioManager = new MultiplayerAudioManager({ camera });
+    this.audioManager.loadPreferences();
     this.localPlayer = new LocalPlayerController(camera, scene, this.network, null);
     this.localPlayer.setSaberManager(this.saberManager);
+    this.localPlayer.setAudioManager(this.audioManager);
     this.inventory = new InventoryController(30);
     this.inventory.initDefaultLoadout();
     this.localPlayer.inventory = this.inventory;
@@ -31,6 +36,7 @@ export class MPManager {
     this.itemManager = null;
 
     this.stagingLobby = new StagingLobby(scene, camera, this.network);
+    this.ambientAudio = new MultiplayerAmbientAudio({ audioManager: this.audioManager });
     this.isInStagingLobby = false;
     this.mySpawn = null;
     this.isLeader = false;
@@ -71,6 +77,12 @@ export class MPManager {
   _bindNetworkEvents() {
     this.network.onStatusChange = (status) => {
       if (status && status.status === 'disconnected') {
+        if (this.ambientAudio) {
+          this.ambientAudio.stop();
+        }
+        if (this.audioManager) {
+          this.audioManager.stopAllAudio();
+        }
         if (window.interactionManager) {
           window.interactionManager.handleDisconnect();
         }
@@ -103,6 +115,12 @@ export class MPManager {
 
       if (payload.runState === 'LOBBY') {
         this.isInStagingLobby = true;
+        if (this.ambientAudio) {
+          this.ambientAudio.stop();
+        }
+        if (this.audioManager) {
+          this.audioManager.stopAllAudio();
+        }
         if (this.localPlayer && this.localPlayer.gunGroup) {
           this.localPlayer.gunGroup.visible = false;
         }
@@ -111,6 +129,13 @@ export class MPManager {
         }
       } else {
         this.isInStagingLobby = false;
+        if (this.audioManager) {
+          this.audioManager.stopAllAudio();
+          this.audioManager.preloadMatchAudio();
+        }
+        if (this.ambientAudio) {
+          this.ambientAudio.start();
+        }
         if (this.localPlayer && this.localPlayer.gunGroup) {
           this.localPlayer.gunGroup.visible = true;
         }
@@ -169,6 +194,9 @@ export class MPManager {
     };
 
     this.network.onPlayerLeft = (payload) => {
+      if (this.audioManager && payload?.playerId) {
+        this.audioManager.stopEmitter(payload.playerId);
+      }
       const rp = this.remotePlayers.get(payload.playerId);
       if (rp) {
         rp.destroy();
@@ -210,6 +238,14 @@ export class MPManager {
           if (typeof payload.ammoUpdate.shells === 'number') this.localPlayer.shells = payload.ammoUpdate.shells;
           this.localPlayer._notifyStateChange();
         }
+        if (this.audioManager && !payload.dispensedItem && payload.itemType !== 'vending_almond' && payload.itemId) {
+          this.audioManager.playItemPickup?.(payload.itemId, {
+            requestId: payload.requestId,
+            emitterId: payload.playerId || 'local',
+            positional: false,
+            position: this._resolveItemEventPosition(payload.itemId, payload)
+          });
+        }
       }
       if (window.interactionManager) {
         window.interactionManager.handlePickupResponse(payload);
@@ -218,8 +254,18 @@ export class MPManager {
     };
 
     this.network.onItemCollected = (payload) => {
+      const pickupPos = this._resolveItemEventPosition(payload?.itemId, payload);
       if (this.itemManager && payload.itemId) {
         this.itemManager.hideItem(payload.itemId);
+      }
+      if (this.audioManager && payload && payload.itemId) {
+        const isLocalCollector = Boolean(payload.collectedBy && payload.collectedBy === this.myPlayerId);
+        this.audioManager.playItemPickup?.(payload.itemId, {
+          requestId: payload.requestId,
+          emitterId: payload.collectedBy || payload.itemId,
+          positional: !isLocalCollector,
+          position: pickupPos
+        });
       }
       if (window.interactionManager) {
         window.interactionManager.clearTargetIfId(payload.itemId);
@@ -281,6 +327,7 @@ export class MPManager {
           if (window.sanityHUD && typeof window.sanityHUD.update === 'function') {
             window.sanityHUD.update();
           }
+          this.syncSanityHeartbeat();
         }
         if (payload.staminaUpdate && this.localPlayer && typeof payload.staminaUpdate.stamina === 'number') {
           this.localPlayer.stamina = Math.min(this.localPlayer.maxStamina, payload.staminaUpdate.stamina);
@@ -292,12 +339,40 @@ export class MPManager {
         if (this.localPlayer) {
           this.localPlayer.onItemUseAccepted(payload);
         }
+        if (this.audioManager && payload.itemType) {
+          const playFn = this.audioManager.playConsumableUse || this.audioManager.playDrinkConsumable;
+          playFn?.call(this.audioManager, payload.itemType, {
+            requestId: payload.requestId,
+            emitterId: 'local',
+            positional: false,
+            position: payload.position || this.localPlayer?.pos
+          });
+        }
       } else if (payload && !payload.success) {
         if (this.localPlayer) {
           this.localPlayer.onItemUseRejected(payload);
         }
       }
       if (this.ui.onItemUseResponse) this.ui.onItemUseResponse(payload);
+    };
+
+    this.network.onItemConsumed = (payload) => {
+      if (this.audioManager && payload && payload.itemType) {
+        const actorId = payload.sourceEntityId || payload.playerId;
+        if (actorId && actorId !== this.myPlayerId) {
+          const rp = this.remotePlayers.get(actorId);
+          if (!rp || rp.state === 'ACTIVE') {
+            const playFn = this.audioManager.playConsumableUse || this.audioManager.playDrinkConsumable;
+            playFn?.call(this.audioManager, payload.itemType, {
+              requestId: payload.requestId,
+              emitterId: actorId,
+              positional: true,
+              position: payload.position || rp?.group?.position
+            });
+          }
+        }
+      }
+      if (this.ui.onItemConsumed) this.ui.onItemConsumed(payload);
     };
 
     this.network.onPlayerSanityUpdate = (payload) => {
@@ -308,6 +383,7 @@ export class MPManager {
         if (window.sanityHUD && typeof window.sanityHUD.update === 'function') {
           window.sanityHUD.update();
         }
+        this.syncSanityHeartbeat();
       }
       if (this.ui.onPlayerSanityUpdate) this.ui.onPlayerSanityUpdate(payload);
     };
@@ -345,11 +421,19 @@ export class MPManager {
     this.network.onPlayerDowned = (payload) => {
       if (payload && payload.playerId === this.myPlayerId) {
         this.localPlayer.setState('DOWNED');
+        if (this.audioManager) {
+          this.audioManager.stopEmitter('local');
+          this.audioManager.stopEmitterWeaponReload?.('local');
+        }
         const downedOverlay = document.getElementById('bb-downed-overlay');
         if (downedOverlay) downedOverlay.style.display = 'flex';
       } else if (payload) {
         const rp = this.remotePlayers.get(payload.playerId);
         if (rp) rp.setState('DOWNED');
+        if (this.audioManager && payload.playerId) {
+          this.audioManager.stopEmitter(payload.playerId);
+          this.audioManager.stopEmitterWeaponReload?.(payload.playerId);
+        }
       }
       if (this.ui.onPlayerDowned) this.ui.onPlayerDowned(payload);
     };
@@ -357,6 +441,10 @@ export class MPManager {
     this.network.onPlayerEliminated = (payload) => {
       if (payload && payload.playerId === this.myPlayerId) {
         this.localPlayer.setState('ELIMINATED');
+        if (this.audioManager) {
+          this.audioManager.stopEmitter('local');
+          this.audioManager.stopEmitterWeaponReload?.('local');
+        }
         const downedOverlay = document.getElementById('bb-downed-overlay');
         if (downedOverlay) downedOverlay.style.display = 'none';
         const elimOverlay = document.getElementById('bb-eliminated-overlay');
@@ -364,6 +452,10 @@ export class MPManager {
       } else if (payload) {
         const rp = this.remotePlayers.get(payload.playerId);
         if (rp) rp.setState('ELIMINATED');
+        if (this.audioManager && payload.playerId) {
+          this.audioManager.stopEmitter(payload.playerId);
+          this.audioManager.stopEmitterWeaponReload?.(payload.playerId);
+        }
       }
       if (this.ui.onPlayerEliminated) this.ui.onPlayerEliminated(payload);
     };
@@ -392,6 +484,12 @@ export class MPManager {
     };
 
     this.network.onGameOver = (payload) => {
+      if (this.ambientAudio) {
+        this.ambientAudio.stop();
+      }
+      if (this.audioManager) {
+        this.audioManager.stopAllAudio();
+      }
       const isVictory = (payload?.status === 'ESCAPED' || payload?.reason === 'LEVEL_COMPLETED');
       if (!isVictory) {
         this.localPlayer.setState('ELIMINATED');
@@ -437,6 +535,13 @@ export class MPManager {
     this.network.onMatchStarted = (payload) => {
       this.isInStagingLobby = false;
       this.roomRunState = 'IN_PROGRESS';
+      if (this.audioManager) {
+        this.audioManager.stopAllAudio();
+        this.audioManager.preloadMatchAudio();
+      }
+      if (this.ambientAudio) {
+        this.ambientAudio.start();
+      }
       if (this.stagingLobby) {
         this.stagingLobby.leaveLobby();
       }
@@ -585,7 +690,49 @@ export class MPManager {
       if (this.saberManager) {
         this.saberManager.handleSoundEvent(payload);
       }
+      if (this.audioManager && payload && (payload.soundType === 'FOOTSTEP_WALK' || payload.soundType === 'FOOTSTEP_SPRINT')) {
+        // Skip our own player ID because local prediction already drives local footsteps
+        if (payload.sourceEntityId && payload.sourceEntityId !== this.myPlayerId) {
+          const rp = this.remotePlayers.get(payload.sourceEntityId);
+          if (!rp || rp.state === 'ACTIVE') {
+            const mode = payload.soundType === 'FOOTSTEP_SPRINT' ? 'run' : 'walk';
+            this.audioManager.playFootstep(payload.sourceEntityId, mode, {
+              positional: true,
+              position: payload.position
+            });
+          }
+        }
+      } else if (this.audioManager && payload && (payload.soundType === 'GUNSHOT' || payload.soundType === 'GUNSHOT_PRIMARY')) {
+        // Skip our own player ID because local weapon firing already plays attached audio immediately
+        if (payload.sourceEntityId && payload.sourceEntityId !== this.myPlayerId) {
+          const rp = this.remotePlayers.get(payload.sourceEntityId);
+          if (!rp || rp.state === 'ACTIVE') {
+            this.audioManager.playWeaponFire(payload.sourceEntityId, 'weapon_pistol_fire', {
+              positional: true,
+              position: payload.position
+            });
+          }
+        }
+      }
       if (this.ui.onSoundEventBroadcast) this.ui.onSoundEventBroadcast(payload);
+    };
+
+    this.network.onWeaponReload = (payload) => {
+      if (this.audioManager && payload) {
+        const shooterId = payload.sourceEntityId || payload.playerId;
+        // Skip our own player ID so local prediction never duplicates with network broadcasts
+        if (shooterId && shooterId !== this.myPlayerId && typeof this.audioManager.playWeaponReload === 'function') {
+          const rp = this.remotePlayers.get(shooterId);
+          if (!rp || rp.state === 'ACTIVE') {
+            this.audioManager.playWeaponReload(shooterId, {
+              weaponType: payload.weaponType,
+              positional: true,
+              position: payload.position
+            });
+          }
+        }
+      }
+      if (this.ui.onWeaponReload) this.ui.onWeaponReload(payload);
     };
 
     this.network.onProjectileImpact = (payload) => {
@@ -624,6 +771,12 @@ export class MPManager {
   }
 
   leaveRoom() {
+    if (this.ambientAudio) {
+      this.ambientAudio.stop();
+    }
+    if (this.audioManager) {
+      this.audioManager.stopAllAudio();
+    }
     if (this.stagingLobby) {
       this.stagingLobby.leaveLobby();
     }
@@ -644,6 +797,12 @@ export class MPManager {
   }
 
   disconnect() {
+    if (this.ambientAudio) {
+      this.ambientAudio.stop();
+    }
+    if (this.audioManager) {
+      this.audioManager.stopAllAudio();
+    }
     if (this.stagingLobby) {
       this.stagingLobby.leaveLobby();
     }
@@ -664,9 +823,73 @@ export class MPManager {
     this._updatePlayerCount();
   }
 
+  _resolveItemEventPosition(itemId, payload = null) {
+    const pos = payload?.position;
+    if (pos && typeof pos === 'object' && typeof pos.x === 'number' && typeof pos.z === 'number') {
+      return { x: pos.x, y: pos.y || 0, z: pos.z };
+    }
+    if (Array.isArray(pos) && pos.length >= 3) {
+      return { x: pos[0] || 0, y: pos[1] || 0, z: pos[2] || 0 };
+    }
+    const worldItem = itemId && this.itemManager && typeof this.itemManager.getItemById === 'function'
+      ? this.itemManager.getItemById(itemId)
+      : null;
+    if (worldItem?.object?.position) {
+      const p = worldItem.object.position;
+      return { x: p.x || 0, y: p.y || 0, z: p.z || 0 };
+    }
+    if (worldItem?.mesh?.position) {
+      const p = worldItem.mesh.position;
+      return { x: p.x || 0, y: p.y || 0, z: p.z || 0 };
+    }
+    if (Array.isArray(worldItem?.data?.position) && worldItem.data.position.length >= 3) {
+      return {
+        x: worldItem.data.position[0] || 0,
+        y: worldItem.data.position[1] || 0,
+        z: worldItem.data.position[2] || 0
+      };
+    }
+    const actorId = payload?.collectedBy || payload?.playerId;
+    if (actorId && actorId !== this.myPlayerId) {
+      const rp = this.remotePlayers.get(actorId);
+      if (rp?.group?.position) {
+        return { x: rp.group.position.x || 0, y: rp.group.position.y || 0, z: rp.group.position.z || 0 };
+      }
+    }
+    if (this.localPlayer?.pos) {
+      return { x: this.localPlayer.pos.x || 0, y: this.localPlayer.pos.y || 0, z: this.localPlayer.pos.z || 0 };
+    }
+    return null;
+  }
+
+  syncSanityHeartbeat() {
+    if (!this.audioManager || typeof this.audioManager.updateSanityHeartbeat !== 'function') return;
+    const isPlayingMatch = !this.isInStagingLobby && this.roomRunState === 'IN_PROGRESS';
+    const localAlive = Boolean(this.localPlayer && !this.localPlayer.isDead && this.localPlayer.state !== 'ELIMINATED');
+    const sc = (typeof window !== 'undefined') ? window.sanityController : null;
+    if (!isPlayingMatch || !localAlive || !sc) {
+      this.audioManager.updateSanityHeartbeat(100, { active: false });
+      return;
+    }
+    const snap = sc.getSnapshot();
+    this.audioManager.updateSanityHeartbeat(snap.currentSanity, {
+      active: true,
+      state: snap.state,
+      threshold: sc.config?.visualFxThreshold ?? 80.0,
+      panicThreshold: sc.config?.panicThreshold ?? 10.0
+    });
+  }
+
   update(dt) {
     // 1. Update local player
     this.localPlayer.update(dt);
+    if (this.stagingLobby && this.isInStagingLobby) {
+      this.stagingLobby.update(dt);
+    }
+    if (this.audioManager && this.camera) {
+      this.audioManager.updateListener(this.camera);
+    }
+    this.syncSanityHeartbeat();
 
     // 2. Update remote players (interpolation)
     for (const rp of this.remotePlayers.values()) {
