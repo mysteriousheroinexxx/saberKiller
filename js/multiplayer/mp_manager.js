@@ -339,7 +339,8 @@ export class MPManager {
           this.localPlayer.onItemUseAccepted(payload);
         }
         if (this.audioManager && payload.itemType) {
-          this.audioManager.playDrinkConsumable?.(payload.itemType, {
+          const playFn = this.audioManager.playConsumableUse || this.audioManager.playDrinkConsumable;
+          playFn?.call(this.audioManager, payload.itemType, {
             requestId: payload.requestId,
             emitterId: 'local',
             positional: false,
@@ -360,7 +361,8 @@ export class MPManager {
         if (actorId && actorId !== this.myPlayerId) {
           const rp = this.remotePlayers.get(actorId);
           if (!rp || rp.state === 'ACTIVE') {
-            this.audioManager.playDrinkConsumable?.(payload.itemType, {
+            const playFn = this.audioManager.playConsumableUse || this.audioManager.playDrinkConsumable;
+            playFn?.call(this.audioManager, payload.itemType, {
               requestId: payload.requestId,
               emitterId: actorId,
               positional: true,

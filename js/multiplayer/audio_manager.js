@@ -106,6 +106,15 @@ export const DEFAULT_SOUND_DEFINITIONS = Object.freeze({
     minIntervalSeconds: 0.1,
     fadeInSeconds: 0.004,
     fadeOutSeconds: 0.035
+  },
+  interaction_pill_eat: {
+    id: 'interaction_pill_eat',
+    category: AUDIO_CATEGORIES.INTERACTIONS,
+    url: 'assets/audio/pillBottleEat.wav',
+    defaultVolume: 0.62,
+    minIntervalSeconds: 0.1,
+    fadeInSeconds: 0.004,
+    fadeOutSeconds: 0.035
   }
 });
 
@@ -569,7 +578,7 @@ export class MultiplayerAudioManager {
               maxSliceSeconds: soundId === 'player_run' ? 0.27 : 0.35
             })
           );
-        } else if (soundId === 'weapon_pistol_fire' || soundId === 'weapon_reload' || soundId === 'interaction_pickup' || soundId === 'interaction_drink') {
+        } else if (soundId === 'weapon_pistol_fire' || soundId === 'weapon_reload' || soundId === 'interaction_pickup' || soundId === 'interaction_drink' || soundId === 'interaction_pill_eat') {
           this.soundTrimBounds.set(soundId, extractSoundTrimBounds(decoded));
         } else if (soundId === 'sanity_heartbeat') {
           this._heartbeatLoopBuffer = buildSeamlessLoopBuffer(ctx, decoded, 0.12);
@@ -601,7 +610,8 @@ export class MultiplayerAudioManager {
       this.loadSound('weapon_reload'),
       this.loadSound('sanity_heartbeat'),
       this.loadSound('interaction_pickup'),
-      this.loadSound('interaction_drink')
+      this.loadSound('interaction_drink'),
+      this.loadSound('interaction_pill_eat')
     ]);
   }
 
@@ -940,12 +950,29 @@ export class MultiplayerAudioManager {
   }
 
   /**
-   * Plays drinking audio for Almond Water ('almond_can') or Energy Drink ('energy_drink')
-   * through the 'interactions' bus. Explicitly ignores 'sanity_pill' and non-drink items,
-   * and deduplicates across accepted responses / retries via requestId.
+   * Plays drinking audio strictly for Almond Water ('almond_can') or Energy Drink ('energy_drink').
    */
   playDrinkConsumable(itemType, options = {}) {
     if (itemType !== 'almond_can' && itemType !== 'energy_drink') {
+      return false;
+    }
+    return this.playConsumableUse(itemType, options);
+  }
+
+  /**
+   * Plays consumable consumption audio routed through the 'interactions' bus, supporting:
+   *   - 'almond_can' / 'energy_drink' -> 'interaction_drink'
+   *   - 'sanity_pill' -> 'interaction_pill_eat'
+   * Deduplicates across local responses and retries via requestId.
+   */
+  playConsumableUse(itemType, options = {}) {
+    const soundMap = {
+      almond_can: 'interaction_drink',
+      energy_drink: 'interaction_drink',
+      sanity_pill: 'interaction_pill_eat'
+    };
+    const soundId = soundMap[itemType];
+    if (!soundId) {
       return false;
     }
     if (!this._playedDrinkKeys) {
@@ -956,7 +983,7 @@ export class MultiplayerAudioManager {
       return false;
     }
 
-    const played = this.playInteractionSound('interaction_drink', {
+    const played = this.playInteractionSound(soundId, {
       emitterId: options.emitterId || 'local',
       positional: Boolean(options.positional),
       position: options.position || null,
